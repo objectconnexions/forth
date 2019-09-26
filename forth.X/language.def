@@ -1,0 +1,17 @@
+: DOUBLE DUP + ;
+
+: SQUARE DUP * ;
+
+: INC 1 + ;
+
+: SUM_SQUARED SQUARE SWAP SQUARE + ;
+
+
+: ON
+    0x0bf886220 dup @
+    0x01 4 lshift
+    or
+    !
+;
+
+: OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and ! ;
