@@ -4,7 +4,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <ctype.h>
-#include "uart.h"
+#include "forth.h"
+
 
 #define LIT 0x1
 #define DUP 0x2
@@ -36,6 +37,9 @@
 #define ZBRANCH 0xe2
 #define BRANCH 0xe3
 
+#define YIELD 0xe4
+#define WAIT 0xe5
+
 #define WORDS 0xf0
 #define STACK 0xf1
 #define DEBUG 0xf2
@@ -43,16 +47,13 @@
 #define TRACE_OFF 0xf4
 #define RESET 0xf5
 #define CLEAR_REGISTERS 0xf6
-#define END 0xf7
+#define TICKS 0xf7
+#define END 0xff
 
 
 #define SCRATCHPAD 64
 
-void dump_stack(void);
-void compile(char*, uint8_t*);
-void execute(uint8_t*);
-void display_code(uint8_t*);
-void debug(void);
+uint32_t timer = 0;
 
 struct Dictionary {
 	struct Dictionary* previous;
@@ -61,41 +62,67 @@ struct Dictionary {
     uint8_t *code;
 };
 
-struct Task {
-    uint32_t next;
-    uint32_t interval;
-    //uint16_t code;
-};
-
 uint8_t code_store[2048];
-uint32_t stack[2048];
-uint32_t return_stack[64];
 
 //uint8_t* code_store;
 uint8_t* compiled_code;
-uint8_t* code;
+//uint8_t* code;
 uint8_t* scratchpad_code;
-//int16_t* stack;
-//uint16_t* return_stack;
-uint16_t ip; // instruction pointer
-int sp = 0; // stack pointer
-int rsp = 0; // return stack pointer
+
+struct Process {
+    uint32_t stack[16];
+    uint32_t return_stack[8];
+    //int16_t* stack;
+    //uint16_t* return_stack;
+    uint16_t ip; // instruction pointer
+    //TODO change both to unsigned
+    int sp; // stack pointer
+    int rsp; // return stack pointer
+    
+    struct Process* next;
+    char *name;
+    uint8_t priority;
+    uint32_t next_time_to_run;
+    uint8_t* code;
+};
+
+struct Process* processes;
+struct Process* process;
+
 struct Dictionary* dictionary;
-struct Task* tasks;
-uint8_t task_count;
+
 bool immediate = false;
 bool trace = true;
+bool waiting = true;
+
+
+void dump_stack(struct Process*);
+void compile(char*, uint8_t*);
+void execute(uint8_t*);
+void display_code(uint8_t*);
+void debug(void);
+void tasks(void);
+uint32_t popParameterStack(void);
+void wait(uint32_t);
+void next_task();
+struct Process* new_task(uint8_t, char*);
+void tasks();
+void words();
+
 
 int forth_init() {
 //	code_store = malloc(sizeof(uint8_t) * 2048);
 //	stack = malloc(2048);
-//	return_stack = malloc(sizeof(uint16_t) * 64);
-	scratchpad_code = code_store;
+//	return_stack = malloc(sizeof(uint16_t) * 64);]
+    
+    // TODO should compiler use SCRATCHPAD directly?
+ 	scratchpad_code = code_store;
 	compiled_code = code_store + SCRATCHPAD;
+	//code = scratchpad_code;
 
-	code = scratchpad_code;
-
-	sp--;
+    processes = new_task(3, "main");
+    process = processes;
+    process->code = scratchpad_code;
 
 	uart_transmit("FORTH v0.1\n\n");
 	
@@ -237,6 +264,9 @@ int forth_init() {
 
   program = code_store;
 	 */
+    
+ //   tasks();
+ //    debug();
 }
 
 void forth_execute(uint8_t* word) {
@@ -250,269 +280,280 @@ void forth_execute(uint8_t* word) {
     compile(word, code_store);
     
     if (!immediate) {
-        ip = 0;
+        *process->code++ = END;
+        process->ip = 0;
+    //    debug();
         execute(code_store);
         scratchpad_code = code_store;
-        code = scratchpad_code;
-        dump_stack();
+   //     code = scratchpad_code;
+    //    dump_stack(process);
     }
 }
 
-void forth_tasks(uint32_t ticks) {
-    int i;
-    for (i = 0; i < task_count; i++) {
-        struct Task task = tasks[i];
-
-        if (ticks >= task.next) {
-     //       printf("task from %i\n", task.code);
-//            return_stack[++rsp] = ip + 1;
-//            uint8_t code_at = code[ip ++];
-//            ip = code_at + SCRATCHPAD;
-   //         execute(task.code);
-            
-            task.next += task.interval;
-        }
-
-    }
-
-}
-
-void words() {
-    struct Dictionary * ptr = dictionary;
-    while (ptr != NULL) {
-        printf("%s -> %04x\n", ptr->name, ptr->code + SCRATCHPAD);
-        ptr = ptr->previous;
-    }
-}
-
-void execute(uint8_t* code) {
-	uint32_t tos_value;
+void forth_run() {
+    uint32_t tos_value;
 	uint32_t nos_value;
     
-	while(1) {
+    if (waiting) {
+        next_task();
+        if (waiting) {
+            return;
+        }
+    }
 
-		uint8_t instruction = code[ip++];
+    
+    
+//	while(1) {
+  /*  
+    if (process->ip == 0xffff) {
+        return;
+    }
+*/
+    uint8_t instruction = process->code[process->ip++];
+/*
+    if (trace) {
+        printf ("%0x ", instruction);
+    }
+  */  
+    if (instruction == 0) {
+        printf ("no instruction %0x @ %04x", instruction, process->ip);
+        process->ip = 0xffff;
+        return;
+    }
 
-		if (instruction == 0) {
-			return;
-		}
+    if (trace) {
+        printf("& execute @%i [%x|%x]\n", process->ip - 1, instruction, process->code[process->ip]);
+    }
 
-		if (trace) {
-			printf("execute @%i [%x|%x]\n", ip - 1, instruction, code[ip]);
-		}
-
-		switch (instruction) {
+    switch (instruction) {
 		case DUP:
-			if (sp < 0) {
+			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp];
-			stack[++sp] = tos_value;
+			tos_value = process->stack[process->sp];
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
 		case DROP:
-			if (sp < 0) {
+			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			sp--;
+			process->sp--;
 			break;
 
 		case SWAP:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp];
-			stack[sp] = stack[sp -1];
-			stack[sp - 1] = tos_value;
+			tos_value = process->stack[process->sp];
+			process->stack[process->sp] = process->stack[process->sp -1];
+			process->stack[process->sp - 1] = tos_value;
 			break;
 
 		case LIT:
-			tos_value = code[ip++] +
-                    code[ip++] * 0x100 +
-                    code[ip++] * 0x10000 +
-                    code[ip++] * 0x1000000;
-			stack[++sp] = tos_value;
+			tos_value = process->code[process->ip++] +
+                    process->code[process->ip++] * 0x100 +
+                    process->code[process->ip++] * 0x10000 +
+                    process->code[process->ip++] * 0x1000000;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
 		case ADD:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value + tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
 		case SUBTRACT:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value - tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++process->sp] = tos_value;
 			break;
 
 		case DIVIDE:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value / tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
 		case MULTIPLY:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value * tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
 		case GREATER_THAN:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value > tos_value ? 1 : 01;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
 		case EQUAL_TO:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value == tos_value ? 1 : 0;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
 		case AND:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value &tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
 		case OR:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value | tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
             
 		case XOR:
-			if (sp < 0) {
+			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value ^ tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
         case LSHIFT:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value << tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
 			break;
 
         case RSHIFT:
-			if (sp < 1) {
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
-			nos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
+			nos_value = process->stack[process->sp--];
 			tos_value = nos_value >> tos_value;
-			stack[++sp] = tos_value;
+			process->stack[++(process->sp)] = tos_value;
+			break;
+
+        case TICKS:
+			process->stack[++(process->sp)] = timer;
+			break;
+
+        case YIELD:
+            wait(0);
+			break;
+
+        case WAIT:
+            if (process->sp < 1) {
+				printf("stack underflow; aborting\n");
+				return;
+			}
+			tos_value = process->stack[process->sp--];
+            wait(tos_value);
 			break;
             
 		case ZBRANCH:
-			if (sp < 0) {
+			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
 			if (trace) {
 				printf("zbranch for %i -> %s\n", tos_value, (tos_value == 0 ? "zero" : "non-zero"));
 			}
 			if (tos_value == 0) {
-				int relative = code[ip];
+				int relative = process->code[process->ip];
 				if (relative > 128) {
 					relative = relative - 256;
 				}
 				if (trace) {
 					printf("jump %i\n", relative);
 				}
-				ip = ip + relative;
+				process->ip = process->ip + relative;
 			} else {
-				ip++;
+				process->ip++;
 			}
 			break;
 
 		case BRANCH:
-			if (sp < 0) {
+			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			int relative = code[ip];
+			int relative = process->code[process->ip];
 			if (relative > 128) {
 				relative = relative - 256;
 			}
 			if (trace) {
 				printf("jump %i\n", relative);
 			}
-			ip = ip + relative;
+			process->ip = process->ip + relative;
 			break;
 
 		case RUN:
-			printf("run from %i\n", code[ip] + SCRATCHPAD);
-			return_stack[++rsp] = ip + 1;
-			uint8_t code_at = code[ip ++];
-			ip = code_at + SCRATCHPAD;
+			printf("run from %i\n", process->code[process->ip] + SCRATCHPAD);
+			process->return_stack[++(process->rsp)] = process->ip + 1;
+			uint8_t code_at = process->code[process->ip ++];
+			process->ip = code_at + SCRATCHPAD;
 			break;
 
 		case RETURN:
-			ip = return_stack[rsp--];
+			process->ip = process->return_stack[process->rsp--];
 			break;
 
 		case PRINT_TOS:
-			if (sp < 0) {
+			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-			tos_value = stack[sp--];
+			tos_value = process->stack[process->sp--];
 			printf("%i ", tos_value);
 			break;
 
@@ -521,43 +562,43 @@ void execute(uint8_t* code) {
 			break;
 
 		case EMIT:
-			if (sp < 0) {
+			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
-            tos_value = stack[sp--];
+            tos_value = process->stack[process->sp--];
 			printf("%c", tos_value);
 			break;
 
         case READ_MEMORY:
-            if (sp < 0) {
+            if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
 
-            tos_value = stack[sp--];                        
+            tos_value = process->stack[process->sp--];                        
             printf("address 0x%x\n", tos_value);
             uint32_t *ptr = (uint32_t *) tos_value;
             tos_value = (uint32_t) *ptr;
             printf("value 0x%x\n", tos_value);
-            stack[++sp] = tos_value;
+            process->stack[++(process->sp)] = tos_value;
             break;
 
         case WRITE_MEMORY:
-            if (sp < 0) {
+            if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
 
-            tos_value = stack[sp--];
-            nos_value = stack[sp--];
+            tos_value = process->stack[process->sp--];
+            nos_value = process->stack[process->sp--];
             printf("set 0x%x to 0x%x\n", nos_value, tos_value);
             ptr = (uint32_t *) nos_value;
             *ptr = tos_value;
             break;
 
         case PRINT_HEX:
-            tos_value = stack[sp--];
+            tos_value = process->stack[process->sp--];
             printf("0x%x", tos_value);
             break;
             
@@ -566,7 +607,7 @@ void execute(uint8_t* code) {
             break;
             
 		case STACK:
-			dump_stack();
+			dump_stack(process);
 			break;
 
 		case DEBUG:
@@ -586,40 +627,108 @@ void execute(uint8_t* code) {
             //	next_new_word = 0;
             scratchpad_code = code_store;
             compiled_code = code_store + SCRATCHPAD;
-            sp = 0;
-            rsp = 0;
-            ip = 0;
-            scratchpad_code[ip] = END;
+            process->sp = 0;
+            process->rsp = 0;
+            process->ip = 0;
+            scratchpad_code[process->ip] = END;
             break;
 
 		case CLEAR_REGISTERS:
-            sp = 0;
-            rsp = 0;
-            ip = 0;
+            process->sp = 0;
+            process->rsp = 0;
+            process->ip = 0;
             break;
 
 		case END:
-			dump_stack();
-			return;
+			dump_stack(process);
+            process->ip = 0xffff;
+            next_task();
+//			return;
 			break;
 
 		default:
 			printf("unknown instruction %i", instruction);
 			return;
 			break;
-		}
-	}
+    }
+//	}
+    
 }
 
-void dump_stack() {
-	if (sp >= 0) {
+// TODO remove
+void forth_tasks(uint32_t ticks) {
+    /*
+    int i;
+    for (i = 0; i < task_count; i++) {
+        struct Task task = tasks[i];
+
+        if (ticks >= task.next) {
+     //       printf("task from %i\n", task.code);
+//            return_stack[++rsp] = ip + 1;
+//            uint8_t code_at = code[ip ++];
+//            ip = code_at + SCRATCHPAD;
+   //         execute(task.code);
+            
+            task.next += task.interval;
+        }
+
+    }
+*/
+}
+
+void words() {
+    struct Dictionary * ptr = dictionary;
+    while (ptr != NULL) {
+        printf("%s -> %04x\n", ptr->name, ptr->code + SCRATCHPAD);
+        ptr = ptr->previous;
+    }
+}
+
+void wait(uint32_t wait_time) {
+    process->next_time_to_run = timer + wait_time;
+    next_task();
+}
+
+/*
+ * Find the next task to execute. This is the highest priority task that has a next run
+ * time that is less than the current time. If such a process exists then the waiting
+ * flag is cleared.
+ */
+void next_task() {
+    waiting = true;
+    struct Process* next = processes;
+    do {
+        if (next->ip != 0xffff && next->next_time_to_run <= timer) {
+            process = next;
+            waiting = false;
+            break;
+        }
+        next = next->next;
+    } while (next != NULL);
+}
+
+void execute(uint8_t* code) {
+    processes->code = code;
+}
+
+uint32_t popParameterStack() {
+    if (process->sp < 1) {
+        printf("stack underflow; aborting\n");
+        // TODO need to use exception or some other way of dropping out
+        return;
+    }
+    return process->stack[process->sp];
+}
+
+void dump_stack(struct Process *p) {
+	if (p->sp >= 0) {
 		printf("< ");
         int i;
-		for (i = 0; i <= sp; i++) {
-			if (i == sp) {
-				printf("| %i >", stack[i]);
+		for (i = 0; i <= p->sp; i++) {
+			if (i == p->sp) {
+				printf("| %i >", p->stack[i]);
 			} else {
-				printf("%i ", stack[i]);
+				printf("%i ", p->stack[i]);
 			}
 		}
 	} else {
@@ -645,13 +754,34 @@ void to_upper(char *string, int len) {
     }
 }
 
+struct Process* new_task(uint8_t priority, char *name) {
+    struct Process* nextProcess;
+    nextProcess = malloc(sizeof(struct Process));
+
+    if (processes != NULL) {
+        struct Process* lastProcess = processes;
+        while (lastProcess->next != NULL) {
+            lastProcess = lastProcess->next;
+        }
+        lastProcess->next = nextProcess;
+    }
+    
+    nextProcess->sp = -1;
+    nextProcess->priority = priority;
+    nextProcess->next_time_to_run = timer;
+    nextProcess->name = name;
+    
+    nextProcess->ip = 0xffff;
+    
+    return nextProcess;
+}
+
 void compile(char* source, uint8_t* ignore) {
 	char* start = source;
 
 	if (trace) {
 		printf("compile [%s]\n", source);
 	}
-
 
 	while (true) {
 		while (*source == ' ' || *source == '\t') {
@@ -685,42 +815,43 @@ void compile(char* source, uint8_t* ignore) {
 		}
 
 		if (strcmp(instruction, "STACK") == 0) {
-			*code++ = STACK;
+			*process->code++ = STACK;
             
 		} else if (strcmp(instruction, "DUP") == 0) {
-			*code++ = DUP;
+			*process->code++ = DUP;
             
 		} else if (strcmp(instruction, "SWAP") == 0) {
-			*code++ = SWAP;
+			*process->code++ = SWAP;
             
 		} else if (strcmp(instruction, "DROP") == 0) {
-			*code++ = DROP;
+			*process->code++ = DROP;
             
+        // TODO should end be allowed as instruction?
 		} else if(strcmp(instruction, "END") == 0) {
-			*code++ = END;
+			*process->code++ = END;
             
 		} else if(strcmp(instruction, "CR") == 0) {
-			*code++ = CR;
+			*process->code++ = CR;
 
 		} else if(strcmp(instruction, "EMIT") == 0) {
-			*code++ = EMIT;
+			*process->code++ = EMIT;
             
         } else if(strcmp(instruction, "IF") == 0) {
-			*code++ = ZBRANCH;
-			jumps[jp++] = code;
-			code++;
+			*process->code++ = ZBRANCH;
+			jumps[jp++] = process->code;
+			process->code++;
             
 		} else if (strcmp(instruction, "THEN") == 0) {
-			uint8_t distance = code - jumps[--jp];
+			uint8_t distance = process->code - jumps[--jp];
 			*(jumps[jp]) = distance;
             
 		} else if(strcmp(instruction, "BEGIN") == 0) {
-			jumps[jp++] = code;
+			jumps[jp++] = process->code;
             
 		} else if (strcmp(instruction, "UNTIL") == 0) {
-			*code++ = ZBRANCH;
-			uint8_t distance = jumps[--jp] - code;
-			*code++ = distance;
+			*process->code++ = ZBRANCH;
+			uint8_t distance = jumps[--jp] - process->code;
+			*process->code++ = distance;
             
 		} else if(strcmp(instruction, ":") == 0) {
 			start = source + 1;
@@ -733,18 +864,18 @@ void compile(char* source, uint8_t* ignore) {
             to_upper(start, len);
 			strncpy(entry->name, start, len);
 			dictionary = entry;
-			scratchpad_code = code;
-			code = compiled_code;
+			scratchpad_code = process->code;
+			process->code = compiled_code;
             
             immediate = true;
             
 		} else if(strcmp(instruction, ";") == 0) {
-			*code++ = RETURN;
-			compiled_code = code;
-			code = scratchpad_code;
+			*process->code++ = RETURN;
+			compiled_code = process->code;
+			process->code = scratchpad_code;
             
             immediate = false;
-
+/*
 		} else if(strcmp(instruction, "task") == 0) {
 			start = source + 1;
 			while (*++source != ' ' && *source != 0) {}
@@ -761,72 +892,87 @@ void compile(char* source, uint8_t* ignore) {
 			code = compiled_code;
             
             immediate = true;
-            
-            
+ */           
+		} else if(strcmp(instruction, "TASK") == 0) {
+            new_task(5, "new-task");
+             
+		} else if(strcmp(instruction, "PAUSE") == 0) {
+			*process->code++ = YIELD;
+                       
+		} else if(strcmp(instruction, "MS") == 0) {
+			*process->code++ = WAIT;
+                       
 		} else if(strcmp(instruction, "+") == 0) {
-			*code++ = ADD;
+			*process->code++ = ADD;
                        
 		} else if(strcmp(instruction, "@") == 0) {
-			*code++ = READ_MEMORY;
+			*process->code++ = READ_MEMORY;
            
 		} else if(strcmp(instruction, "!") == 0) {
-			*code++ = WRITE_MEMORY;
+			*process->code++ = WRITE_MEMORY;
 
 		} else if(strcmp(instruction, "-") == 0) {
-			*code++ = SUBTRACT;
+			*process->code++ = SUBTRACT;
             
 		} else if(strcmp(instruction, "/") == 0) {
-			*code++ = DIVIDE;
+			*process->code++ = DIVIDE;
             
 		} else if(strcmp(instruction, "*") == 0) {
-			*code++ = MULTIPLY;
+			*process->code++ = MULTIPLY;
             
 		} else if(strcmp(instruction, ">") == 0) {
-			*code++ = GREATER_THAN;
+			*process->code++ = GREATER_THAN;
             
 		} else if(strcmp(instruction, "=") == 0) {
-			*code++ = EQUAL_TO;
+			*process->code++ = EQUAL_TO;
             
         } else if(strcmp(instruction, "AND") == 0) {
-			*code++ = AND;
+			*process->code++ = AND;
             
         } else if(strcmp(instruction, "OR") == 0) {
-			*code++ = OR;
+			*process->code++ = OR;
             
         } else if(strcmp(instruction, "XOR") == 0) {
-			*code++ = XOR;
+			*process->code++ = XOR;
             
         } else if(strcmp(instruction, "LSHIFT") == 0) {
-			*code++ = LSHIFT;
+			*process->code++ = LSHIFT;
             
         } else if(strcmp(instruction, "RSHIFT") == 0) {
-			*code++ = RSHIFT;
+			*process->code++ = RSHIFT;
             
 		} else if(strcmp(instruction, ".") == 0) {
-			*code++ = PRINT_TOS;
+			*process->code++ = PRINT_TOS;
 
 		} else if(strcmp(instruction, ".HEX") == 0) {
-			*code++ = PRINT_HEX;
+			*process->code++ = PRINT_HEX;
+
+		} else if(strcmp(instruction, "TICKS") == 0) {
+			*process->code++ = TICKS;
 
 		} else if(strcmp(instruction, "WORDS") == 0) {
-            *code++ = WORDS;
+            *process->code++ = WORDS;
+            
+		} else if(strcmp(instruction, "TASKS") == 0) {
+            tasks();
             
 		} else if(strcmp(instruction, "_DEBUG") == 0) {
-            *code++ = DEBUG;
+            *process->code++ = DEBUG;
 
 		} else if(strcmp(instruction, "_TRACE") == 0) {
-            *code++ = TRACE_ON;
+            *process->code++ = TRACE_ON;
 
 		} else if(strcmp(instruction, "_NOTRACE") == 0) {
-            *code++ = TRACE_OFF;
+            *process->code++ = TRACE_OFF;
 
 		} else if(strcmp(instruction, "_RESET") == 0) {
-            *code++ = RESET;
+            *process->code++ = RESET;
 
 		} else if(strcmp(instruction, "_CLEAR") == 0) {
-            *code++ = CLEAR_REGISTERS;          
+            *process->code++ = CLEAR_REGISTERS;          
             
 		} else {
+            printf("not built in instruction\n");
            // strncpy(instruction, start, len);
            // instruction[len] = 0;        
 			struct Dictionary * ptr = dictionary;
@@ -835,14 +981,15 @@ void compile(char* source, uint8_t* ignore) {
 					if (trace) {
 						printf("# run %s at %i\n", ptr->name, ptr->code + SCRATCHPAD);
 					}
-					*code++ = RUN;
-					*code++ = ptr->code;
+					*process->code++ = RUN;
+					*process->code++ = ptr->code;
 					break;
 				}
 				ptr = ptr->previous;
 			}
 
 			if (ptr == NULL) {
+                printf("not word\n");
 				bool is_number = true;
                 int i;
 				for (i = 0; i < strlen(instruction); ++i) {
@@ -853,19 +1000,36 @@ void compile(char* source, uint8_t* ignore) {
 				}
 				if (is_number) {
                     int64_t value = strtoll(instruction, NULL, 0);
-					*code++ = LIT;
+					*process->code++ = LIT;
                     if (trace) {
                         printf("# literal = 0x%09llx\n", value);
                     }
-					*code++ = value % 0x100;
-					*code++ = (value / 0x100) % 0x100;
-					*code++ = (value / 0x10000) % 0x100;
-					*code++ = (value / 0x1000000) % 0x100;
-				}
+					*process->code++ = value % 0x100;
+					*process->code++ = (value / 0x100) % 0x100;
+					*process->code++ = (value / 0x10000) % 0x100;
+					*process->code++ = (value / 0x1000000) % 0x100;
+				} else {
+                    printf("instruction not understood\n");
+                    return;
+                }
 			}
 		}
 	}
 	source++;
+}
+
+void tasks() {
+    int i = 1;
+    struct Process* p = processes;
+    do {
+        printf("Task #%i%s %s - P%i, %i\n", i++, p == process ? "(running) " : "",
+                p->name, p->priority, p->next_time_to_run);
+        printf("  @%0x", p->ip);
+        printf("  ");
+        dump_stack(p);
+        printf("\n");
+        p = p->next;
+    } while (p != NULL);
 }
 
 void debug() {
@@ -903,12 +1067,13 @@ void debug() {
 	}
 	printf("\n");
 
-    for (i = 0; i < task_count; i++) {
+/*    for (i = 0; i < task_count; i++) {
         struct Task task = tasks[i];
 //        printf("task#%i - %i, %i - %04x\n", i + 1, task.interval, task.next, task.code);
     }
 
 	printf ("\n");
+ */ 
 }
 
 void display_code(uint8_t* code) {

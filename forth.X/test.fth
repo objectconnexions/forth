@@ -1,7 +1,7 @@
 : Y 1 + 2 + 3 + ;
 : X DUP * ;
 : Z Y X ;
-: TEST1 Z DUP Z . CR . CR ;
+: TEST0 Z DUP Z . CR . CR ;
 
 : IFF IF 222 . CR THEN ;
 

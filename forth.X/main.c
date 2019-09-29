@@ -25,7 +25,6 @@
 
 /* i.e. uint32_t <variable_name>; */
 
-uint32_t timer = 0;
 bool run_task = false;
 
 /******************************************************************************/
@@ -142,6 +141,7 @@ int32_t main(void)
                     PORTCbits.RC4 = 0;
                     uart_transmit("led off\n");
                 }
+                
             } else if (strcmp(buf, "timer") == 0) {
                 sprintf(buf, "timer = %04x\n", TMR1);   
                 uart_transmit(buf);    
@@ -194,25 +194,33 @@ int32_t main(void)
             PORTCbits.RC4 = ! PORTCbits.RC4;
         }
            */
-        
+
+	// TODO change to display the bits of int
         if (run_task) { 
             run_task = false;
-            forth_tasks(timer);
-          
+      //      forth_tasks(timer);
+          /*
             if (timer % 5000 == 0) {            
                 char buf[40];
                 sprintf(buf, "timer tick %i\n", timer);
                 uart_transmit(buf);
             }
-            if (timer % 250 == 0) {            
-                PORTCbits.RC4 = ! PORTCbits.RC4;
+           * */
+            if (timer % 100 == 0) {            
+                PORTAbits.RA8 = ! PORTAbits.RA8;
             }
         }
 
+        
+        forth_run();
 
     }
 }
 
+/*
+Timer handle gets called every 1ms and increments the timer variable.
+Getting the timer variable git the time in milliseconds since startup. 
+ */
 void __ISR(_TIMER_1_VECTOR, IPL5SOFT) Timer1Handler(void)
 {
     timer++;

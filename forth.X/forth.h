@@ -12,10 +12,13 @@
 extern "C" {
 #endif
 
+extern uint32_t timer;
 
 int forth_init();
 
 void forth_execute(uint8_t*);
+
+void forth_run();
 
 void forth_tasks(uint32_t ticks);
 
