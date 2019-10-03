@@ -267,6 +267,13 @@ int forth_init() {
     
  //   tasks();
  //    debug();
+    
+    
+    // compile some basic words
+    memset(code_store, 0, SCRATCHPAD);
+    scratchpad_code = code_store;
+    compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or ! ;", code_store);
+    compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and ! ;", code_store);
 }
 
 void forth_execute(uint8_t* word) {
