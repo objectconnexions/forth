@@ -4,100 +4,15 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <ctype.h>
+
 #include "forth.h"
-
-
-#define LIT 0x1
-#define DUP 0x2
-#define SWAP 0x3
-#define DROP 0x4
-
-#define ADD 0x10
-#define SUBTRACT 0x11
-#define DIVIDE 0x12
-#define MULTIPLY 0x13
-#define GREATER_THAN 0x15
-#define EQUAL_TO 0x16
-#define AND 0x17
-#define OR 0x18
-#define XOR 0x19
-#define LSHIFT 0x1a
-#define RSHIFT 0x1b
-
-#define PRINT_TOS 0xc8
-#define PRINT_HEX 0xc9 
-#define CR 0xca
-#define EMIT 0xcb
-
-#define READ_MEMORY 0xc0
-#define WRITE_MEMORY 0xc1
-
-#define RUN 0xe0
-#define RETURN 0xe1
-#define ZBRANCH 0xe2
-#define BRANCH 0xe3
-
-#define YIELD 0xe4
-#define WAIT 0xe5
-
-#define WORDS 0xf0
-#define STACK 0xf1
-#define DEBUG 0xf2
-#define TRACE_ON 0xf3
-#define TRACE_OFF 0xf4
-#define RESET 0xf5
-#define CLEAR_REGISTERS 0xf6
-#define TICKS 0xf7
-#define END 0xff
-
-
-#define SCRATCHPAD 64
+#include "code.h"
 
 uint32_t timer = 0;
-
-struct Dictionary {
-	struct Dictionary* previous;
-	char* name;
-	//uint16_t code;
-    uint8_t *code;
-};
-
-uint8_t code_store[2048];
-
-//uint8_t* code_store;
-uint8_t* compiled_code;
-//uint8_t* code;
-uint8_t* scratchpad_code;
-
-struct Process {
-    uint32_t stack[16];
-    uint32_t return_stack[8];
-    //int16_t* stack;
-    //uint16_t* return_stack;
-    uint16_t ip; // instruction pointer
-    //TODO change both to unsigned
-    int sp; // stack pointer
-    int rsp; // return stack pointer
-    
-    struct Process* next;
-    char *name;
-    uint8_t priority;
-    uint32_t next_time_to_run;
-    uint8_t* code;
-};
-
-struct Process* processes;
-struct Process* process;
-
-struct Dictionary* dictionary;
-
-bool immediate = false;
-bool trace = true;
 bool waiting = true;
 
 
 void dump_stack(struct Process*);
-void compile(char*, uint8_t*);
 void execute(uint8_t*);
 void display_code(uint8_t*);
 void debug(void);
@@ -109,191 +24,48 @@ struct Process* new_task(uint8_t, char*);
 void tasks();
 void words();
 
+void code_init(void);
+void compiler_reset(void);
+bool compile(char*);
+
+
+uint8_t code_store[2048];
+
+struct Process* processes;
+
+struct Dictionary* dictionary;
+
+
+
+
+// TODO replace with ????
+uint8_t* execute_code;
 
 int forth_init() {
-//	code_store = malloc(sizeof(uint8_t) * 2048);
-//	stack = malloc(2048);
-//	return_stack = malloc(sizeof(uint16_t) * 64);]
-    
-    // TODO should compiler use SCRATCHPAD directly?
- 	scratchpad_code = code_store;
-	compiled_code = code_store + SCRATCHPAD;
-	//code = scratchpad_code;
+    code_init();
 
+    execute_code = code_store;
+    
     processes = new_task(3, "main");
     process = processes;
-    process->code = scratchpad_code;
+    process->code = execute_code; // WAS scratchpad_code]
 
 	uart_transmit("FORTH v0.1\n\n");
-	
-    /*
-    char word[SCRATCHPAD];
-	while(1) {
-		printf( "> " );
-		if (fgets(word, SCRATCHPAD, stdin) != NULL ) {
-			word[strlen(word) - 1] = 0;
-			if (strcmp(word, "exit") == 0) {
-				return 0;
-			}
-			if (strcmp(word, ">") == 0) {
-				dump_stack();
-				continue;
-			}
-			if (strcmp(word, "debug") == 0) {
-				debug();
-				continue;
-			}
-			if (strcmp(word, "trace") == 0) {
-				trace = true;
-				continue;
-			}
-			if (strcmp(word, "traceoff") == 0) {
-				trace = false;;
-				continue;
-			}
-			if (strcmp(word, "reset") == 0) {
-				dictionary = NULL;
-				//	next_new_word = 0;
-				scratchpad_code = code_store;
-				compiled_code = code_store + SCRATCHPAD;
-				sp = 0;
-				rsp = 0;
-				ip = 0;
-				continue;
-			}
-			if (strcmp(word, "clear") == 0) {
-				sp = 0;
-				rsp = 0;
-				ip = 0;
-				continue;
-			}
-
-			if (strncmp(word, "include ", 8) == 0) {
-				FILE *stream;
-				char *line = NULL;
-				size_t len = 0;
-				ssize_t read;
-				char filepath[20];
-				strcpy(filepath, word + 8);
-				len = strlen(filepath);
-				if (strcspn(filepath, ".") == len) {
-					strcat(filepath, ".fth");
-				}
-				stream = fopen(filepath, "r");
-				if (stream == NULL) {
-					printf ("failed to open file %s", filepath);
-					continue;
-				}
-
-				memset(code_store, 0, SCRATCHPAD);
-				while ((read = getline(&line, &len, stream)) != -1) {
-					printf("Retrieved line of length %zu :\n", read);
-					if (*(line + read -1) == '\n') {
-						read--;
-						*(line + read) = 0;
-					}
-					if ( read == 0) {
-						continue;
-					}
-					printf("'%s'\n", line);
-
-					compile(line, code_store);
-				}
-
-				free(line);
-				fclose(stream);
-
-				ip = 0;
-				execute(code_store);
-				dump_stack();
-
-				continue;
-			}
-
-			if (strcmp(word, "") == 0) {
-				continue;
-			}
-			memset(code_store, 0, SCRATCHPAD);
-			scratchpad_code = code_store;
-			compile(word, code_store);
-			printf("entered '%s'\n", word);
-			ip = 0;
-			execute(code_store);
-			scratchpad_code = code_store;
-			code = scratchpad_code;
-			dump_stack();
-		}
-	}
-
-
-	/*
-
-
-
-
-
-  uint8_t* program = code_store;
-
-
-
-  // DUP + 3 * . CR
-  int i = 0;
-
-  program[i++] = LIT;
-  program[i++] = 10;
-  program[i++] = DUP;
-  program[i++] = PLUS;
-  program[i++] = LIT;
-  program[i++] = 3;
-  program[i++] = MULTIPLY;
-  program[i++] = DOT;
-  program[i++] = CR;
-  program[i++] = END;
-
-
-  //stack[0] = 11;
-  //  stack[1] = 2;
-  //  sp = 1;
-
-  //  char* source = ": DOUBLE DUP + ; 3 DOUBLE .\nCR\nEND";
-  //  char* source = "0 IF 10 ELSE 1 IF 33 THEN ELSE THEN . 2 3 > STACK IF 40 ELSE 50 THEN . CR END";
-  char* source = "CR 99 2 3 STACK + CR . CR CR END";
-
-  compile(source, code_store);
-  display_code(code_store);
-
-  program = code_store;
-	 */
-    
- //   tasks();
- //    debug();
-    
     
     // compile some basic words
-    memset(code_store, 0, SCRATCHPAD);
-    scratchpad_code = code_store;
-    compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or ! ;", code_store);
-    compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and ! ;", code_store);
+    //memset(code_store, 0, SCRATCHPAD);
+ //   compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or ! ;", code_store);
+ //   compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and ! ;", code_store);
 }
 
 void forth_execute(uint8_t* word) {
     if (trace) {
-        printf("# input %s\n", word);
+        printf("execute %s\n", word);
     }
-    if (!immediate) {
-        memset(code_store, 0, SCRATCHPAD);
-        scratchpad_code = code_store;
-    }
-    compile(word, code_store);
-    
-    if (!immediate) {
-        *process->code++ = END;
-        process->ip = 0;
-    //    debug();
+    if (compile(word)) {
+        debug();
         execute(code_store);
-        scratchpad_code = code_store;
-   //     code = scratchpad_code;
-    //    dump_stack(process);
+        execute_code = code_store;
     }
 }
 
@@ -308,28 +80,16 @@ void forth_run() {
         }
     }
 
-    
-    
-//	while(1) {
-  /*  
-    if (process->ip == 0xffff) {
-        return;
-    }
-*/
     uint8_t instruction = process->code[process->ip++];
-/*
-    if (trace) {
-        printf ("%0x ", instruction);
-    }
-  */  
+    
     if (instruction == 0) {
-        printf ("no instruction %0x @ %04x", instruction, process->ip);
+        printf ("no instruction %0x @ %04x", instruction, process->ip - 1);
         process->ip = 0xffff;
         return;
     }
 
     if (trace) {
-        printf("& execute @%i [%x|%x]\n", process->ip - 1, instruction, process->code[process->ip]);
+        printf("& execute @%i [%x|%x]\n", process->ip - 1, instruction, process->code[process->ip - 1]);
     }
 
     switch (instruction) {
@@ -632,12 +392,13 @@ void forth_run() {
 		case RESET:
             dictionary = NULL;
             //	next_new_word = 0;
-            scratchpad_code = code_store;
-            compiled_code = code_store + SCRATCHPAD;
+            execute_code = code_store;
+            compiler_reset();
+        //    compiled_code = code_store + SCRATCHPAD;
             process->sp = 0;
             process->rsp = 0;
             process->ip = 0;
-            scratchpad_code[process->ip] = END;
+            execute_code[process->ip] = END;
             break;
 
 		case CLEAR_REGISTERS:
@@ -681,14 +442,6 @@ void forth_tasks(uint32_t ticks) {
 
     }
 */
-}
-
-void words() {
-    struct Dictionary * ptr = dictionary;
-    while (ptr != NULL) {
-        printf("%s -> %04x\n", ptr->name, ptr->code + SCRATCHPAD);
-        ptr = ptr->previous;
-    }
 }
 
 void wait(uint32_t wait_time) {
@@ -746,11 +499,6 @@ void dump_stack(struct Process *p) {
 
 
 
-uint8_t *jumps[6];
-uint8_t jp = 0;
-// uint8_t* define_start;
-
-
 void to_upper(char *string, int len) {
     int i;
     for (i = 0; i <= len; i++) {
@@ -781,248 +529,6 @@ struct Process* new_task(uint8_t priority, char *name) {
     nextProcess->ip = 0xffff;
     
     return nextProcess;
-}
-
-void compile(char* source, uint8_t* ignore) {
-	char* start = source;
-
-	if (trace) {
-		printf("compile [%s]\n", source);
-	}
-
-	while (true) {
-		while (*source == ' ' || *source == '\t') {
-			source++;
-			start = source;
-		}
-		if (*source == 0 /* || *source == '\n' */) {
-			return;
-		}
-
-		while (*source != 0 && *source != ' ' && *source != '\t') {
-			source++;
-		}
-
-
-		char instruction[16];
-		int len = source - start;
-		/*
-			if (c == 0) {
-				source++;
-				continue;
-			}
-		 */
-		strncpy(instruction, start, len);
-		instruction[len] = 0;
-
-        to_upper(instruction, strlen(instruction));
-
-		if (trace) {
-			printf("instruction [%s] %i\n", instruction, len);
-		}
-
-		if (strcmp(instruction, "STACK") == 0) {
-			*process->code++ = STACK;
-            
-		} else if (strcmp(instruction, "DUP") == 0) {
-			*process->code++ = DUP;
-            
-		} else if (strcmp(instruction, "SWAP") == 0) {
-			*process->code++ = SWAP;
-            
-		} else if (strcmp(instruction, "DROP") == 0) {
-			*process->code++ = DROP;
-            
-        // TODO should end be allowed as instruction?
-		} else if(strcmp(instruction, "END") == 0) {
-			*process->code++ = END;
-            
-		} else if(strcmp(instruction, "CR") == 0) {
-			*process->code++ = CR;
-
-		} else if(strcmp(instruction, "EMIT") == 0) {
-			*process->code++ = EMIT;
-            
-        } else if(strcmp(instruction, "IF") == 0) {
-			*process->code++ = ZBRANCH;
-			jumps[jp++] = process->code;
-			process->code++;
-            
-		} else if (strcmp(instruction, "THEN") == 0) {
-			uint8_t distance = process->code - jumps[--jp];
-			*(jumps[jp]) = distance;
-            
-		} else if(strcmp(instruction, "BEGIN") == 0) {
-			jumps[jp++] = process->code;
-            
-		} else if (strcmp(instruction, "UNTIL") == 0) {
-			*process->code++ = ZBRANCH;
-			uint8_t distance = jumps[--jp] - process->code;
-			*process->code++ = distance;
-            
-		} else if(strcmp(instruction, ":") == 0) {
-			start = source + 1;
-			while (*++source != ' ' && *source != 0) {}
-			int len = source - start;
-			struct Dictionary* entry = malloc(sizeof(struct Dictionary));
-			entry->code = compiled_code - (code_store + SCRATCHPAD);
-			entry->name = malloc(len + 1);
-			entry->previous = dictionary;
-            to_upper(start, len);
-			strncpy(entry->name, start, len);
-			dictionary = entry;
-			scratchpad_code = process->code;
-			process->code = compiled_code;
-            
-            immediate = true;
-            
-		} else if(strcmp(instruction, ";") == 0) {
-			*process->code++ = RETURN;
-			compiled_code = process->code;
-			process->code = scratchpad_code;
-            
-            immediate = false;
-/*
-		} else if(strcmp(instruction, "task") == 0) {
-			start = source + 1;
-			while (*++source != ' ' && *source != 0) {}
-			int len = source - start;
-            
-			struct Task entry; // = malloc(sizeof(struct Task));
-//			entry->code = compiled_code - (code_store + SCRATCHPAD);
-//			entry->name = malloc(len + 1);
-//			entry->previous = dictionary;
-//            to_upper(start, len);
-//			strncpy(entry->name, start, len);
-			tasks[task_count++] = entry;
-			scratchpad_code = code;
-			code = compiled_code;
-            
-            immediate = true;
- */           
-		} else if(strcmp(instruction, "TASK") == 0) {
-            new_task(5, "new-task");
-             
-		} else if(strcmp(instruction, "PAUSE") == 0) {
-			*process->code++ = YIELD;
-                       
-		} else if(strcmp(instruction, "MS") == 0) {
-			*process->code++ = WAIT;
-                       
-		} else if(strcmp(instruction, "+") == 0) {
-			*process->code++ = ADD;
-                       
-		} else if(strcmp(instruction, "@") == 0) {
-			*process->code++ = READ_MEMORY;
-           
-		} else if(strcmp(instruction, "!") == 0) {
-			*process->code++ = WRITE_MEMORY;
-
-		} else if(strcmp(instruction, "-") == 0) {
-			*process->code++ = SUBTRACT;
-            
-		} else if(strcmp(instruction, "/") == 0) {
-			*process->code++ = DIVIDE;
-            
-		} else if(strcmp(instruction, "*") == 0) {
-			*process->code++ = MULTIPLY;
-            
-		} else if(strcmp(instruction, ">") == 0) {
-			*process->code++ = GREATER_THAN;
-            
-		} else if(strcmp(instruction, "=") == 0) {
-			*process->code++ = EQUAL_TO;
-            
-        } else if(strcmp(instruction, "AND") == 0) {
-			*process->code++ = AND;
-            
-        } else if(strcmp(instruction, "OR") == 0) {
-			*process->code++ = OR;
-            
-        } else if(strcmp(instruction, "XOR") == 0) {
-			*process->code++ = XOR;
-            
-        } else if(strcmp(instruction, "LSHIFT") == 0) {
-			*process->code++ = LSHIFT;
-            
-        } else if(strcmp(instruction, "RSHIFT") == 0) {
-			*process->code++ = RSHIFT;
-            
-		} else if(strcmp(instruction, ".") == 0) {
-			*process->code++ = PRINT_TOS;
-
-		} else if(strcmp(instruction, ".HEX") == 0) {
-			*process->code++ = PRINT_HEX;
-
-		} else if(strcmp(instruction, "TICKS") == 0) {
-			*process->code++ = TICKS;
-
-		} else if(strcmp(instruction, "WORDS") == 0) {
-            *process->code++ = WORDS;
-            
-		} else if(strcmp(instruction, "TASKS") == 0) {
-            tasks();
-            
-		} else if(strcmp(instruction, "_DEBUG") == 0) {
-            *process->code++ = DEBUG;
-
-		} else if(strcmp(instruction, "_TRACE") == 0) {
-            *process->code++ = TRACE_ON;
-
-		} else if(strcmp(instruction, "_NOTRACE") == 0) {
-            *process->code++ = TRACE_OFF;
-
-		} else if(strcmp(instruction, "_RESET") == 0) {
-            *process->code++ = RESET;
-
-		} else if(strcmp(instruction, "_CLEAR") == 0) {
-            *process->code++ = CLEAR_REGISTERS;          
-            
-		} else {
-            printf("not built in instruction\n");
-           // strncpy(instruction, start, len);
-           // instruction[len] = 0;        
-			struct Dictionary * ptr = dictionary;
-			while (ptr != NULL) {
-				if (strcmp(instruction, ptr->name) == 0) {
-					if (trace) {
-						printf("# run %s at %i\n", ptr->name, ptr->code + SCRATCHPAD);
-					}
-					*process->code++ = RUN;
-					*process->code++ = ptr->code;
-					break;
-				}
-				ptr = ptr->previous;
-			}
-
-			if (ptr == NULL) {
-                printf("not word\n");
-				bool is_number = true;
-                int i;
-				for (i = 0; i < strlen(instruction); ++i) {
-					if (!isdigit(instruction[i]) && i == 2 && !(instruction[i] == 'X' || instruction[i] == 'B')) {
-						is_number = false;
-						break;
-					}
-				}
-				if (is_number) {
-                    int64_t value = strtoll(instruction, NULL, 0);
-					*process->code++ = LIT;
-                    if (trace) {
-                        printf("# literal = 0x%09llx\n", value);
-                    }
-					*process->code++ = value % 0x100;
-					*process->code++ = (value / 0x100) % 0x100;
-					*process->code++ = (value / 0x10000) % 0x100;
-					*process->code++ = (value / 0x1000000) % 0x100;
-				} else {
-                    printf("instruction not understood\n");
-                    return;
-                }
-			}
-		}
-	}
-	source++;
 }
 
 void tasks() {

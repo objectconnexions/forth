@@ -19,6 +19,11 @@
 #include "uart.h"
 #include "forth.h"
 
+bool trace = true;
+
+extern uint32_t timer;
+
+
 /******************************************************************************/
 /* Global Variable Declaration                                                */
 /******************************************************************************/
@@ -133,6 +138,7 @@ int32_t main(void)
             if (strcmp(buf, "usb") == 0) {
                 sprintf(buf, "OTG = %08x CON = %08x PWRC = %08x\n", U1OTGCON, U1CON, U1PWRC);   
                 uart_transmit(buf);    
+                
             } else if (strncmp(buf, "led ", 4) == 0) {
                 if (strcmp(buf + 4, "on") == 0) {
                     PORTCbits.RC4 = 1;
@@ -145,67 +151,15 @@ int32_t main(void)
             } else if (strcmp(buf, "timer") == 0) {
                 sprintf(buf, "timer = %04x\n", TMR1);   
                 uart_transmit(buf);    
-                
-                
-                /*
-            } else if (strncmp(buf, "&", 1) == 0) {
-                int address = 0;
-                sscanf(buf + 1, "%x", &address);
-                int *ptr = (int *)address;
-                sprintf(buf, "0x%08x = 0x%08x\n", address, *ptr);
-                uart_transmit(buf);
-                uart_transmit("\n");
-                /*
-            } else if (strncmp(buf, "@", 1) == 0) {
-                int address = 0;
-                sscanf(buf + 1, "%x", &address);
-                int *ptr = (int *)address;
-                sprintf(buf, "0x%08x = 0x%08x\n", address, *ptr);
-                uart_transmit(buf);
-                uart_transmit("\n");
-                 * 
-                 * 
-                 */
+
             } else {                
                 forth_execute(buf);
-    /*            uart_transmit("unknown command ");
-                uart_transmit(buf);
-                uart_transmit("\n");
-
-      */
             }
-         //   uart_transmit("OK> ");
-
-             
         }
-       /*
-        uart_serial_receive(buf, 1024);     // wait here until data is received
-        
-        uart_serial_transmit("recv'd ");
-        uart_serial_transmit(buf);  
-        uart_serial_transmit("\r\n");
-         */
-        
-        
-        /*
-        if(IFS0bits.T1IF)
-        {
-            IFS0bits.T1IF = 0;            // Put breakpoint here and single step past it.  Is the T1IF bit still set?
-            PORTCbits.RC4 = ! PORTCbits.RC4;
-        }
-           */
 
-	// TODO change to display the bits of int
+    	// TODO change to display the bits of int
         if (run_task) { 
             run_task = false;
-      //      forth_tasks(timer);
-          /*
-            if (timer % 5000 == 0) {            
-                char buf[40];
-                sprintf(buf, "timer tick %i\n", timer);
-                uart_transmit(buf);
-            }
-           * */
             if (timer % 100 == 0) {            
                 PORTAbits.RA8 = ! PORTAbits.RA8;
             }

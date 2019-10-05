@@ -1,0 +1,31 @@
+forth executes a statement when the enter key is pressed. How do we
+allow for forth programs to use the key word to capture from the
+keyboard.
+
+	Should the system go into key capture mode when it is running
+	a program?
+
+	Should it only get keys once key is called, adding all other
+	keystrokes to the input forth command buffer?
+
+	Can the forth system manage the process so that it determines
+	the use, and it determines when to process a command string?
+
+Need to separate the passing of a command to forth from the processing
+of the next process. forth needs to execute continuously while still
+allowing new commands to be recieved. Probably executing NOPs for most
+of the time.
+
+
+------
+
+Uart.c has a buffer that it captures serial data into. The
+uart_receive function reads all characters from the PIC's uart buffer
+and adds them to the driver's read buffer. When the read character is
+a newline or a carriage return a flag indicates that the uart has an
+entry. At this point the uart_read_input function can be called to
+transfer that buffered data into a buffer from the calling code.
+
+-> add a get key function. This would return the last character in the
+   buffer and decrements the pointer. This would allow fort to have a
+   key word and for the normal commands to be captured as well.
