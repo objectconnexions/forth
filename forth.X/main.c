@@ -152,6 +152,12 @@ int32_t main(void)
                 sprintf(buf, "timer = %04x\n", TMR1);   
                 uart_transmit(buf);    
 
+            } else if (strcmp(buf, "test") == 0) {
+                compiler_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or ! ;");
+                compiler_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and ! ;");
+                compiler_compile(": FLASH on 200 ms off 200 ms ;");
+                compiler_compile(": FLASH2 flash flash flash ;");
+
             } else {                
                 forth_execute(buf);
             }

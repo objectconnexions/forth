@@ -44,8 +44,9 @@ extern "C" {
 #define ZBRANCH 0xe2
 #define BRANCH 0xe3
 
-#define YIELD 0xe4
-#define WAIT 0xe5
+#define EXECUTE 0xe4
+#define YIELD 0xe5
+#define WAIT 0xe6
 
 #define WORDS 0xf0
 #define STACK 0xf1

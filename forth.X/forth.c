@@ -24,9 +24,9 @@ struct Process* new_task(uint8_t, char*);
 void tasks();
 void words();
 
-void code_init(void);
+void compiler_init(void);
 void compiler_reset(void);
-bool compile(char*);
+bool compiler_compile(char*);
 
 
 uint8_t code_store[2048];
@@ -42,7 +42,7 @@ struct Dictionary* dictionary;
 uint8_t* execute_code;
 
 int forth_init() {
-    code_init();
+    compiler_init();
 
     execute_code = code_store;
     
@@ -51,18 +51,13 @@ int forth_init() {
     process->code = execute_code; // WAS scratchpad_code]
 
 	uart_transmit("FORTH v0.1\n\n");
-    
-    // compile some basic words
-    //memset(code_store, 0, SCRATCHPAD);
- //   compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or ! ;", code_store);
- //   compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and ! ;", code_store);
 }
 
 void forth_execute(uint8_t* word) {
     if (trace) {
         printf("execute %s\n", word);
     }
-    if (compile(word)) {
+    if (compiler_compile(word)) {
         debug();
         execute(code_store);
         execute_code = code_store;
@@ -252,7 +247,7 @@ void forth_run() {
         case TICKS:
 			process->stack[++(process->sp)] = timer;
 			break;
-
+            
         case YIELD:
             wait(0);
 			break;
@@ -305,11 +300,25 @@ void forth_run() {
 			break;
 
 		case RUN:
-			printf("run from %i\n", process->code[process->ip] + SCRATCHPAD);
+			printf("run from %i\n", process->code[process->ip]);
 			process->return_stack[++(process->rsp)] = process->ip + 1;
 			uint8_t code_at = process->code[process->ip ++];
-			process->ip = code_at + SCRATCHPAD;
+			process->ip = code_at;
 			break;
+
+        case EXECUTE:
+			if (process->sp < 0) {
+				printf("stack underflow; aborting\n");
+				return;
+			}
+			tos_value = process->stack[process->sp--];
+			printf("execute from %i\n", tos_value);
+			process->return_stack[++(process->rsp)] = process->ip + 1;
+			code_at = tos_value; // TODO remove
+			process->ip = code_at;
+			break;
+            
+            break;
 
 		case RETURN:
 			process->ip = process->return_stack[process->rsp--];
@@ -370,7 +379,7 @@ void forth_run() {
             break;
             
         case WORDS:
-            words();
+            compiler_words();
             break;
             
 		case STACK:
@@ -534,13 +543,11 @@ struct Process* new_task(uint8_t priority, char *name) {
 void tasks() {
     int i = 1;
     struct Process* p = processes;
+    printf("Time %i\n", timer);
     do {
-        printf("Task #%i%s %s - P%i, %i\n", i++, p == process ? "(running) " : "",
-                p->name, p->priority, p->next_time_to_run);
-        printf("  @%0x", p->ip);
-        printf("  ");
+        printf("Task #%i%s %s (P%i) @%04x, next %i  ", i++, p == process ? "*" : "",
+                p->name, p->priority,  p->ip, p->next_time_to_run);
         dump_stack(p);
-        printf("\n");
         p = p->next;
     } while (p != NULL);
 }
@@ -551,7 +558,7 @@ void debug() {
 	if (dictionary == NULL) {
 		printf("No new words\n");
 	} else {
-        words();
+        compiler_words();
 	}
 
 /*
