@@ -126,7 +126,6 @@ int32_t main(void)
     
     while(1)
     {
-        
         PORTBbits.RB1 = U1OTGSTATbits.SESVD;
 
         uart_receive();
@@ -134,6 +133,7 @@ int32_t main(void)
         int length = uart_input_length();
         if (length > 0) {
             uart_read_input(buf);
+            printf("> read line %s\n", buf);
             
             if (strcmp(buf, "usb") == 0) {
                 sprintf(buf, "OTG = %08x CON = %08x PWRC = %08x\n", U1OTGCON, U1CON, U1PWRC);   
@@ -173,7 +173,6 @@ int32_t main(void)
 
         
         forth_run();
-
     }
 }
 

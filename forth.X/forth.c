@@ -4,15 +4,18 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <GenericTypeDefs.h>
 
 #include "forth.h"
 #include "code.h"
 
 uint32_t timer = 0;
+UINT8 next_process_id = 0;
 bool waiting = true;
 
 
-void dump_stack(struct Process*);
+void dump_parameter_stack(struct Process*);
+void dump_return_stack(struct Process*);
 void execute(uint8_t*);
 void display_code(uint8_t*);
 void debug(void);
@@ -38,53 +41,55 @@ struct Dictionary* dictionary;
 
 
 
-// TODO replace with ????
-uint8_t* execute_code;
-
 int forth_init() {
     compiler_init();
-
-    execute_code = code_store;
-    
-    processes = new_task(3, "main");
+    processes = new_task(3, "MAIN");
     process = processes;
-    process->code = execute_code; // WAS scratchpad_code]
-
 	uart_transmit("FORTH v0.1\n\n");
 }
 
 void forth_execute(uint8_t* word) {
     if (trace) {
-        printf("execute %s\n", word);
+        printf("& [%s]\n", word);
     }
     if (compiler_compile(word)) {
-        debug();
+        if (trace) {
+            debug();
+        }
         execute(code_store);
-        execute_code = code_store;
+    }
+}
+
+bool stack_underflow() {
+    if (process->sp < 0) {
+        printf("stack underflow; aborting\n");
+        return true;
+    } else {
+        return false;
     }
 }
 
 void forth_run() {
     uint32_t tos_value;
 	uint32_t nos_value;
-    
+        
     if (waiting) {
         next_task();
         if (waiting) {
             return;
         }
     }
-
-    uint8_t instruction = process->code[process->ip++];
     
+    uint8_t instruction = process->code[process->ip++];    
     if (instruction == 0) {
         printf ("no instruction %0x @ %04x", instruction, process->ip - 1);
         process->ip = 0xffff;
+        process->next_time_to_run = 0;
         return;
     }
 
     if (trace) {
-        printf("& execute @%i [%x|%x]\n", process->ip - 1, instruction, process->code[process->ip - 1]);
+        printf("& execute [%i] %02x@%04x\n", process->id, instruction, process->ip - 1);
     }
 
     switch (instruction) {
@@ -120,6 +125,11 @@ void forth_run() {
                     process->code[process->ip++] * 0x100 +
                     process->code[process->ip++] * 0x10000 +
                     process->code[process->ip++] * 0x1000000;
+			process->stack[++(process->sp)] = tos_value;
+			break;
+
+		case PROCESS:
+			tos_value = process->code[process->ip++];;
 			process->stack[++(process->sp)] = tos_value;
 			break;
 
@@ -307,21 +317,59 @@ void forth_run() {
 			break;
 
         case EXECUTE:
-			if (process->sp < 0) {
+            if (stack_underflow()) {
+                return;
+            }
+			tos_value = process->stack[process->sp--];
+            if (trace) {
+    			printf("# execute from %i\n", tos_value);
+            }
+			process->return_stack[++(process->rsp)] = process->ip + 1;
+			process->ip = tos_value;
+            break;
+
+        case INITIATE:
+			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
 			tos_value = process->stack[process->sp--];
-			printf("execute from %i\n", tos_value);
-			process->return_stack[++(process->rsp)] = process->ip + 1;
-			code_at = tos_value; // TODO remove
-			process->ip = code_at;
+            nos_value = process->stack[process->sp--];
+            struct Process *run_process = processes;
+            do {
+                if (run_process->id == tos_value) {
+                    run_process->ip = nos_value;
+                    run_process->next_time_to_run = timer + 1;
+                    if (trace) {
+                        printf("& initiate from %04x with %s at %i\n", run_process->ip, run_process->name, run_process->next_time_to_run);
+                    }
+                    break;
+                }
+                run_process = run_process->next;
+            } while (run_process != NULL);
+            if (run_process == NULL) {
+                printf("no process with ID %i\n", tos_value);                
+            }
+            if (trace) {
+                tasks();
+            }
 			break;
             
-            break;
-
 		case RETURN:
-			process->ip = process->return_stack[process->rsp--];
+            printf("&return ");
+            dump_return_stack(process);
+            printf("\n");
+            if (process->rsp < 0) {
+                // copy of END code - TODO refactor
+                dump_parameter_stack(process);
+                printf("\n");
+                process->ip = 0xffff;
+                process->next_time_to_run = 0;
+                next_task();
+                printf("& end, go to %s\n", process->name);
+            } else {
+                process->ip = process->return_stack[process->rsp--];
+            }
 			break;
 
 		case PRINT_TOS:
@@ -383,8 +431,9 @@ void forth_run() {
             break;
             
 		case STACK:
-			dump_stack(process);
-			break;
+			dump_parameter_stack(process);
+            printf("\n");
+            break;
 
 		case DEBUG:
             debug();
@@ -400,14 +449,15 @@ void forth_run() {
 
 		case RESET:
             dictionary = NULL;
-            //	next_new_word = 0;
-            execute_code = code_store;
             compiler_reset();
-        //    compiled_code = code_store + SCRATCHPAD;
-            process->sp = 0;
-            process->rsp = 0;
-            process->ip = 0;
-            execute_code[process->ip] = END;
+            struct Process* next = processes;
+            do {
+                next->sp = -1;
+                next->rsp = 0;
+                next->ip = 0;
+                next = next->next;
+            } while (next != NULL);
+            code_store[0] = END;
             break;
 
 		case CLEAR_REGISTERS:
@@ -417,10 +467,12 @@ void forth_run() {
             break;
 
 		case END:
-			dump_stack(process);
+			dump_parameter_stack(process);
+            printf("\n");
             process->ip = 0xffff;
+            process->next_time_to_run = 0;
             next_task();
-//			return;
+            printf("& end, go to %s\n", process->name);
 			break;
 
 		default:
@@ -428,52 +480,11 @@ void forth_run() {
 			return;
 			break;
     }
-//	}
-    
-}
-
-// TODO remove
-void forth_tasks(uint32_t ticks) {
-    /*
-    int i;
-    for (i = 0; i < task_count; i++) {
-        struct Task task = tasks[i];
-
-        if (ticks >= task.next) {
-     //       printf("task from %i\n", task.code);
-//            return_stack[++rsp] = ip + 1;
-//            uint8_t code_at = code[ip ++];
-//            ip = code_at + SCRATCHPAD;
-   //         execute(task.code);
-            
-            task.next += task.interval;
-        }
-
-    }
-*/
 }
 
 void wait(uint32_t wait_time) {
     process->next_time_to_run = timer + wait_time;
     next_task();
-}
-
-/*
- * Find the next task to execute. This is the highest priority task that has a next run
- * time that is less than the current time. If such a process exists then the waiting
- * flag is cleared.
- */
-void next_task() {
-    waiting = true;
-    struct Process* next = processes;
-    do {
-        if (next->ip != 0xffff && next->next_time_to_run <= timer) {
-            process = next;
-            waiting = false;
-            break;
-        }
-        next = next->next;
-    } while (next != NULL);
 }
 
 void execute(uint8_t* code) {
@@ -489,7 +500,23 @@ uint32_t popParameterStack() {
     return process->stack[process->sp];
 }
 
-void dump_stack(struct Process *p) {
+void dump_return_stack(struct Process *p) {
+	if (p->rsp >= 0) {
+		printf("[ ");
+        int i;
+		for (i = 0; i <= p->rsp; i++) {
+			if (i == p->rsp) {
+				printf("| %i ]", p->return_stack[i]);
+			} else {
+				printf("%i ", p->return_stack[i]);
+			}
+		}
+	} else {
+		printf("[ ]");
+	}
+}
+
+void dump_parameter_stack(struct Process *p) {
 	if (p->sp >= 0) {
 		printf("< ");
         int i;
@@ -503,7 +530,6 @@ void dump_stack(struct Process *p) {
 	} else {
 		printf("< >");
 	}
-	printf("\n");
 }
 
 
@@ -530,24 +556,54 @@ struct Process* new_task(uint8_t priority, char *name) {
         lastProcess->next = nextProcess;
     }
     
+    nextProcess->id = next_process_id++;
     nextProcess->sp = -1;
+    nextProcess->rsp = -1;
     nextProcess->priority = priority;
-    nextProcess->next_time_to_run = timer;
-    nextProcess->name = name;
+    nextProcess->next_time_to_run = 0;
+    nextProcess->name = malloc(sizeof(strlen(name) + 1));
+    nextProcess->code = code_store; // TODO remove code from process - all processes use the same code
+    strcpy(nextProcess->name, name);
     
     nextProcess->ip = 0xffff;
     
+    if (trace) {
+        printf("# new task %s (P%i)\n", nextProcess->name, priority);
+    }
+     
     return nextProcess;
 }
 
+/*
+ * Find the next task to execute. This is the highest priority task that has a next run
+ * time that is less than the current time. If such a process exists then the waiting
+ * flag is cleared.
+ */
+void next_task() {
+    waiting = true;
+    struct Process* next = processes;
+    do {
+        if (next->ip != 0xffff && next->next_time_to_run <= timer) {
+            process = next;
+            waiting = false;
+            printf("& next process %s\n", process->name);
+            break;
+        }
+        next = next->next;
+    } while (next != NULL);
+}
+
 void tasks() {
-    int i = 1;
     struct Process* p = processes;
     printf("Time %i\n", timer);
     do {
-        printf("Task #%i%s %s (P%i) @%04x, next %i  ", i++, p == process ? "*" : "",
-                p->name, p->priority,  p->ip, p->next_time_to_run);
-        dump_stack(p);
+        printf("Task #%i%s %s (P%i) @%04x, next %i  ", 
+                p->id, p == process ? "*" : "", p->name, p->priority,  
+                p->ip, p->next_time_to_run);
+        dump_return_stack(p);
+        printf(" ");
+        dump_parameter_stack(p);
+        printf("\n");
         p = p->next;
     } while (p != NULL);
 }
@@ -561,41 +617,23 @@ void debug() {
         compiler_words();
 	}
 
-/*
-	printf ("\n");
-	for (i = 0; i < SCRATCHPAD; i++) {
-		printf("[%03i] ", code_store[i]);
-
-		if (i % 16 == 15) {
-			printf("\n");
-		}
-
-	}
-	printf("\n");
-*/
-	printf ("\n     ");
+	printf ("\n0000   ");
 	for (i = 0; i < 16; i++) {
-		printf("%3x ", i);
+		printf("%X   ", i);
 	}
 	printf ("\n");
 	for (i = 0; i < 512; i++) {
 		if (i % 16 == 0) {
-			printf("\n %5x  ", i);
+			printf("\n%04X  ", i);
 		}
-		printf("%3x ", code_store[i]);
-
+		printf("%02X ", code_store[i]);
 	}
 	printf("\n");
 
-/*    for (i = 0; i < task_count; i++) {
-        struct Task task = tasks[i];
-//        printf("task#%i - %i, %i - %04x\n", i + 1, task.interval, task.next, task.code);
-    }
-
-	printf ("\n");
- */ 
+    tasks();
 }
-
+/*
 void display_code(uint8_t* code) {
 
 }
+*/

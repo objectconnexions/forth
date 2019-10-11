@@ -15,9 +15,10 @@ extern "C" {
 #include <stdint.h>
     
 #define LIT 0x1
-#define DUP 0x2
-#define SWAP 0x3
-#define DROP 0x4
+#define PROCESS 0x2
+#define DUP 0x3
+#define SWAP 0x4
+#define DROP 0x5
 
 #define ADD 0x10
 #define SUBTRACT 0x11
@@ -45,8 +46,9 @@ extern "C" {
 #define BRANCH 0xe3
 
 #define EXECUTE 0xe4
-#define YIELD 0xe5
-#define WAIT 0xe6
+#define INITIATE 0xe5
+#define YIELD 0xe7
+#define WAIT 0xe8
 
 #define WORDS 0xf0
 #define STACK 0xf1

@@ -40,7 +40,7 @@ void compiler_reset() {
 void compiler_words() {
     struct Dictionary * ptr = dictionary;
     while (ptr != NULL) {
-        printf("%s -> %04x\n", ptr->name, ptr->code + SCRATCHPAD);
+        printf("%s @%04X\n", ptr->name, ptr->code + SCRATCHPAD);
         ptr = ptr->previous;
     }
 }
@@ -49,7 +49,7 @@ static void compile(char* source) {
 	char* start = source;
 
 	if (trace) {
-		printf("compile [%s]\n", source);
+		printf("# compile [%s]\n", source);
 	}
 
 	while (true) {
@@ -73,7 +73,7 @@ static void compile(char* source) {
         to_upper(instruction, strlen(instruction));
 
 		if (trace) {
-			printf("instruction [%s] %i @ %0x\n", instruction, len, compilation - code_store);
+			printf("# instruction [%s] %i @ %0x\n", instruction, len, compilation - code_store);
 		}
 
                   
@@ -86,7 +86,7 @@ static void compile(char* source) {
             immediate = INTERACTIVE;
             uint32_t word = (uint32_t) find_word(instruction);
             process->stack[++(process->sp)] = word;
-            printf("# xt %s @ %0x\n", instruction, word);
+            printf("# xt %s @ %04x onto stack\n", instruction, word);
             
         } else {
             if (strcmp(instruction, "STACK") == 0) {
@@ -247,10 +247,8 @@ static void compile(char* source) {
             } else if (strcmp(instruction, "EXECUTE") == 0) {
                 *compilation++ = EXECUTE;
 
-         } else if (strcmp(instruction, "ACTIVATE") == 0) {
-                immediate = INTERACTIVE;
-
-                // find process and set to run?
+         } else if (strcmp(instruction, "INITIATE") == 0) {
+                *compilation++ = INITIATE;
 
             } else if (strcmp(instruction, "_DEBUG") == 0) {
                 *compilation++ = DEBUG;
@@ -274,28 +272,47 @@ static void compile(char* source) {
                     *compilation++ = code;
                     
                 } else {
-                    // printf("not a word\n");
-                    bool is_number = true;
-                    int i;
-                    for (i = 0; i < strlen(instruction); ++i) {
-                        if (!isdigit(instruction[i]) && i == 2 && !(instruction[i] == 'X' || instruction[i] == 'B')) {
-                            is_number = false;
+                    //printf("not a word\n");
+                    struct Process * ptr = processes;
+                    do {
+                        //printf("# check process %s against %s\n", ptr->name, instruction);
+                        if (strcmp(instruction, ptr->name) == 0) {
+                            if (trace) {
+                                printf("# process %s found\n", ptr->name);
+                            }
+                            *compilation++ = PROCESS;
+                            *compilation++ = ptr->id;
                             break;
                         }
-                    }
-                    if (is_number) {
-                        int64_t value = strtoll(instruction, NULL, 0);
-                        *compilation++ = LIT;
-                        if (trace) {
-                            printf("# literal = 0x%09llx @ %0x\n", value, compilation);
+                        
+                        ptr = ptr->next;
+                      //  ptr = NULL;
+                    } while (ptr != NULL);
+
+                    if (ptr == NULL) {
+                        //printf("not a process\n");
+                        bool is_number = true;
+                        int i;
+                        for (i = 0; i < strlen(instruction); ++i) {
+                            if (!isdigit(instruction[i]) && i == 2 && !(instruction[i] == 'X' || instruction[i] == 'B')) {
+                                is_number = false;
+                                break;
+                            }
                         }
-                        *compilation++ = value % 0x100;
-                        *compilation++ = (value / 0x100) % 0x100;
-                        *compilation++ = (value / 0x10000) % 0x100;
-                        *compilation++ = (value / 0x1000000) % 0x100;
-                    } else {
-                        printf("# instruction not understood\n");
-                        return;
+                        if (is_number) {
+                            int64_t value = strtoll(instruction, NULL, 0);
+                            *compilation++ = LIT;
+                            if (trace) {
+                                printf("# literal = 0x%09llx @ %0x\n", value, compilation);
+                            }
+                            *compilation++ = value % 0x100;
+                            *compilation++ = (value / 0x100) % 0x100;
+                            *compilation++ = (value / 0x10000) % 0x100;
+                            *compilation++ = (value / 0x1000000) % 0x100;
+                        } else {
+                            printf("# instruction not understood\n");
+                            return;
+                        }
                     }
                 }
             }
@@ -309,7 +326,7 @@ static uint8_t* find_word(char *instruction) {
     while (ptr != NULL) {
         if (strcmp(instruction, ptr->name) == 0) {
             if (trace) {
-                printf("# word %s at %04x\n", ptr->name, ptr->code + SCRATCHPAD);
+                printf("# word %s found at %04x\n", ptr->name, ptr->code + SCRATCHPAD);
             }
             return ptr->code + SCRATCHPAD;
         }
@@ -320,18 +337,14 @@ static uint8_t* find_word(char *instruction) {
 
 bool compiler_compile(char* source) {
     if (trace) {
-        printf("# compile %s\n", source);
-    }
-
-    if (trace) {
-        printf("# code at %p\n", code_store);
+        printf("# input: %s\n", source);
     }
     if (immediate == INTERACTIVE) {
         memset(code_store, 0, SCRATCHPAD);
         compilation = code_store;
     }
     if (trace) {
-        printf("# compilation at %i\n", compilation - code_store);
+        printf("# compilation at %04x\n", compilation - code_store);
     }
     compile(source);
     if (immediate == INTERACTIVE) {
