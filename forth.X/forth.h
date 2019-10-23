@@ -19,6 +19,10 @@ extern "C" {
 #define DUP 0x3
 #define SWAP 0x4
 #define DROP 0x5
+#define NIP 0x6
+#define TUCK 0x7
+#define OVER 0x8
+#define ROT 0x9
 
 #define ADD 0x10
 #define SUBTRACT 0x11
@@ -52,9 +56,11 @@ extern "C" {
 
 #define WORDS 0xf0
 #define STACK 0xf1
-#define DEBUG 0xf2
+#define DUMP 0xf2
 #define TRACE_ON 0xf3
 #define TRACE_OFF 0xf4
+#define DEBUG_ON 0xf8
+#define DEBUG_OFF 0xf9
 #define RESET 0xf5
 #define CLEAR_REGISTERS 0xf6
 #define TICKS 0xf7
@@ -63,10 +69,12 @@ extern "C" {
     
   
 extern bool trace;
+extern bool debug;
 
-struct Process* process;
+extern struct Process* process;
+extern struct Process* main_process;
 
-struct Dictionary* dictionary;
+extern struct Dictionary* dictionary;
 
 int forth_init();
 

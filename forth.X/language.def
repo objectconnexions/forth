@@ -1,17 +1,48 @@
-: DOUBLE DUP + ;
+: DOUBLE ( n n -- 2n ) DUP + ;
 
-: SQUARE DUP * ;
+: SQUARE ( n n -- n^2 ) DUP * ;
 
-: INC 1 + ;
+: INC ( n -- n+1 ) 1 + ;
 
-: SUM_SQUARED SQUARE SWAP SQUARE + ;
-
-
-: ON
+: ON ( -- )
     0x0bf886220 dup @
     0x01 4 lshift
     or
-    !
+    swap !
 ;
 
-: OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and ! ;
+: OFF ( -- ) 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;
+
+\ : +! ( n address --  - add n to address )
+\ 	DUP @ + ! \ need to swap next on stack!
+\ ;
+
+
+
+: portOn ( bit addr -- )
+	dup @		 		\ read current state of port ( addr mask port-state )
+    0x01 swap lshift	\ use bit to determine mask ( addr mask )
+	or					\ use mask to update port state ( addr port-state )
+	stack
+	swap !					\ write new state of port ( )
+;
+
+
+0x0bf886220 CONSTANT PORTE
+4 CONSTANT LED_COMM
+
+: onComm ( -- )
+	LED_COMM PORTE portOn
+;
+
+: offComm ( -- )
+\	PORTE LED_COMM portOff
+	off
+;
+
+: flash
+	begin
+		onComm 200 ms offComm 200 ms
+	again
+;
+

@@ -1,11 +1,11 @@
-: Y 1 + 2 + 3 + ;
-: X DUP * ;
-: Z Y X ;
+: Y ( -- n ) 1 + 2 + 3 + ;
+: X ( n -- n doubls the number DUP ) * ;
+: Z Y X ; \ n n -- n multiple numbers
 : TEST0 Z DUP Z . CR . CR ;
 
 : IFF IF 222 . CR THEN ;
 
-: test1
+: test1 ( -- )
   IF
     22 . CR
  	IF

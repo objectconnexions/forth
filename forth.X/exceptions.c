@@ -11,7 +11,9 @@
 #include <plib.h>            /* Include to use PIC32 peripheral libraries     */
 #include <stdint.h>          /* For uint32_t definition                       */
 #include <stdbool.h>         /* For true/false definition                     */
+#include <stdio.h>
 
+#include "forth.h"
 /******************************************************************************/
 /* Exception Macro Definitions                                                */
 /******************************************************************************/
@@ -125,5 +127,9 @@ void _general_exception_handler(void)
     {
         /* Examine _excep_code to identify the type of exception */
         /* Examine _excep_addr to find the address that caused the exception */
+        
+        PORTBbits.RB1 = 1;
+        printf("exception %X %X\n", _excep_code, _excep_addr);
+        SoftReset();
     }
 }

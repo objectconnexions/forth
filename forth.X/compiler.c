@@ -6,25 +6,44 @@
 #include "forth.h"
 #include "code.h"
 
+static void compile(char*);
 static uint8_t* find_word(char *);
+static void new_constant(char *);
+static void new_variable(char *);
+
+struct Constant {
+    char *name;
+    uint32_t value;
+    struct Constant *next;
+};
+
+struct Variable {
+    char *name;
+    uint32_t address;
+    struct Variable *next;
+};
 
 enum immediate {
     INTERACTIVE,
+    EOL_COMMENT,
+    PAREN_COMMENT,
     WORD,
+    CONSTANT,
+    VARIABLE,
     TASK,
     TICK,
     RUN_TASK
 };
 
+static uint8_t* compiled_code;
+static uint8_t* compilation;
+static uint8_t *jumps[6];
+static uint8_t jp = 0;
+static uint8_t immediate = INTERACTIVE;
+static uint8_t previous = INTERACTIVE;
 
-uint8_t* compiled_code;
-uint8_t* compilation;
-
-uint8_t *jumps[6];
-uint8_t jp = 0;
-
-uint8_t immediate = INTERACTIVE;
-
+struct Constant *constants;
+struct Variable *variables;
 
 
 void compiler_init() {
@@ -35,14 +54,53 @@ void compiler_init() {
 
 void compiler_reset() {
     compiled_code = code_store + SCRATCHPAD;
+    
+    // TODO free memory and reset pointers: constants, variables
 }
 
-void compiler_words() {
-    struct Dictionary * ptr = dictionary;
-    while (ptr != NULL) {
-        printf("%s @%04X\n", ptr->name, ptr->code + SCRATCHPAD);
-        ptr = ptr->previous;
+bool compiler_compile(char* source) {
+    if (trace) {
+        printf("# input: %s\n", source);
     }
+    if (immediate == INTERACTIVE) {
+        memset(code_store, 0, SCRATCHPAD);
+        compilation = code_store;
+    }
+    if (trace) {
+        printf("# compilation at %04x\n", compilation - code_store);
+    }
+    compile(source);
+    if (immediate == INTERACTIVE) {
+        *compilation++ = END;
+        return true;
+    } else {
+        return false;
+    }
+}    
+
+void compiler_words() {
+    struct Dictionary * entry = dictionary;
+    while (entry != NULL) {
+        printf("%s @%04X\n", entry->name, entry->code + SCRATCHPAD);
+        entry = entry->previous;
+    }
+}
+
+void compiler_dump() {
+    struct Constant *constant = constants;
+    while (constant != NULL) {
+        printf("Constant %s: %i\n", 
+                constant->name, constant->value);
+        constant = constant->next;
+    }
+
+    struct Variable *variable = variables;
+    while (variable != NULL) {
+        printf("Constant %s: %i\n", 
+                variable->name, variable->address);
+        variable = variable->next;
+    }
+
 }
 
 static void compile(char* source) {
@@ -58,6 +116,9 @@ static void compile(char* source) {
 			start = source;
 		}
 		if (*source == 0 /* || *source == '\n' */) {
+            if (immediate == EOL_COMMENT) {
+                immediate = previous;
+            }
 			return;
 		}
 
@@ -82,13 +143,26 @@ static void compile(char* source) {
             new_task(5, instruction);
             printf("# new task %s\n", instruction);
           
+		} else if (immediate == CONSTANT) {
+            immediate = INTERACTIVE;
+            new_constant(instruction);
+            printf("# new constant %s\n", instruction);
+          
+		} else if (immediate == VARIABLE) {
+            immediate = INTERACTIVE;
+            new_variable(instruction);
+            printf("# new variable %s\n", instruction);
+          
 		} else if (immediate == TICK) {
             immediate = INTERACTIVE;
             uint32_t word = (uint32_t) find_word(instruction);
-            process->stack[++(process->sp)] = word;
+            main_process->stack[++(main_process->sp)] = word;
             printf("# xt %s @ %04x onto stack\n", instruction, word);
-            
-        } else {
+
+        } else if (immediate == PAREN_COMMENT && strcmp(instruction, ")") == 0) {
+                immediate = previous;
+
+        } else if (immediate != PAREN_COMMENT && immediate != EOL_COMMENT) {
             if (strcmp(instruction, "STACK") == 0) {
                 *compilation++ = STACK;
 
@@ -97,6 +171,18 @@ static void compile(char* source) {
 
             } else if (strcmp(instruction, "SWAP") == 0) {
                 *compilation++ = SWAP;
+
+            } else if (strcmp(instruction, "NIP") == 0) {
+                *compilation++ = NIP;
+
+            } else if (strcmp(instruction, "TUCK") == 0) {
+                *compilation++ = TUCK;
+
+            } else if (strcmp(instruction, "OVER") == 0) {
+                *compilation++ = OVER;
+
+            } else if (strcmp(instruction, "ROT") == 0) {
+                *compilation++ = ROT;
 
             } else if (strcmp(instruction, "DROP") == 0) {
                 *compilation++ = DROP;
@@ -123,11 +209,38 @@ static void compile(char* source) {
             } else if (strcmp(instruction, "BEGIN") == 0) {
                 jumps[jp++] = compilation;
 
+            } else if (strcmp(instruction, "AGAIN") == 0) {
+                *compilation++ = BRANCH;
+                uint8_t distance = jumps[--jp] - compilation;
+                *compilation++ = distance;
+
             } else if (strcmp(instruction, "UNTIL") == 0) {
                 *compilation++ = ZBRANCH;
                 uint8_t distance = jumps[--jp] - compilation;
                 *compilation++ = distance;
 
+            } else if (strcmp(instruction, "CONSTANT") == 0) {
+                immediate = CONSTANT;
+
+            } else if (strcmp(instruction, "VARIABLE") == 0) {
+                immediate = VARIABLE;
+
+            } else if (strcmp(instruction, "\\") == 0) {
+                previous = immediate;
+                immediate = EOL_COMMENT;
+
+            } else if (strcmp(instruction, "(") == 0) {
+                // TODO any reason not to have comments in interactive code?
+                /* if (immediate != WORD) {
+                    printf("Error: invalid place for comment\n");
+                    *compilation++ = END;  
+                    immediate = INTERACTIVE;
+                } else {
+                    immediate = PAREN_COMMENT;
+                } */
+                previous = immediate;
+                immediate = PAREN_COMMENT;
+                
             } else if (strcmp(instruction, ":") == 0) {
                 start = source + 1;
                 while (*++source != ' ' && *source != 0) {}
@@ -141,40 +254,16 @@ static void compile(char* source) {
                 dictionary = entry;
                 compilation = compiled_code;
                 if (trace) {
-                    printf("# compilation moved to %i\n", compilation - code_store);
+                    printf("# compilng word at %04X\n", compilation - code_store);
                 }
-
-
                 immediate = WORD;
 
             } else if (strcmp(instruction, ";") == 0) {
                 *compilation++ = RETURN;
-
                 compiled_code = compilation;
-        //		process->code = compilation;
-
                 compilation = code_store;
-
                 immediate = INTERACTIVE;
 
-                /*
-            } else if (strcmp(instruction, "task") == 0) {
-                start = source + 1;
-                while (*++source != ' ' && *source != 0) {}
-                int len = source - start;
-
-                struct Task entry; // = malloc(sizeof(struct Task));
-    //			entry->code = compiled_code - (code_store + SCRATCHPAD);
-    //			entry->name = malloc(len + 1);
-    //			entry->previous = dictionary;
-    //            to_upper(start, len);
-    //			strncpy(entry->name, start, len);
-                tasks[task_count++] = entry;
-                compilation = code;
-                code = compiled_code;
-
-                immediate = true;
-     */           
             } else if (strcmp(instruction, "TASK") == 0) {
                 immediate = TASK;
 
@@ -183,6 +272,10 @@ static void compile(char* source) {
 
             } else if (strcmp(instruction, "PAUSE") == 0) {
                 *compilation++ = YIELD;
+
+            } else if (strcmp(instruction, "HALT") == 0) {
+                process->ip = 0xffff;
+                process->next_time_to_run = 0;
 
             } else if (strcmp(instruction, "MS") == 0) {
                 *compilation++ = WAIT;
@@ -247,17 +340,23 @@ static void compile(char* source) {
             } else if (strcmp(instruction, "EXECUTE") == 0) {
                 *compilation++ = EXECUTE;
 
-         } else if (strcmp(instruction, "INITIATE") == 0) {
+            } else if (strcmp(instruction, "INITIATE") == 0) {
                 *compilation++ = INITIATE;
 
-            } else if (strcmp(instruction, "_DEBUG") == 0) {
-                *compilation++ = DEBUG;
+            } else if (strcmp(instruction, "_DUMP") == 0) {
+                *compilation++ = DUMP;
 
             } else if (strcmp(instruction, "_TRACE") == 0) {
                 *compilation++ = TRACE_ON;
 
             } else if (strcmp(instruction, "_NOTRACE") == 0) {
                 *compilation++ = TRACE_OFF;
+
+            } else if (strcmp(instruction, "_DEBUG") == 0) {
+                *compilation++ = DEBUG_ON;
+
+            } else if (strcmp(instruction, "_NOTDEBUG") == 0) {
+                *compilation++ = DEBUG_OFF;
 
             } else if (strcmp(instruction, "_RESET") == 0) {
                 *compilation++ = RESET;
@@ -266,31 +365,65 @@ static void compile(char* source) {
                 *compilation++ = CLEAR_REGISTERS;          
 
             } else {
+                // words
                 uint8_t* code = find_word(instruction);
                 if (code != NULL) {
                     *compilation++ = RUN;
                     *compilation++ = code;
                     
                 } else {
+                    // Processes
                     //printf("not a word\n");
-                    struct Process * ptr = processes;
+                    struct Process * process = processes;
                     do {
-                        //printf("# check process %s against %s\n", ptr->name, instruction);
-                        if (strcmp(instruction, ptr->name) == 0) {
+                        //printf("# check process %s against %s\n", process->name, instruction);
+                        if (strcmp(instruction, process->name) == 0) {
                             if (trace) {
-                                printf("# process %s found\n", ptr->name);
+                                printf("# process %s found\n", process->name);
                             }
                             *compilation++ = PROCESS;
-                            *compilation++ = ptr->id;
+                            *compilation++ = process->id;
                             break;
                         }
                         
-                        ptr = ptr->next;
-                      //  ptr = NULL;
-                    } while (ptr != NULL);
-
-                    if (ptr == NULL) {
-                        //printf("not a process\n");
+                        process = process->next;
+                    } while (process != NULL);
+                    
+                  
+                    // Constants
+                    struct Constant *constant = constants;
+                    if (process == NULL && constant != NULL) {
+                        do {
+                            if (strcmp(constant->name, instruction) == 0) {
+                                *compilation++ = LIT;
+                                *compilation++ = constant->value % 0x100;
+                                *compilation++ = (constant->value / 0x100) % 0x100;
+                                *compilation++ = (constant->value / 0x10000) % 0x100;
+                                *compilation++ = (constant->value / 0x1000000) % 0x100;
+                                break;
+                            }
+                            constant = constant->next;
+                        } while (constant != NULL);
+                    }
+                  
+                    // Variables
+                    struct Variable *variable = variables;
+                    if (constant == NULL && variable != NULL) {
+                        do {
+                            if (strcmp(variable->name, instruction) == 0) {
+                                *compilation++ = LIT;
+                                *compilation++ = variable->address % 0x100;
+                                *compilation++ = (variable->address / 0x100) % 0x100;
+                                *compilation++ = (variable->address / 0x10000) % 0x100;
+                                *compilation++ = (variable->address / 0x1000000) % 0x100;
+                                break;
+                            }
+                            variable = variable->next;
+                        } while (variable != NULL);
+                    }
+                    
+                    if (constant == NULL && variable == NULL) {
+                        // numbers/literals
                         bool is_number = true;
                         int i;
                         for (i = 0; i < strlen(instruction); ++i) {
@@ -310,7 +443,7 @@ static void compile(char* source) {
                             *compilation++ = (value / 0x10000) % 0x100;
                             *compilation++ = (value / 0x1000000) % 0x100;
                         } else {
-                            printf("# instruction not understood\n");
+                            printf("# %s not understood\n", instruction);
                             return;
                         }
                     }
@@ -322,38 +455,51 @@ static void compile(char* source) {
 }
 
 static uint8_t* find_word(char *instruction) {
-    struct Dictionary * ptr = dictionary;
-    while (ptr != NULL) {
-        if (strcmp(instruction, ptr->name) == 0) {
+    struct Dictionary * entry = dictionary;
+    while (entry != NULL) {
+        if (strcmp(instruction, entry->name) == 0) {
             if (trace) {
-                printf("# word %s found at %04x\n", ptr->name, ptr->code + SCRATCHPAD);
+                printf("# word %s found at %04x\n", entry->name, entry->code + SCRATCHPAD);
             }
-            return ptr->code + SCRATCHPAD;
+            return entry->code + SCRATCHPAD;
         }
-        ptr = ptr->previous;
+        entry = entry->previous;
     }
     return NULL;
 }
 
-bool compiler_compile(char* source) {
-    if (trace) {
-        printf("# input: %s\n", source);
-    }
-    if (immediate == INTERACTIVE) {
-        memset(code_store, 0, SCRATCHPAD);
-        compilation = code_store;
-    }
-    if (trace) {
-        printf("# compilation at %04x\n", compilation - code_store);
-    }
-    compile(source);
-    if (immediate == INTERACTIVE) {
-        *compilation++ = END;
-        process->ip = 0;
-        return true;
-    } else {
-        return false;
-    }
-}    
+static void new_constant(char *name) {
+    struct Constant *constant = malloc(sizeof(struct Constant));
+    constant->name = malloc(sizeof(struct Constant));
+    strcpy(constant->name, name);
+    compilation--;
+    constant->value = (*compilation-- * 0x1000000) +
+                    (*compilation-- * 0x10000) +
+                    (*compilation-- * 0x100) +
+                    *compilation--;
     
+    if (constants == NULL) {
+        constants = constant;
+    } else {
+        constant->next = constants;
+        constants = constant;
+    }
+}
 
+static void new_variable(char *name) {
+    struct Variable *variable = malloc(sizeof(struct Variable));
+    variable->name = malloc(sizeof(struct Constant));
+    strcpy(variable->name, name);
+    variable->address = (uint32_t) malloc(sizeof(uint32_t));
+
+    if (trace) {
+        printf("# variable %s at %04p\n", variable->name, variable->address);
+    }
+
+    if (variables == NULL) {
+        variables = variable;
+    } else {
+        variable->next = variables;
+        variables = variable;
+    }
+}

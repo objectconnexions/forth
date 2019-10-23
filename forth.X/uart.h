@@ -17,16 +17,18 @@ void uart_init();
 
 int uart_configure(int); 
 
-int uart_transmit(const char *);
+int uart_transmit_buffer(const char *);
+
+int uart_transmit_char(const char);
 
 void uart_receive();
 
 
-int uart_input_length();
+void uart_input_length();
 
-void uart_read_input(char *);
+bool uart_read_input(char *);
 
-
+void uart_resune(void);
 
 #ifdef	__cplusplus
 }

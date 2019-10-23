@@ -1,0 +1,16 @@
+
+* Words
+
+** `DUP`  n1 -- n1 n1~
+
+Duplicate value on top of stack
+
+
+** `DROP`  n1 --
+
+Remove number for top of stack
+
+
+
+
+

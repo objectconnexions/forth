@@ -8,9 +8,10 @@
 
 #include "forth.h"
 #include "code.h"
+#include "uart.h"
 
 uint32_t timer = 0;
-UINT8 next_process_id = 0;
+uint8_t next_process_id = 0;
 bool waiting = true;
 
 
@@ -18,7 +19,7 @@ void dump_parameter_stack(struct Process*);
 void dump_return_stack(struct Process*);
 void execute(uint8_t*);
 void display_code(uint8_t*);
-void debug(void);
+void dump(void);
 void tasks(void);
 uint32_t popParameterStack(void);
 void wait(uint32_t);
@@ -30,7 +31,7 @@ void words();
 void compiler_init(void);
 void compiler_reset(void);
 bool compiler_compile(char*);
-
+void compiler_dump(void);
 
 uint8_t code_store[2048];
 
@@ -38,25 +39,27 @@ struct Process* processes;
 
 struct Dictionary* dictionary;
 
-
+struct Process* process;
+struct Process* main_process;
 
 
 int forth_init() {
     compiler_init();
     processes = new_task(3, "MAIN");
-    process = processes;
-	uart_transmit("FORTH v0.1\n\n");
+    process = main_process = processes;
+	uart_transmit_buffer("FORTH v0.1\n\n");
 }
 
 void forth_execute(uint8_t* word) {
-    if (trace) {
-        printf("& [%s]\n", word);
-    }
+    printf("> %s\n", word);
     if (compiler_compile(word)) {
         if (trace) {
-            debug();
+            dump();
         }
-        execute(code_store);
+        main_process->ip = 0;
+        main_process->next_time_to_run = timer;
+
+  //      execute(code_store);
     }
 }
 
@@ -91,6 +94,10 @@ void forth_run() {
     if (trace) {
         printf("& execute [%i] %02x@%04x\n", process->id, instruction, process->ip - 1);
     }
+    if (debug) {
+        dump_parameter_stack(process);
+        printf(" execute [%i] %02x@%04x\n", process->id, instruction, process->ip - 1);
+    }
 
     switch (instruction) {
 		case DUP:
@@ -102,6 +109,15 @@ void forth_run() {
 			process->stack[++(process->sp)] = tos_value;
 			break;
 
+		case OVER:
+			if (process->sp < 1) {
+				printf("stack underflow; aborting\n");
+				return;
+			}
+			nos_value = process->stack[process->sp - 1];
+			process->stack[++(process->sp)] = nos_value;
+			break;
+
 		case DROP:
 			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
@@ -110,14 +126,45 @@ void forth_run() {
 			process->sp--;
 			break;
 
+		case NIP:
+			if (process->sp < 0) {
+				printf("stack underflow; aborting\n");
+				return;
+			}
+            tos_value = process->stack[process->sp--];
+            process->stack[process->sp] = tos_value;
+			break;
+
 		case SWAP:
 			if (process->sp < 1) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
 			tos_value = process->stack[process->sp];
-			process->stack[process->sp] = process->stack[process->sp -1];
+			process->stack[process->sp] = process->stack[process->sp - 1];
 			process->stack[process->sp - 1] = tos_value;
+			break;
+
+		case TUCK:
+			if (process->sp < 1) {
+				printf("stack underflow; aborting\n");
+				return;
+			}
+			tos_value = process->stack[process->sp];
+            process->stack[++(process->sp)] = tos_value;
+            process->stack[process->sp - 1] = process->stack[process->sp - 2];
+            process->stack[process->sp - 2] = tos_value;
+			break;
+
+		case ROT:
+			if (process->sp < 1) {
+				printf("stack underflow; aborting\n");
+				return;
+			}
+			tos_value = process->stack[process->sp];
+            process->stack[process->sp] = process->stack[process->sp - 1];
+            process->stack[process->sp - 1] = process->stack[process->sp - 2];
+            process->stack[process->sp - 2] = tos_value;
 			break;
 
 		case LIT:
@@ -263,7 +310,7 @@ void forth_run() {
 			break;
 
         case WAIT:
-            if (process->sp < 1) {
+            if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
 				return;
 			}
@@ -295,10 +342,7 @@ void forth_run() {
 			break;
 
 		case BRANCH:
-			if (process->sp < 0) {
-				printf("stack underflow; aborting\n");
-				return;
-			}
+            ;
 			int relative = process->code[process->ip];
 			if (relative > 128) {
 				relative = relative - 256;
@@ -310,7 +354,9 @@ void forth_run() {
 			break;
 
 		case RUN:
-			printf("run from %i\n", process->code[process->ip]);
+            if (trace) {
+                printf("& run from %i\n", process->code[process->ip]);
+            }
 			process->return_stack[++(process->rsp)] = process->ip + 1;
 			uint8_t code_at = process->code[process->ip ++];
 			process->ip = code_at;
@@ -356,17 +402,23 @@ void forth_run() {
 			break;
             
 		case RETURN:
-            printf("&return ");
-            dump_return_stack(process);
-            printf("\n");
+            if (trace) {
+                printf("& return ");
+                dump_return_stack(process);
+                printf("\n");
+            }
             if (process->rsp < 0) {
                 // copy of END code - TODO refactor
-                dump_parameter_stack(process);
-                printf("\n");
+                if (trace) {
+                    dump_parameter_stack(process);
+                    printf("\n");
+                }
                 process->ip = 0xffff;
                 process->next_time_to_run = 0;
                 next_task();
-                printf("& end, go to %s\n", process->name);
+                if (trace) {
+                    printf("& end, go to %s\n", process->name);
+                }
             } else {
                 process->ip = process->return_stack[process->rsp--];
             }
@@ -400,11 +452,15 @@ void forth_run() {
 				return;
 			}
 
-            tos_value = process->stack[process->sp--];                        
-            printf("address 0x%x\n", tos_value);
+            tos_value = process->stack[process->sp--];
+            if (trace) {
+                printf("address 0x%x\n", tos_value);
+            }
             uint32_t *ptr = (uint32_t *) tos_value;
             tos_value = (uint32_t) *ptr;
-            printf("value 0x%x\n", tos_value);
+            if (trace) {
+                printf("& value 0x%x\n", tos_value);
+            }
             process->stack[++(process->sp)] = tos_value;
             break;
 
@@ -414,11 +470,13 @@ void forth_run() {
 				return;
 			}
 
-            tos_value = process->stack[process->sp--];
-            nos_value = process->stack[process->sp--];
-            printf("set 0x%x to 0x%x\n", nos_value, tos_value);
-            ptr = (uint32_t *) nos_value;
-            *ptr = tos_value;
+            tos_value = process->stack[process->sp--]; // address
+            nos_value = process->stack[process->sp--]; // write value
+            if (trace) {
+                printf("& set address %04X to %04X\n", tos_value, nos_value);
+            }
+            ptr = (uint32_t *) tos_value;
+            *ptr = nos_value;
             break;
 
         case PRINT_HEX:
@@ -435,8 +493,8 @@ void forth_run() {
             printf("\n");
             break;
 
-		case DEBUG:
-            debug();
+		case DUMP:
+            dump();
 			break;
 
 		case TRACE_ON:
@@ -444,7 +502,15 @@ void forth_run() {
             break;
 
 		case TRACE_OFF:
-            trace = false;;
+            trace = false;
+			break;
+
+		case DEBUG_ON:
+            debug = true;
+            break;
+
+		case DEBUG_OFF:
+            debug = false;
 			break;
 
 		case RESET:
@@ -467,17 +533,18 @@ void forth_run() {
             break;
 
 		case END:
-			dump_parameter_stack(process);
+			//dump_parameter_stack(process);
             printf("\n");
             process->ip = 0xffff;
             process->next_time_to_run = 0;
             next_task();
-            printf("& end, go to %s\n", process->name);
+            if (trace) {
+                printf("& end, go to %s\n", process->name);
+            }
 			break;
 
 		default:
-			printf("unknown instruction %i", instruction);
-			return;
+            printf("unknown instruction [%i] %02x@%04x\n", process->id, instruction, process->ip - 1);
 			break;
     }
 }
@@ -486,11 +553,11 @@ void wait(uint32_t wait_time) {
     process->next_time_to_run = timer + wait_time;
     next_task();
 }
-
-void execute(uint8_t* code) {
+/*
+ * void execute(uint8_t* code) {
     processes->code = code;
 }
-
+*/
 uint32_t popParameterStack() {
     if (process->sp < 1) {
         printf("stack underflow; aborting\n");
@@ -586,7 +653,9 @@ void next_task() {
         if (next->ip != 0xffff && next->next_time_to_run <= timer) {
             process = next;
             waiting = false;
-            printf("& next process %s\n", process->name);
+            if (trace) {
+                printf("& next process %s\n", process->name);
+            }
             break;
         }
         next = next->next;
@@ -608,7 +677,7 @@ void tasks() {
     } while (p != NULL);
 }
 
-void debug() {
+void dump() {
     int i;
 
 	if (dictionary == NULL) {
@@ -617,6 +686,8 @@ void debug() {
         compiler_words();
 	}
 
+    compiler_dump();
+    
 	printf ("\n0000   ");
 	for (i = 0; i < 16; i++) {
 		printf("%X   ", i);
