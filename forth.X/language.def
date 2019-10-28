@@ -1,3 +1,60 @@
+_reset
+
+0x0bf880000 CONSTANT IO
+0x6000 CONSTANT PORTA
+0x6100 CONSTANT PORTB
+0x6200 CONSTANT PORTC
+0x00 CONSTANT ANSEL
+0x10 CONSTANT TRIS
+0x20 CONSTANT PORT
+
+
+: mask ( pos size -- mask )
+\ creates a bit mask for the specified number of bits at the 
+\ postion (zero indexed)
+
+	1 swap lshift
+	1 -
+	swap lshift
+	0x0ffff xor
+;
+
+: setBits ( value pos size -- value ) 
+	tuck
+
+	mask
+	swap
+
+
+
+	4 3 mask
+	889 and
+	6 4 lshift
+	or
+;
+
+: RegAddr  ( base port register -- addr )
+	+ +
+;
+
+: RegGet ( mask addr -- n )
+	@
+	AND
+;
+
+: RegSetOn  ( value mask addr -- )
+	tuck @		 		\ read current state of port ( addr bit port-state )
+	swap
+    0x01 swap lshift	
+;
+\ IO PORTA PORT register
+
+\ position value address regSet
+
+\ position value mask
+
+
+
 : DOUBLE ( n n -- 2n ) DUP + ;
 
 : SQUARE ( n n -- n^2 ) DUP * ;
@@ -11,7 +68,13 @@
     swap !
 ;
 
-: OFF ( -- ) 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;
+: OFF ( -- ) 
+	0x0bf886220 dup @
+	0x01 4 lshift
+	0x03ff xor 
+	and 
+	swap ! 
+;
 
 \ : +! ( n address --  - add n to address )
 \ 	DUP @ + ! \ need to swap next on stack!
@@ -19,14 +82,23 @@
 
 
 
+
 : portOn ( bit addr -- )
-	dup @		 		\ read current state of port ( addr mask port-state )
+	tuck @		 		\ read current state of port ( addr bit port-state )
+	swap
     0x01 swap lshift	\ use bit to determine mask ( addr mask )
 	or					\ use mask to update port state ( addr port-state )
-	stack
 	swap !					\ write new state of port ( )
 ;
 
+: portOff ( bit addr -- )
+	tuck @		 		\ read current state of port ( addr bit port-state )
+	swap
+    0x01 swap lshift	\ use bit to determine mask ( addr mask )
+	0x03ff xor 
+	and 				\ use mask to update port state ( addr port-state )
+	swap !					\ write new state of port ( )
+;
 
 0x0bf886220 CONSTANT PORTE
 4 CONSTANT LED_COMM
@@ -36,8 +108,7 @@
 ;
 
 : offComm ( -- )
-\	PORTE LED_COMM portOff
-	off
+	LED_COMM PORTE portOff
 ;
 
 : flash

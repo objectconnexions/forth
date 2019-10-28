@@ -1,7 +1,16 @@
 
 * Words
 
-** `DUP`  n1 -- n1 n1~
+
+** `@`  addr -- n
+
+Read the memory/register at the address and place its value on the stack.
+
+** `!` n addr --
+
+Write the value to the memory/register at the address.
+
+** `DUP`  n1 -- n1 n1
 
 Duplicate value on top of stack
 
@@ -11,6 +20,7 @@ Duplicate value on top of stack
 Remove number for top of stack
 
 
+** `TUCK`  n1 n2 -- n2 n1 n2
 
-
+Duplicate value on top of stack placing it underneath the next-on-stack value.
 

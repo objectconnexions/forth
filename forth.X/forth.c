@@ -58,8 +58,6 @@ void forth_execute(uint8_t* word) {
         }
         main_process->ip = 0;
         main_process->next_time_to_run = timer;
-
-  //      execute(code_store);
     }
 }
 
@@ -68,6 +66,19 @@ bool stack_underflow() {
         printf("stack underflow; aborting\n");
         return true;
     } else {
+        return false;
+    }
+}
+
+static bool isAccessibleMemory(uint32_t address) {
+    if ((address >= 0xBF800000 && address <= 0xBF8FFFFF) ||
+            (address >= 0x80000000 && address <= 0x8000FFFF)) 
+    {
+        return true;
+    } 
+    else 
+    {
+        printf("LIMIT %X!", address);
         return false;
     }
 }
@@ -96,9 +107,35 @@ void forth_run() {
     }
     if (debug) {
         dump_parameter_stack(process);
-        printf(" execute [%i] %02x@%04x\n", process->id, instruction, process->ip - 1);
+        char *ins;
+        switch (instruction) {
+            case DUP:
+                ins = "DUP";
+                break;
+                
+            case SWAP:
+                ins = "SWAP";
+                break;
+                           
+            case WRITE_MEMORY:
+                ins = "!";
+                break;
+
+            case ADD:
+                ins = "+";
+                break;
+                
+            case LIT:
+                ins = "PUSH";
+                break;
+                
+            default:
+                ins = "?";
+        }
+        printf(" %s [%i] %02x@%04x\n", ins, process->id, instruction, process->ip - 1);
     }
 
+    bool in_error = false;
     switch (instruction) {
 		case DUP:
 			if (process->sp < 0) {
@@ -453,15 +490,18 @@ void forth_run() {
 			}
 
             tos_value = process->stack[process->sp--];
-            if (trace) {
-                printf("address 0x%x\n", tos_value);
+            if (trace) printf("address 0x%x\n", tos_value);
+            if (isAccessibleMemory(tos_value)) 
+            {
+                uint32_t *ptr = (uint32_t *) tos_value;
+                tos_value = (uint32_t) *ptr;
+                if (trace) printf("& value 0x%x\n", tos_value);
+                process->stack[++(process->sp)] = tos_value;
             }
-            uint32_t *ptr = (uint32_t *) tos_value;
-            tos_value = (uint32_t) *ptr;
-            if (trace) {
-                printf("& value 0x%x\n", tos_value);
+            else 
+            {
+                in_error = true;
             }
-            process->stack[++(process->sp)] = tos_value;
             break;
 
         case WRITE_MEMORY:
@@ -472,11 +512,16 @@ void forth_run() {
 
             tos_value = process->stack[process->sp--]; // address
             nos_value = process->stack[process->sp--]; // write value
-            if (trace) {
-                printf("& set address %04X to %04X\n", tos_value, nos_value);
+            if (trace) printf("& set address %04X to %04X\n", tos_value, nos_value);
+            if (isAccessibleMemory(tos_value)) 
+            {
+                uint32_t *ptr = (uint32_t *) tos_value;
+                *ptr = nos_value;
             }
-            ptr = (uint32_t *) tos_value;
-            *ptr = nos_value;
+            else 
+            {
+                in_error = true;
+            }
             break;
 
         case PRINT_HEX:
@@ -534,7 +579,7 @@ void forth_run() {
 
 		case END:
 			//dump_parameter_stack(process);
-            printf("\n");
+            //printf("\n");
             process->ip = 0xffff;
             process->next_time_to_run = 0;
             next_task();
@@ -544,8 +589,23 @@ void forth_run() {
 			break;
 
 		default:
-            printf("unknown instruction [%i] %02x@%04x\n", process->id, instruction, process->ip - 1);
+            printf("%s!\n", instruction);
+            if (trace) 
+            {
+                printf("unknown instruction [%i] %02x@%04x\n", process->id, instruction, process->ip - 1);
+            }
 			break;
+    }
+    
+    if (in_error) {
+        in_error = false;
+        process->sp = 0;
+        process->rsp = 0;
+        process->ip = 0;
+        process->ip = 0xffff;
+        process->next_time_to_run = 0;
+        next_task();
+        printf(" ABORTED\n");
     }
 }
 
