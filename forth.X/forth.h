@@ -45,14 +45,16 @@ extern "C" {
 #define WRITE_MEMORY 0xc1
 
 #define RUN 0xe0
-#define RETURN 0xe1
-#define ZBRANCH 0xe2
-#define BRANCH 0xe3
+#define CONST 0xe1
+#define VAR 0xe2
+#define RETURN 0xe3
+#define ZBRANCH 0xe4
+#define BRANCH 0xe5
 
-#define EXECUTE 0xe4
-#define INITIATE 0xe5
-#define YIELD 0xe7
-#define WAIT 0xe8
+#define EXECUTE 0xe6
+#define INITIATE 0xe7
+#define YIELD 0xe8
+#define WAIT 0xe9
 
 #define WORDS 0xf0
 #define STACK 0xf1
@@ -74,7 +76,7 @@ extern bool debug;
 extern struct Process* process;
 extern struct Process* main_process;
 
-extern struct Dictionary* dictionary;
+extern uint8_t dictionary[];
 
 int forth_init();
 

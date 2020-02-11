@@ -1,12 +1,21 @@
-2 4 +
-4 8 * \ add two numbers, multiply two
-. CR . CR CR
-
 \ turn on LED
-0x0bf886220 dup @
-stack CR
-0x01 4 lshift
-stack CR
-or
-stack CR
-\ !
+IO PORTB + 1 port_on
+50 ms
+IO PORTB + 1 port_off
+
+\ read status reg
+ENABLE_ID_CHIP
+0x05 WRITE_SPI			\ read
+READ_SPI
+DISABLE_ID_CHIP
+SPI1STAT @ .HEX
+. CR
+
+
+ENABLE_ID_CHIP
+0x03 WRITE_SPI			\ read
+0x0fa WRITE_SPI			\ serial number address
+READ_SPI 	. CR
+DISABLE_ID_CHIP
+SPI1STAT @ .HEX CR
+

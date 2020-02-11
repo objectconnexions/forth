@@ -1,119 +1,86 @@
 _reset
 
+0x0bf80f230 CONSTANT SYSKEY
+
 0x0bf880000 CONSTANT IO
 0x6000 CONSTANT PORTA
 0x6100 CONSTANT PORTB
 0x6200 CONSTANT PORTC
+
 0x00 CONSTANT ANSEL
 0x10 CONSTANT TRIS
 0x20 CONSTANT PORT
 
-
-: mask ( pos size -- mask )
-\ creates a bit mask for the specified number of bits at the 
-\ postion (zero indexed)
-
-	1 swap lshift
-	1 -
-	swap lshift
-	0x0ffff xor
-;
-
-: setBits ( value pos size -- value ) 
-	tuck
-
-	mask
-	swap
-
-
-
-	4 3 mask
-	889 and
-	6 4 lshift
-	or
-;
-
-: RegAddr  ( base port register -- addr )
-	+ +
-;
-
-: RegGet ( mask addr -- n )
-	@
-	AND
-;
-
-: RegSetOn  ( value mask addr -- )
-	tuck @		 		\ read current state of port ( addr bit port-state )
-	swap
-    0x01 swap lshift	
-;
-\ IO PORTA PORT register
-
-\ position value address regSet
-
-\ position value mask
-
-
-
-: DOUBLE ( n n -- 2n ) DUP + ;
-
-: SQUARE ( n n -- n^2 ) DUP * ;
-
-: INC ( n -- n+1 ) 1 + ;
-
-: ON ( -- )
-    0x0bf886220 dup @
-    0x01 4 lshift
-    or
-    swap !
-;
-
-: OFF ( -- ) 
-	0x0bf886220 dup @
-	0x01 4 lshift
-	0x03ff xor 
-	and 
-	swap ! 
-;
-
-\ : +! ( n address --  - add n to address )
-\ 	DUP @ + ! \ need to swap next on stack!
-\ ;
-
-
-
-
-: portOn ( bit addr -- )
-	tuck @		 		\ read current state of port ( addr bit port-state )
-	swap
-    0x01 swap lshift	\ use bit to determine mask ( addr mask )
-	or					\ use mask to update port state ( addr port-state )
-	swap !					\ write new state of port ( )
-;
-
-: portOff ( bit addr -- )
-	tuck @		 		\ read current state of port ( addr bit port-state )
-	swap
-    0x01 swap lshift	\ use bit to determine mask ( addr mask )
-	0x03ff xor 
-	and 				\ use mask to update port state ( addr port-state )
-	swap !					\ write new state of port ( )
-;
-
-0x0bf886220 CONSTANT PORTE
 4 CONSTANT LED_COMM
 
-: onComm ( -- )
-	LED_COMM PORTE portOn
+
+
+: 2DUP ( n1 n2 -- n1 n2 n1 n2 )
+	over
+	over
 ;
 
-: offComm ( -- )
-	LED_COMM PORTE portOff
+
+: SET_BITS ( value value position -- value )
+	lshift or
 ;
 
-: flash
-	begin
-		onComm 200 ms offComm 200 ms
-	again
+\ clear bit at position in register
+: BIT_CLR ( addr pos -- ) 
+	1 swap lshift		\ determine mask
+	swap 
+	0x04 or				\ clear register is 4 registers on
+	!					\ write to register
 ;
+
+\ set bit at position in register
+: BIT_SET ( addr pos -- ) 
+	1 swap lshift		\ determine mask
+	swap 
+	0x08 or				\ set register is 8 registers on
+	!					\ write to register
+;
+
+\ set bit at position in register
+: BIT_INV ( addr pos -- ) 
+	1 swap lshift		\ determine mask
+	swap 
+	0x0c or				\ set register is 12 registers on
+	!					\ write to register
+;
+
+: DIGITAL_OUT ( port bit -- )
+	swap
+	2dup				\ copy params
+	ANSEL +				\ determine ANSEL reg address
+	swap bit_clr		\ clear analogue flag
+	
+	2dup
+	TRIS +				\ TRIS register
+	swap bit_clr		\ set to output
+
+	PORT +				\ PORT register
+	swap bit_clr		\ set to off
+;
+
+: PORT_ON ( port bit -- )
+	swap
+	PORT +				\ PORT register
+	swap bit_set		\ set to on
+;
+
+: PORT_OFF ( port bit -- )
+	swap
+	PORT +				\ PORT register
+	swap bit_clr		\ set to on
+;
+
+: PORT_TOGGLE ( port bit -- )
+	swap
+	PORT +				\ PORT register
+	swap bit_inv		\ set to on
+;
+ 
+
+
 

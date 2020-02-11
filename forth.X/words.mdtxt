@@ -6,9 +6,11 @@
 
 Read the memory/register at the address and place its value on the stack.
 
+
 ** `!` n addr --
 
 Write the value to the memory/register at the address.
+
 
 ** `DUP`  n1 -- n1 n1
 

@@ -24,14 +24,15 @@ extern "C" {
 
   
         
-#define SCRATCHPAD 64
-  
+#define SCRATCHPAD 80
+
+    /*
 struct Dictionary {
 	struct Dictionary* previous;
 	char* name;
     uint8_t *code;
 };
-
+*/
 struct Process {
     uint8_t id;
     uint32_t stack[16];
@@ -50,14 +51,12 @@ struct Process {
 
 extern struct Process* processes;
 
-extern struct Dictionary* dictionary;
+//extern struct Dictionary* dictionary;
 
 extern uint8_t code_store[];
 
-
 void code_init();
 
-void words();
     
 #ifdef __cplusplus
 }

@@ -5,20 +5,27 @@
     #include <xc.h>          /* Defines special funciton registers, CP0 regs  */
 #endif
 
-#define _SUPPRESS_PLIB_WARNING 1 
-
-#include <p32xxxx.h>
-#include <sys/attribs.h>
+// #include <p32xxxx.h>
 #include <plib.h>           /* Include to use PIC32 peripheral libraries      */
+#include <sys/attribs.h>
 #include <stdint.h>         /* For uint32_t definition                        */
 #include <stdbool.h>        /* For true/false definition                      */
 #include <string.h>
-#include <proc/p32mx270f256d.h>
 #include "system.h"         /* System funct/params, like osc/periph config    */
 #include "user.h"           /* User funct/params, such as InitApp             */
 #include "stdio.h"
 #include "uart.h"
 #include "forth.h"
+
+#ifdef MX270
+#include <proc/p32mx270f256d.h>
+#define PWR_LED PORTAbits.RA8
+#endif
+
+#ifdef MX570
+#include <proc/p32mx570f512h.h>
+#define PWR_LED PORTEbits.RE18
+#endif
 
 bool trace = false;
 bool debug = false;
@@ -28,8 +35,6 @@ extern uint32_t timer;
 /******************************************************************************/
 /* Global Variable Declaration                                                */
 /******************************************************************************/
-
-/* i.e. uint32_t <variable_name>; */
 
 bool run_task = false;
 
@@ -78,36 +83,48 @@ int32_t main(void)
 
     // Power LED
     // ANSELAbits.ANSA0 = 0;
+#ifdef MX270
     TRISAbits.TRISA8 = 0;
-    PORTAbits.RA8 = 1;
+#endif
 
-    // ERROR LED
-    
-    ANSELBbits.ANSB1 = 0;
-    TRISBbits.TRISB1 = 0;
-    PORTBbits.RB1 = 0;
+#ifdef MX570
+    ANSELEbits.ANSE1 = 0;
+    TRISEbits.TRISE1 = 0;
+#endif
 
-    // COMMS LED
-    TRISCbits.TRISC4 = 0;
-    PORTCbits.RC4 = 0;
     
-    // IO#1
-    ANSELCbits.ANSC0 = 0;
-    TRISCbits.TRISC0 = 1;
-    CNPUCbits.CNPUC0 = 1;
+    //PORTAbits.RA8 = 1;
+    PWR_LED = 1;
+
+//    // ERROR LED
+//    
+//    ANSELBbits.ANSB1 = 0;
+//    TRISBbits.TRISB1 = 0;
+//    PORTBbits.RB1 = 0;
+//
+//    // COMMS LED
+//    TRISCbits.TRISC4 = 0;
+//    PORTCbits.RC4 = 0;
+//    
+//    // IO#1
+//    ANSELCbits.ANSC0 = 0;
+//    TRISCbits.TRISC0 = 1;
+//    CNPUCbits.CNPUC0 = 1;
     
 
-    char buf[128];       // declare receive buffer with max size 1024    
+    //char buf[128];       // declare receive buffer with max size 1024    
  
     uart_init();
     uart_transmit_buffer("PIC 32MX board\r\n");
     
+    /*
     U1PWRCbits.USBPWR = 0; // reset USB
     U1OTGCONbits.OTGEN = 0; // not OTG
     U1CONbits.HOSTEN = 0; // device
     U1CONbits.USBEN = 1; // active
     
     U1PWRCbits.USBPWR = 1; 
+    */
     
     // Timer1 Setup
     T1CONbits.ON = 0;       // disable before set up
@@ -125,9 +142,13 @@ int32_t main(void)
     
     forth_init();
     
+    uint32_t pattern = 0x00000707; //0x00333;
+    uint32_t power_led = pattern;
+    
     while(1)
     {
-        bool read = uart_read_input(buf); // uart_input_length();
+        /*
+        bool read = uart_read_input(buf);
         if (read) {
             buf[strlen(buf) - 1] = 0;
             if (trace) printf("> read line %s\n", buf);
@@ -150,8 +171,8 @@ int32_t main(void)
                 uart_transmit_buffer(buf);    
 
             } else if (strcmp(buf, "load") == 0) {
-                compiler_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or ! ;");
-                compiler_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and ! ;");
+                compiler_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
+                compiler_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
                 compiler_compile(": FLASH on 200 ms off 200 ms ;");
                 compiler_compile(": FLASH2 flash flash flash ;");
 
@@ -159,12 +180,21 @@ int32_t main(void)
                 forth_execute(buf);
             }
         }
-
+*/
     	// TODO change to display the bits of int
         if (run_task) { 
             run_task = false;
-            if (timer % 100 == 0) {            
-                PORTAbits.RA8 = ! PORTAbits.RA8;
+            if (timer % 30 == 0) {            
+                // PORTAbits.RA8 = power_led & 0x01;
+                PWR_LED = power_led & 0x01;
+                power_led = power_led >> 1;
+                if (timer % 1200 == 0) {
+                    power_led = pattern;
+                }               
+            }
+            
+            if (timer % 10000 == 0) {
+                uart_debug();
             }
         }
 

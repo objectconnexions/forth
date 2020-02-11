@@ -37,8 +37,8 @@
 #pragma config USERID = 0xFFFF          // Enter Hexadecimal value (Enter Hexadecimal value)
 #pragma config PMDL1WAY = ON            // Peripheral Module Disable Configuration (Allow only one reconfiguration)
 #pragma config IOL1WAY = ON             // Peripheral Pin Select Configuration (Allow only one reconfiguration)
-#pragma config FUSBIDIO = ON            // USB USID Selection (Controlled by the USB Module)
-#pragma config FVBUSONIO = ON           // USB VBUS ON Selection (Controlled by USB Module)
+#pragma config FUSBIDIO = OFF            // USB USID Selection (Controlled by the USB Module)
+#pragma config FVBUSONIO = OFF           // USB VBUS ON Selection (Controlled by USB Module)
 
 // DEVCFG2
 #pragma config FPLLIDIV = DIV_2         // PLL Input Divider (2x Divider)

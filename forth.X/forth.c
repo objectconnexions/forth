@@ -8,6 +8,7 @@
 
 #include "forth.h"
 #include "code.h"
+#include "compiler.h"
 #include "uart.h"
 
 uint32_t timer = 0;
@@ -26,19 +27,9 @@ void wait(uint32_t);
 void next_task();
 struct Process* new_task(uint8_t, char*);
 void tasks();
-void words();
 
-void compiler_init(void);
-void compiler_reset(void);
-bool compiler_compile(char*);
-void compiler_dump(void);
-
-uint8_t code_store[2048];
-
+uint8_t dictionary[1024 * 8];
 struct Process* processes;
-
-struct Dictionary* dictionary;
-
 struct Process* process;
 struct Process* main_process;
 
@@ -50,13 +41,13 @@ int forth_init() {
 	uart_transmit_buffer("FORTH v0.1\n\n");
 }
 
-void forth_execute(uint8_t* word) {
-    printf("> %s\n", word);
-    if (compiler_compile(word)) {
+void forth_execute(uint8_t* line) {
+    printf("> %s\n", line);
+    if (compiler_compile(line)) {
         if (trace) {
             dump();
         }
-        main_process->ip = 0;
+        main_process->ip = compiler_scratch();  // scratch code is the temporary entry in dictionary
         main_process->next_time_to_run = timer;
     }
 }
@@ -84,9 +75,47 @@ static bool isAccessibleMemory(uint32_t address) {
 }
 
 void forth_run() {
+    char buf[128]; 
     uint32_t tos_value;
 	uint32_t nos_value;
         
+    
+    if (main_process->ip == 0xffff)
+    {
+        bool read = uart_read_input(buf);
+        if (read) {
+            buf[strlen(buf) - 1] = 0;
+            if (trace) printf("> read line %s\n", buf);
+            
+            if (strcmp(buf, "usb") == 0) {
+      //          sprintf(buf, "OTG = %08x CON = %08x PWRC = %08x\n", U1OTGCON, U1CON, U1PWRC);   
+      //          uart_transmit_buffer(buf);    
+                
+            } else if (strncmp(buf, "led ", 4) == 0) {
+         /*       if (strcmp(buf + 4, "on") == 0) {
+                    PORTCbits.RC4 = 1;
+                    uart_transmit_buffer("led on\n");
+                } else if (strcmp(buf + 4, "off") == 0) {
+                    PORTCbits.RC4 = 0;
+                    uart_transmit_buffer("led off\n");
+                }
+         */       
+            } else if (strcmp(buf, "timer") == 0) {
+            /*    sprintf(buf, "timer = %04x\n", TMR1);   
+                uart_transmit_buffer(buf);    
+*/
+            } else if (strcmp(buf, "load") == 0) {
+                compiler_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
+                compiler_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
+                compiler_compile(": FLASH on 200 ms off 200 ms ;");
+                compiler_compile(": FLASH2 flash flash flash ;");
+
+            } else {                
+                forth_execute(buf);
+            }
+        }
+    }
+    
     if (waiting) {
         next_task();
         if (waiting) {
@@ -96,9 +125,10 @@ void forth_run() {
     
     uint8_t instruction = process->code[process->ip++];    
     if (instruction == 0) {
-        printf ("no instruction %0x @ %04x", instruction, process->ip - 1);
+        printf ("no instruction %0x @ %04x\n", instruction, process->ip - 1);
         process->ip = 0xffff;
         process->next_time_to_run = 0;
+        next_task();
         return;
     }
 
@@ -140,8 +170,8 @@ void forth_run() {
 		case DUP:
 			if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
-				return;
-			}
+				return;	
+		}
 			tos_value = process->stack[process->sp];
 			process->stack[++(process->sp)] = tos_value;
 			break;
@@ -391,12 +421,15 @@ void forth_run() {
 			break;
 
 		case RUN:
-            if (trace) {
-                printf("& run from %i\n", process->code[process->ip]);
-            }
-			process->return_stack[++(process->rsp)] = process->ip + 1;
-			uint8_t code_at = process->code[process->ip ++];
+            
+            // TODO make this the default case - so no RUN is needed!
+ 			process->return_stack[++(process->rsp)] = process->ip + 2;
+			uint16_t code_at = process->code[process->ip ++] * 0x100
+                    +  process->code[process->ip ++];
 			process->ip = code_at;
+            if (trace) {
+                printf("& run from %i\n", code_at);
+            }
 			break;
 
         case EXECUTE:
@@ -483,6 +516,24 @@ void forth_run() {
 			printf("%c", tos_value);
 			break;
 
+        case CONST:
+            // index of value within dictionary
+            nos_value = dictionary[process->ip++] * 0x100 +
+                    dictionary[process->ip++]; 
+            tos_value = dictionary[nos_value++] +
+                    dictionary[nos_value++] * 0x100 +
+                    dictionary[nos_value++] * 0x10000 +
+                    dictionary[nos_value++] * 0x1000000;
+			process->stack[++(process->sp)] = tos_value;
+            break;
+            
+        case VAR:
+            // address in memory
+            tos_value = dictionary[process->ip++] * 0x100 +
+                    dictionary[process->ip++]; 
+ 			process->stack[++(process->sp)] = (uint32_t) dictionary + tos_value;            
+            break;
+            
         case READ_MEMORY:
             if (process->sp < 0) {
 				printf("stack underflow; aborting\n");
@@ -490,7 +541,7 @@ void forth_run() {
 			}
 
             tos_value = process->stack[process->sp--];
-            if (trace) printf("address 0x%x\n", tos_value);
+            if (trace) printf("& address 0x%x\n", tos_value);
             if (isAccessibleMemory(tos_value)) 
             {
                 uint32_t *ptr = (uint32_t *) tos_value;
@@ -559,7 +610,6 @@ void forth_run() {
 			break;
 
 		case RESET:
-            dictionary = NULL;
             compiler_reset();
             struct Process* next = processes;
             do {
@@ -568,7 +618,6 @@ void forth_run() {
                 next->ip = 0;
                 next = next->next;
             } while (next != NULL);
-            code_store[0] = END;
             break;
 
 		case CLEAR_REGISTERS:
@@ -578,8 +627,6 @@ void forth_run() {
             break;
 
 		case END:
-			//dump_parameter_stack(process);
-            //printf("\n");
             process->ip = 0xffff;
             process->next_time_to_run = 0;
             next_task();
@@ -633,9 +680,9 @@ void dump_return_stack(struct Process *p) {
         int i;
 		for (i = 0; i <= p->rsp; i++) {
 			if (i == p->rsp) {
-				printf("| %i ]", p->return_stack[i]);
+				printf("| %x ]", p->return_stack[i]);
 			} else {
-				printf("%i ", p->return_stack[i]);
+				printf("%x ", p->return_stack[i]);
 			}
 		}
 	} else {
@@ -689,7 +736,7 @@ struct Process* new_task(uint8_t priority, char *name) {
     nextProcess->priority = priority;
     nextProcess->next_time_to_run = 0;
     nextProcess->name = malloc(sizeof(strlen(name) + 1));
-    nextProcess->code = code_store; // TODO remove code from process - all processes use the same code
+    nextProcess->code = dictionary; // TODO remove code from process - all processes use the same code
     strcpy(nextProcess->name, name);
     
     nextProcess->ip = 0xffff;
@@ -740,12 +787,6 @@ void tasks() {
 void dump() {
     int i;
 
-	if (dictionary == NULL) {
-		printf("No new words\n");
-	} else {
-        compiler_words();
-	}
-
     compiler_dump();
     
 	printf ("\n0000   ");
@@ -757,7 +798,7 @@ void dump() {
 		if (i % 16 == 0) {
 			printf("\n%04X  ", i);
 		}
-		printf("%02X ", code_store[i]);
+		printf("%02X ", dictionary[i]);
 	}
 	printf("\n");
 

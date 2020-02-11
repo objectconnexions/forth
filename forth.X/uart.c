@@ -23,23 +23,31 @@
 #define XOFF 0x13
 #define LENGTH 512
 
-// static int uart_len;
 static char uart_buffer[LENGTH];
-//static char *uart_received;
-//static char *uart_read;
-static int receive_index;
-static int read_index;
-//static bool uart_read;
+static uint16_t receive_head;
+static uint16_t read_tail;
+static uint16_t receive_limit;
 static bool line_available;
 static bool on_hold;
 
 void uart_init() {
+#ifdef MX270
     // RX
     ANSELAbits.ANSA1 = 0;
     U2RXRbits.U2RXR = 0;    //SET RX to RA0
-    
     // TX
     RPC2Rbits.RPC2R = 2;    //SET RB9 to TX
+#endif
+
+#ifdef MX570
+    // RX
+    ANSELAbits.ANSA1 = 0;
+    U2RXRbits.U2RXR = 0;    //SET RX to RA0
+    // TX
+    RPC2Rbits.RPC2R = 2;    //SET RB9 to TX
+#endif
+
+    
  
     uart_configure(57600);  // Configure UART2 for a baud rate of 57600
  
@@ -47,9 +55,8 @@ void uart_init() {
     
     U2MODESET = 0x8000;     // enable UART2
        
-    receive_index = 0;
-    read_index = 0;
-    on_hold = false;
+    receive_head = 0;
+    read_tail = 0;
     line_available = false;
     
     
@@ -59,11 +66,12 @@ void uart_init() {
      *  starting the PIC's data transmission. This has ony been with higher baud rates ( > 9600) */
     int t;
     for( t=0 ; t < 100000 ; t++);
-    
-    uart_transmit_char(XON);
-    
+        
     memset(uart_buffer, 0, LENGTH);
-}
+
+    on_hold = false;
+    uart_transmit_char(XON);
+   }
 
 
 /* UART2Configure() sets up the UART2 for the most standard and minimal operation
@@ -119,17 +127,17 @@ bool uart_read_input(char *buffer) {
     else 
     {
         line_available = false;
-        int limit = read_index > receive_index ? receive_index + LENGTH : receive_index;
-        while (read_index <= limit) 
+        int limit = read_tail > receive_head ? receive_head + LENGTH : receive_head;
+        while (read_tail < limit) 
         {
-            char c = uart_buffer[read_index % LENGTH];
+            char c = uart_buffer[read_tail % LENGTH];
             *buffer++ = c;
-            read_index++;
+            read_tail++;
             if (c == '\r' || c == '\n')
             {
                 *buffer = '\0';
 
-                int search = read_index;  
+                int search = read_tail;  
                 while (search <= limit) 
                 {
                     c = uart_buffer[search % LENGTH];
@@ -143,7 +151,15 @@ bool uart_read_input(char *buffer) {
                 break;
             }
         }
-        read_index = read_index % LENGTH;
+        read_tail %=  LENGTH; //read_tail % LENGTH;
+        // determine how much buffer can be received into
+        limit = (read_tail + LENGTH - 8) % LENGTH;
+        receive_limit = limit > receive_head ? limit : read_tail + LENGTH;
+        // printf("%s tail %i - head %i -> %i\n", on_hold ? "*" : " ", read_tail, receive_head, (read_tail + LENGTH - receive_head) % LENGTH);
+        if (on_hold && (read_tail + LENGTH - receive_head) % LENGTH  > 250) {
+            uart_transmit_char(XON);
+            on_hold = false;
+        }
         return true;
     }    
 }
@@ -154,17 +170,24 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
     IEC1bits.U2RXIE = 0;
 	if(IFS1bits.U2RXIF)
 	{
+        if (!on_hold && (read_tail + LENGTH - receive_head - 1) % LENGTH < 50) {
+            uart_transmit_char(XOFF);
+            on_hold = true;
+            printf("HLD");
+        }
+        
         while (U2STAbits.URXDA) 
         {
             char c = U2RXREG; 
-            uart_buffer[receive_index % LENGTH]  = c;
-            receive_index = (receive_index + 1) % LENGTH;
+            uart_buffer[receive_head % LENGTH]  = c;
+            receive_head++; // = (receive_head + 1) % LENGTH;
         
             if (c == '\r' || c == '\n')
             {
                 line_available = true;
             }
         }
+        receive_head %= LENGTH;
         IFS1bits.U2RXIF = 0;
         IEC1bits.U2RXIE = 1;
 	}
@@ -178,5 +201,30 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
 }
 
 void uart_debug() {
-    printf("%i? %i/%i\n", line_available, read_index, receive_index);
+    int len =  (read_tail + LENGTH - receive_head - 1) % LENGTH;
+    printf("%i? %0x/%0x (%i)\n", line_available, read_tail, receive_head, len);
+    if (len < 50) {
+        
+        printf ("\n0000   ");
+        int i;
+        for (i = 0; i < 16; i++) 
+        {
+            printf("%X   ", i);
+        }
+        printf ("\n");
+        for (i = 0; i < LENGTH; i++) 
+        {
+            if (i % 16 == 0) {
+                int j;
+                for (j = 0; j < 16; j++) {
+                    char c = uart_buffer[i - 16 + j];
+                    if (c < 32) c = ' ';
+                    printf("%c", c);
+                }
+                printf("\n%04X  ", i);
+            }
+            printf("%02X ", uart_buffer[i]);
+        }
+        printf("\n");
+    }
 }
