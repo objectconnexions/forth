@@ -79,11 +79,9 @@ int32_t main(void)
     INTConfigureSystem(INT_SYSTEM_CONFIG_MULT_VECTOR);
     INTEnableInterrupts();
 
-    /* TODO <INSERT USER APPLICATION CODE HERE> */
-
-    // Power LED
-    // ANSELAbits.ANSA0 = 0;
+    
 #ifdef MX270
+    // Power LED
     TRISAbits.TRISA8 = 0;
 #endif
 
@@ -92,40 +90,11 @@ int32_t main(void)
     TRISEbits.TRISE1 = 0;
 #endif
 
-    
-    //PORTAbits.RA8 = 1;
     PWR_LED = 1;
 
-//    // ERROR LED
-//    
-//    ANSELBbits.ANSB1 = 0;
-//    TRISBbits.TRISB1 = 0;
-//    PORTBbits.RB1 = 0;
-//
-//    // COMMS LED
-//    TRISCbits.TRISC4 = 0;
-//    PORTCbits.RC4 = 0;
-//    
-//    // IO#1
-//    ANSELCbits.ANSC0 = 0;
-//    TRISCbits.TRISC0 = 1;
-//    CNPUCbits.CNPUC0 = 1;
-    
-
-    //char buf[128];       // declare receive buffer with max size 1024    
- 
     uart_init();
     uart_transmit_buffer("PIC 32MX board\r\n");
-    
-    /*
-    U1PWRCbits.USBPWR = 0; // reset USB
-    U1OTGCONbits.OTGEN = 0; // not OTG
-    U1CONbits.HOSTEN = 0; // device
-    U1CONbits.USBEN = 1; // active
-    
-    U1PWRCbits.USBPWR = 1; 
-    */
-    
+        
     // Timer1 Setup
     T1CONbits.ON = 0;       // disable before set up
     PR1 = 1250;           // divide by to get 1kHz, eg 1ms ticks
@@ -147,54 +116,15 @@ int32_t main(void)
     
     while(1)
     {
-        /*
-        bool read = uart_read_input(buf);
-        if (read) {
-            buf[strlen(buf) - 1] = 0;
-            if (trace) printf("> read line %s\n", buf);
-            
-            if (strcmp(buf, "usb") == 0) {
-                sprintf(buf, "OTG = %08x CON = %08x PWRC = %08x\n", U1OTGCON, U1CON, U1PWRC);   
-                uart_transmit_buffer(buf);    
-                
-            } else if (strncmp(buf, "led ", 4) == 0) {
-                if (strcmp(buf + 4, "on") == 0) {
-                    PORTCbits.RC4 = 1;
-                    uart_transmit_buffer("led on\n");
-                } else if (strcmp(buf + 4, "off") == 0) {
-                    PORTCbits.RC4 = 0;
-                    uart_transmit_buffer("led off\n");
-                }
-                
-            } else if (strcmp(buf, "timer") == 0) {
-                sprintf(buf, "timer = %04x\n", TMR1);   
-                uart_transmit_buffer(buf);    
-
-            } else if (strcmp(buf, "load") == 0) {
-                compiler_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
-                compiler_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
-                compiler_compile(": FLASH on 200 ms off 200 ms ;");
-                compiler_compile(": FLASH2 flash flash flash ;");
-
-            } else {                
-                forth_execute(buf);
-            }
-        }
-*/
-    	// TODO change to display the bits of int
         if (run_task) { 
             run_task = false;
             if (timer % 30 == 0) {            
-                // PORTAbits.RA8 = power_led & 0x01;
+            	// display the bits of a pattern int
                 PWR_LED = power_led & 0x01;
                 power_led = power_led >> 1;
                 if (timer % 1200 == 0) {
                     power_led = pattern;
                 }               
-            }
-            
-            if (timer % 10000 == 0) {
-                uart_debug();
             }
         }
 
@@ -203,8 +133,8 @@ int32_t main(void)
 }
 
 /*
-Timer handle gets called every 1ms and increments the timer variable.
-Getting the timer variable git the time in milliseconds since startup. 
+    Timer handle gets called every 1ms and increments the timer variable.
+    Getting the timer variable git the time in milliseconds since startup. 
  */
 void __ISR(_TIMER_1_VECTOR, IPL5SOFT) Timer1Handler(void)
 {

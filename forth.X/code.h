@@ -23,24 +23,23 @@ extern "C" {
 #endif
 
   
-        
+#define WORD_COUNT 50        
 #define SCRATCHPAD 80
 
-    /*
-struct Dictionary {
-	struct Dictionary* previous;
-	char* name;
-    uint8_t *code;
+struct Word {
+    char * word;
+    void (*function)();
+    char * description;
 };
-*/
+
 struct Process {
     uint8_t id;
     uint32_t stack[16];
     uint32_t return_stack[8];
-    uint16_t ip; // instruction pointer
+    volatile uint16_t ip; // instruction pointer
     //TODO change both to unsigned --> then change -1 to 0xffff
-    int sp; // stack pointer
-    int rsp; // return stack pointer
+    volatile int sp; // stack pointer
+    volatile int rsp; // return stack pointer
     
     struct Process* next;
     char *name;
@@ -51,7 +50,7 @@ struct Process {
 
 extern struct Process* processes;
 
-//extern struct Dictionary* dictionary;
+extern struct Word core_words[];
 
 extern uint8_t code_store[];
 

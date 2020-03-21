@@ -1,11 +1,12 @@
 _reset
+noecho
 
 0x0bf80f230 CONSTANT SYSKEY
 
 0x0bf880000 CONSTANT IO
-0x6000 CONSTANT PORTA
-0x6100 CONSTANT PORTB
-0x6200 CONSTANT PORTC
+0x0bf886000 CONSTANT PORTA
+0x0bf886100 CONSTANT PORTB
+0x0bf886200 CONSTANT PORTC
 
 0x00 CONSTANT ANSEL
 0x10 CONSTANT TRIS
@@ -14,6 +15,21 @@ _reset
 4 CONSTANT LED_COMM
 
 
+: 0= ( n -- flag )
+	0 =
+;
+
+: 0> ( n -- flag )
+	0 >
+;
+
+: 0< ( n -- flag )
+	0 > NOT
+;
+
+: 0<> ( n -- flag )
+	0 = NOT
+;
 
 : 2DUP ( n1 n2 -- n1 n2 n1 n2 )
 	over
@@ -49,6 +65,23 @@ _reset
 	!					\ write to register
 ;
 
+: BIT_READ ( addr pos -- val )
+	swap @
+	swap rshift
+	0x01 and
+;
+
+: DIGITAL_IN ( port bit -- )
+	swap
+	2dup				\ copy params
+	ANSEL +				\ determine ANSEL reg address
+	swap bit_clr		\ clear analogue flag
+	
+	2dup
+	TRIS +				\ TRIS register
+	swap bit_set		\ set to input
+;
+
 : DIGITAL_OUT ( port bit -- )
 	swap
 	2dup				\ copy params
@@ -81,6 +114,13 @@ _reset
 	swap bit_inv		\ set to on
 ;
  
+: PORT_STATE ( port bit -- flag )
+	swap
+	PORT +
+	swap bit_read
+;
 
+\ TODO add port state to read bit
 
+echo
 

@@ -22,7 +22,8 @@
 extern "C" {
 #endif
 
-
+#include <stdint.h> 
+    
 void compiler_init(void);
 
 void compiler_reset(void);
@@ -33,7 +34,9 @@ void compiler_dump(void);
 
 uint16_t compiler_scratch(void);
 
+void find_word_for(uint16_t, char*);
 
+void compiler_words(void);
 
 #ifdef __cplusplus
 }

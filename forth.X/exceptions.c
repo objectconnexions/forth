@@ -125,9 +125,6 @@ void _general_exception_handler(void)
 
     while (1)
     {
-        /* Examine _excep_code to identify the type of exception */
-        /* Examine _excep_addr to find the address that caused the exception */
-        
         PORTBbits.RB1 = 1;
         printf("exception %X %X\n", _excep_code, _excep_addr);
         SoftReset();

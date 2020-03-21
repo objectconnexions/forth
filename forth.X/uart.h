@@ -21,14 +21,9 @@ int uart_transmit_buffer(const char *);
 
 int uart_transmit_char(const char);
 
-void uart_receive();
+bool uart_next_line(char *);
 
-
-void uart_input_length();
-
-bool uart_read_input(char *);
-
-void uart_resune(void);
+void uart_debug(void);
 
 #ifdef	__cplusplus
 }

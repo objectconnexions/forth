@@ -24,11 +24,10 @@
 #define LENGTH 512
 
 static char uart_buffer[LENGTH];
-static uint16_t receive_head;
-static uint16_t read_tail;
-static uint16_t receive_limit;
-static bool line_available;
-static bool on_hold;
+static volatile uint16_t receive_head;
+static volatile uint16_t read_tail;
+static volatile bool line_available;
+static volatile bool on_hold;
 
 void uart_init() {
 #ifdef MX270
@@ -93,7 +92,7 @@ int uart_configure(int desired_baud) {
     int actual_baud = SYSCLK / (16 * (U2BRG+1));
  
     return actual_baud;
-} // END UART2Configure()
+}
 
 int uart_transmit_char(const char c)
 {
@@ -103,7 +102,8 @@ int uart_transmit_char(const char c)
 
 /* SerialTransmit() transmits a string to the UART2 TX pin MSB first
  *
- * Inputs: *buffer = string to transmit */
+ * Inputs: *buffer = string to transmit
+ */
 int uart_transmit_buffer(const char *buffer)
 {
     unsigned int size = strlen(buffer);
@@ -118,27 +118,27 @@ int uart_transmit_buffer(const char *buffer)
     return 0;
 }
 
-bool uart_read_input(char *buffer) {
+bool uart_next_line(char *buffer) {
+    char *b = buffer;
     if (!line_available)
     {
         return false;
-        
     }
     else 
     {
         line_available = false;
         int limit = read_tail > receive_head ? receive_head + LENGTH : receive_head;
+        if (on_hold) printf("%i < %i\n", read_tail, limit) ;
         while (read_tail < limit) 
         {
             char c = uart_buffer[read_tail % LENGTH];
-            *buffer++ = c;
+            if (on_hold) printf("%c", c) ;
             read_tail++;
             if (c == '\r' || c == '\n')
             {
-                *buffer = '\0';
-
+                *buffer++ = '\0';
                 int search = read_tail;  
-                while (search <= limit) 
+                while (search < limit) 
                 {
                     c = uart_buffer[search % LENGTH];
                     if (c == '\r' || c == '\n') 
@@ -148,15 +148,18 @@ bool uart_read_input(char *buffer) {
                     }
                     search++;
                 }
+  
                 break;
             }
+            else
+            {
+                *buffer++ = c;
+            }
         }
-        read_tail %=  LENGTH; //read_tail % LENGTH;
-        // determine how much buffer can be received into
-        limit = (read_tail + LENGTH - 8) % LENGTH;
-        receive_limit = limit > receive_head ? limit : read_tail + LENGTH;
-        // printf("%s tail %i - head %i -> %i\n", on_hold ? "*" : " ", read_tail, receive_head, (read_tail + LENGTH - receive_head) % LENGTH);
+
+        read_tail %=  LENGTH;
         if (on_hold && (read_tail + LENGTH - receive_head) % LENGTH  > 250) {
+            printf("~RUN/n");
             uart_transmit_char(XON);
             on_hold = false;
         }
@@ -173,14 +176,16 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
         if (!on_hold && (read_tail + LENGTH - receive_head - 1) % LENGTH < 50) {
             uart_transmit_char(XOFF);
             on_hold = true;
-            printf("HLD");
+            printf("~HLD\n");
+            uart_debug();
         }
         
         while (U2STAbits.URXDA) 
         {
             char c = U2RXREG; 
+            if (on_hold) printf("%02x ", c);
             uart_buffer[receive_head % LENGTH]  = c;
-            receive_head++; // = (receive_head + 1) % LENGTH;
+            receive_head++;
         
             if (c == '\r' || c == '\n')
             {
@@ -201,10 +206,10 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
 }
 
 void uart_debug() {
-    int len =  (read_tail + LENGTH - receive_head - 1) % LENGTH;
-    printf("%i? %0x/%0x (%i)\n", line_available, read_tail, receive_head, len);
-    if (len < 50) {
-        
+    int free_space =  (read_tail + LENGTH - receive_head - 1) % LENGTH;
+    printf("%i? %04x/%04x (%i)\n", line_available, read_tail, receive_head, free_space);
+    if (free_space < 50)
+    {
         printf ("\n0000   ");
         int i;
         for (i = 0; i < 16; i++) 
@@ -214,9 +219,11 @@ void uart_debug() {
         printf ("\n");
         for (i = 0; i < LENGTH; i++) 
         {
-            if (i % 16 == 0) {
+            if (i % 16 == 0)
+            {
                 int j;
-                for (j = 0; j < 16; j++) {
+                for (j = 0; j < 16; j++)
+                {
                     char c = uart_buffer[i - 16 + j];
                     if (c < 32) c = ' ';
                     printf("%c", c);

@@ -1,7 +1,7 @@
 \ turn on LED
-IO PORTB + 1 port_on
+PORTB 1 port_on
 50 ms
-IO PORTB + 1 port_off
+PORTB 1 port_off
 
 \ read status reg
 ENABLE_ID_CHIP

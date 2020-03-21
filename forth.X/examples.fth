@@ -28,7 +28,7 @@
 		1 - DUP
 		DUP .
 		DUP test2
-		0  = 
+		0= 
 		STACK
 	UNTIL
 	DROP
@@ -43,7 +43,7 @@
 : count
 	BEGIN
 		1 - DUP
-		0  =
+		0=
 		STACK
 	UNTIL
 	DROP
