@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <GenericTypeDefs.h>
 
+#include "parser.h"
 #include "forth.h"
 #include "code.h"
 #include "compiler.h"
@@ -18,16 +19,17 @@ static bool echo;
 
 void dump_parameter_stack(struct Process*);
 void dump_return_stack(struct Process*);
-void execute(uint8_t*);
+void execute(uint32_t);
 void display_code(uint8_t*);
 void tasks(void);
-uint32_t popParameterStack(void);
+uint32_t pop_stack(void);
 void wait(uint32_t);
 void next_task();
 struct Process* new_task(uint8_t, char*);
 void tasks(void);
 void load_words(void);
 void reset(void);
+void print_top_of_stack(void);
 
 uint8_t dictionary[1024 * 8];
 struct Process* processes;
@@ -41,18 +43,27 @@ int forth_init()
     compiler_init();
     processes = new_task(3, "MAIN");
     process = main_process = processes;
-	uart_transmit_buffer("FORTH v0.2\n\n");
+	uart_transmit_buffer("FORTH v0.3\n\n");
     echo = true;
+    trace = true;
 }
 
 void forth_execute(uint8_t* line)
 {
     if (echo) printf("> %s\n", line);
+    /*
     if (compiler_compile(line))
     {
         //if (trace) dump();
         main_process->ip = compiler_scratch();  // scratch code is the temporary entry in dictionary
         main_process->next_time_to_run = timer;
+    }
+     */
+    parse(line);
+    if (trace) 
+    {
+        dump_parameter_stack(process);
+        printf("\n");
     }
 }
 
@@ -167,27 +178,38 @@ void forth_run()
     
     if (trace) 
     {
-        printf("& execute [%i] %02x@%04x %s\n", process->id, instruction, process->ip - 1, core_words[instruction].word);
+        printf("& execute [%i] %02X@%04X %s\n", process->id, instruction, process->ip - 1, core_words[instruction].word);
     }
     if (debug)
     {
         dump_parameter_stack(process);
         char * word = instruction >= WORD_COUNT ? "UNKNOWN" : core_words[instruction].word;
-        printf(" %s [%i] %02x@%04x\n", word, process->id, instruction, process->ip - 1);
+        printf(" %s [%i] %02X@%04X\n", word, process->id, instruction, process->ip - 1);
     }
 
+
+    execute(instruction);
+}
+
+void execute(uint32_t dict_entry)
+{
+    if (trace) {
+        printf("& execute 0x%04X\n", dict_entry);
+    }
+    
+        
     in_error = false;
     
-    if (instruction < WORD_COUNT)
+    if (dict_entry < WORD_COUNT)
     {
-        core_words[instruction].function();
+        core_words[dict_entry].function();
     }
     else 
     {
         in_error = true;
         if (trace) 
         {
-            printf("unknown instruction [%i] %02x@%04x\n", process->id, instruction, process->ip - 1);
+            printf("unknown instruction [%i] %02x@%04x\n", process->id, dict_entry, process->ip - 1);
         }
     }
     
@@ -202,8 +224,27 @@ void forth_run()
         next_task();
         printf(" ABORTED\n");
     }
+
+    
+    
+    
+    /*
+    process->return_stack[++(process->rsp)] = process->ip + 2;
+    uint16_t code_at = dict_entry; // process->code[process->ip ++] * 0x100 + process->code[process->ip ++];
+    process->ip = code_at;
+    if (trace) {
+        char word_name[64];
+        find_word_for(code_at, word_name);
+        printf("& run %s from %04x\n", word_name, code_at);
+    }
+     */
 }
 
+void push(uint32_t value)
+{
+    process->stack[++(process->sp)] = value;
+}
+    
 void duplicate() 
 {
     if (process->sp < 0) {
@@ -284,7 +325,8 @@ void lit()
             process->code[process->ip++] * 0x100 +
             process->code[process->ip++] * 0x10000 +
             process->code[process->ip++] * 0x1000000;
-    process->stack[++(process->sp)] = tos_value;
+    // process->stack[++(process->sp)] = tos_value;
+    push(tos_value);
 }
 
 void exec_process()
@@ -730,7 +772,7 @@ void wait(uint32_t wait_time) {
     next_task();
 }
 
-uint32_t popParameterStack() {
+uint32_t pop_stack() {
     if (process->sp < 1) {
         printf("stack underflow; aborting\n");
         // TODO need to use exception or some other way of dropping out

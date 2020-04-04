@@ -10,6 +10,8 @@
       <itemPath>forth.h</itemPath>
       <itemPath>code.h</itemPath>
       <itemPath>compiler.h</itemPath>
+      <itemPath>parser.h</itemPath>
+      <itemPath>interpreter.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -28,6 +30,8 @@
       <itemPath>forth.c</itemPath>
       <itemPath>compiler.c</itemPath>
       <itemPath>code.c</itemPath>
+      <itemPath>parser.c</itemPath>
+      <itemPath>interpreter.c</itemPath>
     </logicalFolder>
     <logicalFolder name="ExternalFiles"
                    displayName="Important Files"

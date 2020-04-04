@@ -88,6 +88,18 @@ uint16_t compiler_scratch()
     return next_entry;
 }
 
+void compile_number(uint32_t value) 
+{
+    add_literal(value);
+}
+
+void compile_code(uint32_t code)
+{
+    
+}
+
+
+
 bool compiler_compile(char* source)
 {
     uint8_t * start;

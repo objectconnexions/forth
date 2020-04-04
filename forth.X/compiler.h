@@ -24,6 +24,13 @@ extern "C" {
 
 #include <stdint.h> 
     
+
+void compile_number(uint32_t);
+
+void compile_code(uint32_t);
+
+
+    
 void compiler_init(void);
 
 void compiler_reset(void);
