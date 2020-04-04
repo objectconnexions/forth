@@ -349,7 +349,7 @@ void greater_than()
     }
     uint32_t tos_value = process->stack[process->sp--];
     uint32_t nos_value = process->stack[process->sp--];
-    tos_value = nos_value > tos_value ? 1 : 01;
+    tos_value = nos_value > tos_value ? 1 : 0;
     process->stack[++(process->sp)] = tos_value;
 }
 
@@ -663,7 +663,7 @@ void write_memory()
 void print_hex()
 {
     uint32_t tos_value = process->stack[process->sp--];
-    printf("0x%x", tos_value);
+    printf("0x%X", tos_value);
 }
 
 inline void print_cr() 
@@ -838,7 +838,7 @@ void tasks() {
     struct Process* p = processes;
     printf("Time %i\n", timer);
     do {
-        printf("Task #%i%s %s (P%i) @%04x, next %i  ", 
+        printf("Task #%i%s %s (P%i) @%04X, next %i  ", 
                 p->id, p == process ? "*" : "", p->name, p->priority,  
                 p->ip, p->next_time_to_run);
         dump_return_stack(p);

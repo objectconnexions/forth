@@ -338,14 +338,43 @@ static void compile(char* source) {
                                 }
                                 else {
                                     bool is_number = true;
-                                    int i;
+                                    int radix = 10;
+                                    int i = 0;
                                     // TODO determine based number by looking for 0, 0B or 0X first, then confirm every other char is a digit
-                                    for (i = 0; i < strlen(instruction); ++i) {
-                                        if (!isdigit(instruction[i]) && i == 2 && !(instruction[i] == 'X' || instruction[i] == 'B')) {
+                                    if (instruction[i] == '-')
+                                    {
+                                        i++;
+                                    }
+                                    if (instruction[i] == '0')
+                                    {
+                                        i++;
+                                        if (instruction[i] == 'X')
+                                        {
+                                            radix = 16;
+                                            i++;
+                                        }   
+                                        else if (instruction[i] == 'B')
+                                        {
+                                            radix = 2;
+                                            i++;
+                                        }   
+                                        else if (isdigit(instruction[i]))
+                                        {
+                                            radix = 8;
+                                            i++;
+                                        }   
+                                        else if (strlen(instruction) > i)
+                                        {
+                                            is_number = false;
+                                        }
+                                    }
+                                    for (; i < strlen(instruction); ++i) {
+                                        if (!isdigit(instruction[i]) && !(radix > 10 && instruction[i] < ('a' + radix - 10))) {
                                             is_number = false;
                                             break;
                                         }
                                     }
+
                                     if (is_number) {
                                         int64_t value = strtoll(instruction, NULL, 0);
                                         *compilation++ = LIT;
