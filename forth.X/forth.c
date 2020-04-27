@@ -6,20 +6,25 @@
 #include <ctype.h>
 #include <GenericTypeDefs.h>
 
+#include "debug.h"
 #include "parser.h"
+#include "interpreter.h"
 #include "forth.h"
 #include "code.h"
+// TODO is this still needed?
 #include "compiler.h"
+#include "dictionary.h"
 #include "uart.h"
 
-uint32_t timer = 0;
-uint8_t next_process_id = 0;
-static bool waiting = true;
-static bool echo;
+//#define NEXT_INSTRUCTION process->code[process->ip++]
+#define PEEK_DATA process->stack[process->sp]
+#define PUSH_DATA(value) (process->stack[++(process->sp)] = (value))
+#define POP_DATA process->stack[process->sp--]
+#define PUSH_RETURN(address) (process->return_stack[++(process->rsp)] =  (address))
 
 void dump_parameter_stack(struct Process*);
 void dump_return_stack(struct Process*);
-void execute(uint32_t);
+void execute_next_instruction(void);
 void display_code(uint8_t*);
 void tasks(void);
 uint32_t pop_stack(void);
@@ -30,22 +35,31 @@ void tasks(void);
 void load_words(void);
 void reset(void);
 void print_top_of_stack(void);
+void lit(void);
 
-uint8_t dictionary[1024 * 8];
+void return_to(void);
+uint32_t timer = 0;
+static bool waiting = true;
+static bool echo;
+
+//void (*core_function)(void)
+//void (*core_wordsxx[128](void));
 struct Process* processes;
 struct Process* process;
 struct Process* main_process;
+uint8_t next_process_id = 0;
 bool in_error;
 
 int forth_init()
 {   
-    load_words();
+    echo = true;
+    trace = true;
+    dictionary_init();
     compiler_init();
+    load_words();
     processes = new_task(3, "MAIN");
     process = main_process = processes;
 	uart_transmit_buffer("FORTH v0.3\n\n");
-    echo = true;
-    trace = true;
 }
 
 void forth_execute(uint8_t* line)
@@ -59,12 +73,14 @@ void forth_execute(uint8_t* line)
         main_process->next_time_to_run = timer;
     }
      */
-    parse(line);
+    parser_input(line);
     if (trace) 
     {
         dump_parameter_stack(process);
         printf("\n");
     }
+    
+    interpreter_process();
 }
 
 bool stack_underflow()
@@ -132,12 +148,12 @@ void forth_run()
             }
             else if (strcmp(buf, "ddd") == 0)
             {
-                memory_dump(0, 0x10);
-                memory_dump(0, 5);
-                memory_dump(9, 7);
-                memory_dump(8, 5);
-                memory_dump(18, 3);
-                memory_dump(0, 0x100);
+                dictionary_memory_dump(0, 0x10);
+                dictionary_memory_dump(0, 5);
+                dictionary_memory_dump(9, 7);
+                dictionary_memory_dump(8, 5);
+                dictionary_memory_dump(18, 3);
+                dictionary_memory_dump(0, 0x100);
             }
             else if (strcmp(buf, "load") == 0)
             {
@@ -174,45 +190,61 @@ void forth_run()
         }
     }
     
-    uint8_t instruction = process->code[process->ip++];    
-    
-    if (trace) 
-    {
-        printf("& execute [%i] %02X@%04X %s\n", process->id, instruction, process->ip - 1, core_words[instruction].word);
-    }
-    if (debug)
-    {
-        dump_parameter_stack(process);
-        char * word = instruction >= WORD_COUNT ? "UNKNOWN" : core_words[instruction].word;
-        printf(" %s [%i] %02X@%04X\n", word, process->id, instruction, process->ip - 1);
-    }
-
-
-    execute(instruction);
+    execute_next_instruction();
 }
 
-void execute(uint32_t dict_entry)
+void start_code(uint32_t at_address)
 {
-    if (trace) {
-        printf("& execute 0x%04X\n", dict_entry);
-    }
-    
-        
+        process->ip = at_address;
+}
+
+void execute_next_instruction()
+{
     in_error = false;
-    
-    if (dict_entry < WORD_COUNT)
-    {
-        core_words[dict_entry].function();
-    }
-    else 
-    {
-        in_error = true;
+
+    if (process->ip < 0x80) {
+        if (trace) 
+        {   
+            printf("&   C function %08X\n", dictionary_core_word_function(process->ip));
+        }
+        dictionary_core_word_function(process->ip)();
+        return_to();
+        
+    } else {
+//    uint32_t instruction = dictionary_read(process->ip++);
+        uint32_t instruction = dictionary_read(process);
+        /*
+        if ((instruction & 0x80) == 0x80) {
+            instruction = instruction * 0x80 | dictionary_read_byte(process->ip++);
+        }
+         */
+
         if (trace) 
         {
-            printf("unknown instruction [%i] %02x@%04x\n", process->id, dict_entry, process->ip - 1);
+            char word_name[64];
+            dictionary_find_word_for(instruction, word_name);
+            printf("& execute #%i ~%04X: %0X: %s\n", process->id, process->ip - (instruction < 0x80 ? 1 : 2), instruction, word_name);
         }
+        if (debug)
+        {
+            dump_parameter_stack(process);
+            char word_name[64];
+            dictionary_find_word_for(instruction, word_name);
+     //       char * word = instruction >= WORD_COUNT ? "UNKNOWN" : word_name;
+            printf("& %s [%i] %02X@%04X\n", word_name, process->id, instruction, process->ip - 1);
+        }
+
+        uint16_t code_at = dictionary_read(process); 
+        PUSH_RETURN(process->ip);
+        if (trace) {
+            char word_name[64];
+            dictionary_find_word_for(instruction, word_name);
+            printf("& run %s from ~%04x return to~%04x\n", word_name, code_at, process->ip);
+        }
+        process->ip = code_at;
     }
-    
+
+    // TODO how do we set up the errors? needs to be part of the process struct
     if (in_error)
     {
         in_error = false;
@@ -224,22 +256,8 @@ void execute(uint32_t dict_entry)
         next_task();
         printf(" ABORTED\n");
     }
-
-    
-    
-    
-    /*
-    process->return_stack[++(process->rsp)] = process->ip + 2;
-    uint16_t code_at = dict_entry; // process->code[process->ip ++] * 0x100 + process->code[process->ip ++];
-    process->ip = code_at;
-    if (trace) {
-        char word_name[64];
-        find_word_for(code_at, word_name);
-        printf("& run %s from %04x\n", word_name, code_at);
-    }
-     */
 }
-
+    
 void push(uint32_t value)
 {
     process->stack[++(process->sp)] = value;
@@ -251,8 +269,8 @@ void duplicate()
         printf("stack underflow; aborting\n");
         return;	
     }
-    uint32_t tos_value = process->stack[process->sp];
-    process->stack[++(process->sp)] = tos_value;
+    uint32_t read = PEEK_DATA;
+    PUSH_DATA(read);
 }
 
 void over()
@@ -262,7 +280,7 @@ void over()
         return;
     }
     uint32_t nos_value = process->stack[process->sp - 1];
-    process->stack[++(process->sp)] = nos_value;
+    PUSH_DATA(nos_value);
 }
 
 void drop() 
@@ -290,7 +308,7 @@ void swap()
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp];
+    uint32_t tos_value = PEEK_DATA;
     process->stack[process->sp] = process->stack[process->sp - 1];
     process->stack[process->sp - 1] = tos_value;
 }
@@ -321,20 +339,24 @@ void rot()
 
 void lit()
 {
-    uint32_t tos_value = process->code[process->ip++] +
-            process->code[process->ip++] * 0x100 +
-            process->code[process->ip++] * 0x10000 +
-            process->code[process->ip++] * 0x1000000;
+//    uint32_t tos_value = dictionary_read_word(process->ip);
+    uint32_t tos_value = dictionary_read(process);
+    //process->ip += 4;
+    
+//    NEXT_INSTRUCTION +
+//            NEXT_INSTRUCTION * 0x100 +
+//            NEXT_INSTRUCTION * 0x10000 +
+//            NEXT_INSTRUCTION * 0x1000000;
     // process->stack[++(process->sp)] = tos_value;
-    push(tos_value);
+    PUSH_DATA(tos_value);
 }
-
+/*
 void exec_process()
 {
    uint32_t tos_value = process->code[process->ip++];
    process->stack[++(process->sp)] = tos_value;
 }
-
+*/
 void add()
 {
     if (process->sp < 1) {
@@ -509,14 +531,17 @@ void zero_branch()
         printf("zbranch for %i -> %s\n", tos_value, (tos_value == 0 ? "zero" : "non-zero"));
     }
     if (tos_value == 0) {
-        int relative = process->code[process->ip];
+        uint16_t pos = process->ip;
+//        uint8_t relative = dictionary_read_byte(process->ip);
+        uint8_t relative = dictionary_read(process);
+//        int relative = process->code[process->ip];
         if (relative > 128) {
             relative = relative - 256;
         }
         if (trace) {
             printf("jump %i\n", relative);
         }
-        process->ip = process->ip + relative;
+        process->ip = pos + relative;
     } else {
         process->ip++;
     }
@@ -524,29 +549,50 @@ void zero_branch()
 
 void branch()
 {
-    uint8_t relative = process->code[process->ip];
+    uint16_t pos = process->ip;
+//    uint8_t relative = dictionary_read_byte(process->ip);
+    uint8_t relative = dictionary_read(process);
+ //   uint8_t relative = process->code[process->ip];
     if (relative > 128) {
         relative = relative - 256;
     }
     if (trace) {
         printf("jump %i\n", relative);
     }
-    process->ip = process->ip + relative;
+    process->ip = pos + relative;
 }
-
+/*
 void run()
 {
-    // TODO make this the default case - so no RUN is needed!
-    process->return_stack[++(process->rsp)] = process->ip + 2;
-    uint16_t code_at = process->code[process->ip ++] * 0x100 + process->code[process->ip ++];
-    process->ip = code_at;
-    if (trace) {
-        char word_name[64];
-        find_word_for(code_at, word_name);
-        printf("& run %s from %04x\n", word_name, code_at);
+    
+    if (dictionary_is_core_word(process->ip))
+    {
+        uint32_t address = dictionary_read_long(process->ip);
+        process->ip += 4;
+//        uint32_t address = process->code[process->ip ++] * 0x1000000 +
+//        process->code[process->ip ++] * 0x10000 +
+//        process->code[process->ip ++] * 0x100 +
+//        process->code[process->ip ++];
+
+        if (trace) printf("& core word at %08X\n", address);
+        ((CORE_FUNC) address)();
+    }
+    else
+    {
+        // TODO make this the default case - so no RUN is needed!
+        process->return_stack[++(process->rsp)] = process->ip + 2;
+        uint16_t code_at = dictionary_read_word(process->ip);
+        process->ip += 2;
+//        uint16_t code_at = process->code[process->ip ++] * 0x100 + process->code[process->ip ++];
+        process->ip = code_at;
+        if (trace) {
+            char word_name[64];
+            find_word_for(code_at, word_name);
+            printf("& run %s from %04x\n", word_name, code_at);
+        }
     }
 }
-
+*/
 void execute_word() 
 {
     if (stack_underflow()) {
@@ -637,24 +683,30 @@ void emit()
     printf("%c", tos_value);
 }
 
+
 inline void constant() 
 {
+    compiler_constant();
+
+    /*
+    
     // index of value within dictionary
-    uint32_t nos_value = dictionary[process->ip++] * 0x100 +
-            dictionary[process->ip++]; 
-    uint32_t tos_value = dictionary[nos_value++] +
-            dictionary[nos_value++] * 0x100 +
-            dictionary[nos_value++] * 0x10000 +
-            dictionary[nos_value++] * 0x1000000;
+//    uint16_t nos_value = dictionary_read_word(process->ip);
+//    process->ip += 2;
+    uint16_t nos_value = dictionary_read(process);
+//    uint32_t tos_value = dictionary_read_long(nos_value);
+    uint32_t tos_value = dictionary_read_at(nos_value);
     process->stack[++(process->sp)] = tos_value;
+     */
 }
 
 void variable()
 {
     // address in memory
-    uint32_t tos_value = dictionary[process->ip++] * 0x100 +
-            dictionary[process->ip++]; 
-    process->stack[++(process->sp)] = (uint32_t) dictionary + tos_value;            
+//    uint32_t tos_value = dictionary_read_word(process->ip++);
+//    process->ip += 2;
+    uint32_t tos_value = dictionary_read(process);
+    process->stack[++(process->sp)] = (uint32_t) dictionary_memory_address(tos_value);
 }
 
 void read_memory()
@@ -740,7 +792,7 @@ inline void debug_off()
 }
 
 void reset() {
-    compiler_reset();
+    dictionary_reset();
     struct Process* next = processes;
     do {
         next->sp = -1;
@@ -843,7 +895,6 @@ struct Process* new_task(uint8_t priority, char *name) {
     nextProcess->priority = priority;
     nextProcess->next_time_to_run = 0;
     nextProcess->name = malloc(sizeof(strlen(name) + 1));
-    nextProcess->code = dictionary; // TODO remove code from process - all processes use the same code
     strcpy(nextProcess->name, name);
     
     nextProcess->ip = 0xffff;
@@ -880,7 +931,7 @@ void tasks() {
     struct Process* p = processes;
     printf("Time %i\n", timer);
     do {
-        printf("Task #%i%s %s (P%i) @%04X, next %i  ", 
+        printf("Task #%i%s %s (P%i) ~%04X, next %i  ", 
                 p->id, p == process ? "*" : "", p->name, p->priority,  
                 p->ip, p->next_time_to_run);
         dump_return_stack(p);
@@ -891,41 +942,6 @@ void tasks() {
     } while (p != NULL);
 }
 
-void memory_dump(uint16_t start, uint16_t size) {
-    int i, j;
-    bool new_line;
-    int from = start - (start % 16);
-    int end = start + size;
-    int to = end / 16 * 16 + (end % 16 == 0 ? 0 : 16);
-    
-	printf ("\n%04x   ", start);
-	for (i = 0; i < 16; i++) {
-		printf("%X   ", i);
-	}
-	printf ("\n");
-    
-	for (i = from; i < to; i++) {
-        bool new_line = i % 16 == 0;
-		if (new_line) {
-			printf("\n%04X %s", i, i == start ? "[" : " ");
-		}
-		printf("%02X%s", dictionary[i], (!new_line && i == start - 1) ? "[" : (i == end - 1 ? "]" : " "));
-        
-        if (i % 16 == 15) {
-            for (j = 0; j < 16; j++)
-            {
-                if (j == 8) printf(" ");
-                char c = dictionary[i - 15 + j];
-                if (c < 32) c = '.';
-                printf("%c", c);
-            }
-        }
-	}
-	printf("\n\n");
-
-    tasks();
-}
-
 void dump() {
     if (process->sp < 1) {
         printf("stack underflow; aborting\n");
@@ -933,67 +949,150 @@ void dump() {
     }
     uint32_t tos_value = process->stack[process->sp--];
     uint32_t nos_value = process->stack[process->sp--];
-    memory_dump(nos_value, tos_value);
+    dictionary_memory_dump(nos_value, tos_value);
+    tasks();
 }
 
 void dump_base() {
-    compiler_dump();
-    memory_dump(0, 0x200);
+  //  dictionary_dump();
+    dictionary_memory_dump(0, 0x200);
+    tasks();
+}
+
+void define() {
+    compiler_compile_new();
+}
+
+void aborted() 
+{
+    printf("invalid execution\n");
+}
+
+/*
+ push the address of the word in the dictionary that matched the next token on the input 
+ */
+void tick()
+{
+    // TODO get next word and find XT
+}
+
+void debug_word()
+{
+    
+    dictionary_debug_entry(pop_stack());
+
+    /*
+    char name[32];
+    CODE_INDEX addr, offset;
+    
+    offset = pop_stack();
+//    
+//    offset = dictionary_entry_after(offset);
+//    end = dictionary
+//    
+//    
+//    
+    
+    dictionary_find_word_for(offset, name);
+    printf("Word '%s' at %04X\n", name, offset);
+//    
+//    offset = 
+//    
+    uint32_t value;
+    value = dictionary_read(&offset);
+    printf("  Next word at %04X\n", value);
+    
+    offset += strlen(name) + 1;
+    
+    int i;
+    for (i = 0; i < 10; i++) {
+        addr = offset;
+        value = dictionary_read(&offset);
+        if (value == LIT) {
+            value = dictionary_read(&offset);
+            printf("  %04X %i\n", addr, value);
+        } else {
+            dictionary_find_word_for(value, name);
+            printf("  %04X %s\n", addr, name);
+        }
+    }
+     * */
 }
 
 void load_words()
 {
-    int i = 0;
-    core_words[i++] = (struct Word) { "END", end, "" };
-        
-    core_words[i++] = (struct Word) { "__RUN", run, "" };
-    core_words[i++] = (struct Word) { "__PROCESS", exec_process, "" };
-    core_words[i++] = (struct Word) { "__LIT", lit, "Duplicate top of stack" };
-    core_words[i++] = (struct Word) { "__VAR", variable, "" };
-    core_words[i++] = (struct Word) { "__CONSTANT", constant, "" };
-    core_words[i++] = (struct Word) { "__ZBRANCH", zero_branch, "" };
-    core_words[i++] = (struct Word) { "__BRANCH", branch, "" };
-    core_words[i++] = (struct Word) { "__RETURN", return_to, "" };
     
-    core_words[i++] = (struct Word) { "OVER", over, "?? of stack" };
-    core_words[i++] = (struct Word) { "DROP", drop, "?? of stack" };
-    core_words[i++] = (struct Word) { "NIP", nip, "?? of stack" };
-    core_words[i++] = (struct Word) { "SWAP", swap, "swap top two element of stack" };
-    core_words[i++] = (struct Word) { "DUP", duplicate, "Duplicate top of stack" };
-    core_words[i++] = (struct Word) { "ROT", rot, "Duplicate top of stack"};
-    core_words[i++] = (struct Word) { "TUCK", tuck, "Duplicate top of stack" };
+ //   dictionary_insert_internal_instruction(RUN, run);
+//    dictionary_insert_internal_instruction("__PROCESS", exec_process);
+    dictionary_insert_internal_instruction(LIT, lit);
+//    dictionary_insert_internal_instruction("__VAR", variable);
+//    dictionary_insert_internal_instruction("__CONSTANT", constant);
+//    dictionary_insert_internal_instruction("__ZBRANCH", zero_branch);
+//    dictionary_insert_internal_instruction("__BRANCH", branch);
+    dictionary_insert_internal_instruction(RETURN, return_to);
+    
+    
+    
+    dictionary_add_core_word("DUP", duplicate);
+    dictionary_add_core_word("SWAP", swap);
+    dictionary_add_core_word("WORDS", dictionary_words);
+    dictionary_add_core_word("DUMP", dump);
 
-    core_words[i++] = (struct Word) { "+", add, "" };
-    core_words[i++] = (struct Word) { "-", subtract, "" };
-    core_words[i++] = (struct Word) { "/", divide, "" };
-    core_words[i++] = (struct Word) { "*", muliply, "" };
-    core_words[i++] = (struct Word) { ">", greater_than, "" };
-    core_words[i++] = (struct Word) { "=", equal_to, "" };
-    core_words[i++] = (struct Word) { "AND", and, "" };
-    core_words[i++] = (struct Word) { "OR", or, "" };
-    core_words[i++] = (struct Word) { "XOR", xor, "" };
-    core_words[i++] = (struct Word) { "NOT", not, "" };
-    core_words[i++] = (struct Word) { "LSHIFT", left_shift, "" };
-    core_words[i++] = (struct Word) { "RSHIFT", right_shift, "" };
-    core_words[i++] = (struct Word) { ".", print_top_of_stack, "" };
-    core_words[i++] = (struct Word) { ".HEX", print_hex, "" };
-    core_words[i++] = (struct Word) { "CR", print_cr, "" };
-    core_words[i++] = (struct Word) { "EMIT", emit, "" };
-    core_words[i++] = (struct Word) { "@", read_memory, "" };
-    core_words[i++] = (struct Word) { "!", write_memory, "" };
-    core_words[i++] = (struct Word) { "EXECUTE", execute_word, "" };
-    core_words[i++] = (struct Word) { "INITIATE", initiate, "" };
-    core_words[i++] = (struct Word) { "PAUSE", yield, "" };
-    core_words[i++] = (struct Word) { "MS", wait_for, "" };
-    core_words[i++] = (struct Word) { "WORDS", compiler_words, "" };
-    core_words[i++] = (struct Word) { ".S", stack, "" };
-    core_words[i++] = (struct Word) { "DUMP", dump, "" };
-    core_words[i++] = (struct Word) { "_DUMP", dump_base, "" };
-    core_words[i++] = (struct Word) { "_TRACE", trace_on, "" };
-    core_words[i++] = (struct Word) { "_NOTRACE", trace_off, "" };
-    core_words[i++] = (struct Word) { "_DEBUG", debug_on, "" };
-    core_words[i++] = (struct Word) { "_NODEBUG", debug_off, "" };
-    core_words[i++] = (struct Word) { "_RESET", reset, "" };
-    core_words[i++] = (struct Word) { "_CLEAR", clear_registers, "" };
-    core_words[i++] = (struct Word) { "TICKS", ticks, "" };
+    dictionary_add_core_word("END", end);
+//        
+//    dictionary_add_core_word("__RUN", run);
+//    dictionary_add_core_word("__PROCESS", exec_process);
+//    dictionary_add_core_word("__LIT", lit);
+//    dictionary_add_core_word("__VAR", variable);
+    dictionary_add_core_word("CONSTANT", constant);
+//    dictionary_add_core_word("__ZBRANCH", zero_branch);
+//    dictionary_add_core_word("__BRANCH", branch);
+//    dictionary_add_core_word("__RETURN", return_to);
+    
+    dictionary_add_core_word("OVER", over);
+    dictionary_add_core_word("DROP", drop);
+    dictionary_add_core_word("NIP", nip);
+    dictionary_add_core_word("ROT", rot);
+    dictionary_add_core_word("TUCK", tuck);
+
+    dictionary_add_core_word("+", add);
+    dictionary_add_core_word("-", subtract);
+    dictionary_add_core_word("/", divide);
+    dictionary_add_core_word("*", muliply);
+    dictionary_add_core_word(">", greater_than);
+    dictionary_add_core_word("=", equal_to);
+    dictionary_add_core_word("AND", and);
+    dictionary_add_core_word("OR", or);
+    dictionary_add_core_word("XOR", xor);
+    dictionary_add_core_word("NOT", not);
+    dictionary_add_core_word("LSHIFT", left_shift);
+    dictionary_add_core_word("RSHIFT", right_shift);
+    dictionary_add_core_word(".", print_top_of_stack);
+    dictionary_add_core_word(".HEX", print_hex);
+    dictionary_add_core_word("CR", print_cr);
+    dictionary_add_core_word("EMIT", emit);
+    dictionary_add_core_word("@", read_memory);
+    dictionary_add_core_word("!", write_memory);
+    dictionary_add_core_word("EXECUTE", execute_word);
+    dictionary_add_core_word("INITIATE", initiate);
+    dictionary_add_core_word("PAUSE", yield);
+    dictionary_add_core_word("MS", wait_for);
+    dictionary_add_core_word(".S", stack);
+    dictionary_add_core_word("DUMP", dump);
+    dictionary_add_core_word("TICKS", ticks);
+    
+    dictionary_add_core_word(":", define);
+    dictionary_add_core_word(";", aborted);
+    
+    dictionary_add_core_word("_DUMP", dump_base);
+    dictionary_add_core_word("_TRACE", trace_on);
+    dictionary_add_core_word("_NOTRACE", trace_off);
+    dictionary_add_core_word("_DEBUG", debug_on);
+    dictionary_add_core_word("_NODEBUG", debug_off);
+    dictionary_add_core_word("_RESET", reset);
+    dictionary_add_core_word("_CLEAR", clear_registers);
+    
+    dictionary_add_core_word("'", tick);
+    dictionary_add_core_word("DBG", debug_word);
+
 }

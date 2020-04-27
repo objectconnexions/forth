@@ -9,3 +9,8 @@ Makefile*.mk
 Makefile*.properties
 Package*.bash
 private
+
+disassembly
+read-spe.fth
+test2.fth
+

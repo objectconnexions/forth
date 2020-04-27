@@ -23,27 +23,21 @@ extern "C" {
 #endif
 
 #include <stdint.h> 
-    
+#include "dictionary.h"
 
-void compile_number(uint32_t);
+//#define FUNCTION 1 
 
-void compile_code(uint32_t);
-
-
-    
-void compiler_init(void);
-
-void compiler_reset(void);
+void compiler_compile_new();
 
 bool compiler_compile(char*);
 
-void compiler_dump(void);
+//void compiler_compile_core_word(char *, void (*)(void));
 
-uint16_t compiler_scratch(void);
+// void compiler_dump(void);
 
-void find_word_for(uint16_t, char*);
+//uint16_t compiler_scratch(void);
 
-void compiler_words(void);
+//void compiler_words(void);
 
 #ifdef __cplusplus
 }

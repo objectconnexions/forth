@@ -23,20 +23,29 @@ extern "C" {
 #endif
 
   
-#define WORD_COUNT 50        
-#define SCRATCHPAD 80
+//#define WORD_COUNT 80        
+//#define SCRATCHPAD 80
 
-struct Word {
-    char * word;
-    void (*function)();
-    char * description;
+enum codes {
+    NOP,
+
+    LIT, 
+  //  RUN, 
+
+    ZBRANCH,
+    BRANCH, 
+    RETURN, 
+    END,
+    
+    PROCESS, 
+    CONST, VAR
 };
 
 struct Process {
     uint8_t id;
     uint32_t stack[16];
     uint32_t return_stack[8];
-    volatile uint16_t ip; // instruction pointer
+    /*volatile */ uint16_t ip; // instruction pointer
     //TODO change both to unsigned --> then change -1 to 0xffff
     volatile int sp; // stack pointer
     volatile int rsp; // return stack pointer
@@ -45,14 +54,12 @@ struct Process {
     char *name;
     uint8_t priority;
     uint32_t next_time_to_run;
-    uint8_t* code;  // TODO remove
+//    uint8_t* code;  // TODO remove
 };
 
 extern struct Process* processes;
 
-extern struct Word core_words[];
-
-extern uint8_t code_store[];
+// extern uint8_t code_store[];
 
 void code_init();
 

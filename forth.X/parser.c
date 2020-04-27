@@ -2,115 +2,149 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
+#include "debug.h"
 #include "code.h"
-#include "forth.h"
-/*
-#include "compiler.h"
-*/
+#include "dictionary.h"
+#include "parser.h"
 
-static bool compile = false;
+static void parse_next();
 
-static uint8_t code_for(char * instruction)
+static char source[80];
+static char * ptr;
+
+static char token[32];
+static enum TYPE type;
+static uint32_t instruction;
+static uint32_t number_value;
+
+
+void parser_input(char * line)
 {
-    int i;
-    for (i = 0; i < WORD_COUNT; i++) {
-        if (core_words[i].word != NULL && strcmp(instruction, core_words[i].word) == 0) {
-            return i;
-        }
+    type = START;
+    strcpy(source, line);  
+    ptr = source;
+    if (trace) {
+        printf("~ parse: %s (%i)\n", source, strlen(source));
     }
-    return 0xff;
 }
 
-void parse(char* source)
+void parser_token_text(char * name) {
+    strcpy(name, token);
+}
+
+enum TYPE parser_next_token()
 {
-    char * start;
-    
-    if (trace) {
-        printf("# input: %s\n", source);
+    if (type != END_LINE) {
+        parse_next();
+    }
+    return type;
+}
+
+void parser_drop_line()
+{
+    type = END_LINE;
+    *ptr = 0;
+}
+
+uint32_t parser_token_number()
+{
+    return number_value;
+}
+
+// TODO rename
+uint32_t parser_token_word()
+{
+    return instruction;
+}
+
+void parse_next()
+{
+    char * start;  // the start position within the input source
+
+    while (*ptr == ' ' || *ptr == '\t') {
+        ptr++;
+    }
+    start = ptr;
+    if (*ptr == 0) {
+        if (trace) {
+            printf("~ line end %i\n", ptr - source);
+        }
+        type = END_LINE;
+        return;
+    }
+    while (*ptr != 0 && *ptr != ' ' && *ptr != '\t') {
+        ptr++;
     }
 
-	while (true) {
-        start = source;
-		while (*source == ' ' || *source == '\t') {
-			source++;
-			start = source;
-		}
-		if (*source == 0 /* || *source == '\n' */) {
-			return;
-		}
-		while (*source != 0 && *source != ' ' && *source != '\t') {
-			source++;
-		}
+    int len = ptr - start;
+    strncpy(token, start, len);
+    token[len] = 0;
+    to_upper(token, len);
 
-		char instruction[64];
-		int len = source - start;
-		strncpy(instruction, start, len);
-		instruction[len] = 0;
-        to_upper(instruction, len);
+    if (trace) {
+        printf("~ token [%s] %i\n", token, len);
+    }
+    uint16_t code = dictionary_code_for(token); 
+    if (code != CODE_END) {
+        type = WORD_AVAILABLE;
+        instruction = code;
+        if (trace) printf("~ word 0x%0X\n", code);
+        return;
 
-		if (trace) {
-			printf("# instruction [%s] %i\n", instruction, len);
-		}
+    } else {
+        if (trace) printf("~ not a word %s\n", token);
 
-        uint8_t code = code_for(instruction);  // RENAME to find_word())
-        if (code != 0xff) {
-            if (compile) compile_code(code);
-            else interpret_code(code);
-            
-        } else {
-            if (trace) printf("# not word 0x%0X\n", code);
-            
-            bool is_number = true;
-            int radix = 10;
-            int i = 0;
-            // TODO determine based number by looking for 0, 0B or 0X first, then confirm every other char is a digit
-            if (instruction[i] == '-')
+        bool is_number = true;
+        int radix = 10;
+        int i = 0;
+        // TODO determine based number by looking for 0, 0B or 0X first, then confirm every other char is a digit
+        if (token[i] == '-')
+        {
+            i++;
+        }
+        if (token[i] == '0')
+        {
+            i++;
+            if (token[i] == 'X')
             {
+                radix = 16;
                 i++;
-            }
-            if (instruction[i] == '0')
+            }   
+            else if (token[i] == 'B')
             {
+                radix = 2;
                 i++;
-                if (instruction[i] == 'X')
-                {
-                    radix = 16;
-                    i++;
-                }   
-                else if (instruction[i] == 'B')
-                {
-                    radix = 2;
-                    i++;
-                }   
-                else if (isdigit(instruction[i]))
-                {
-                    radix = 8;
-                    i++;
-                }   
-                else if (strlen(instruction) > i)
-                {
-                    is_number = false;
-                }
-            }
-            for (; i < strlen(instruction); ++i) {
-                if (!isdigit(instruction[i]) && !(radix > 10 && instruction[i] < ('a' + radix - 10))) {
-                    is_number = false;
-                    break;
-                }
-            }
-
-            if (is_number) {
-                int64_t value = strtoll(instruction, NULL, 0);
-                if (trace) {
-                    printf("# literal = 0x%09llX\n", value);
-                }
-                if (compile) compile_number(value);
-                else interpret_number(value);
-            } else {
-                printf("%s!\n", instruction);
-                return;
+            }   
+            else if (isdigit(token[i]))
+            {
+                radix = 8;
+                i++;
+            }   
+            else if (strlen(token) > i)
+            {
+                is_number = false;
             }
         }
-    	source++;
+        for (; i < strlen(token); ++i) {
+            if (!isdigit(token[i]) && !(radix > 10 && token[i] < ('a' + radix - 10))) {
+                is_number = false;
+                break;
+            }
+        }
+
+        if (is_number) {
+            int64_t value = strtoll(token, NULL, 0);
+            if (trace) {
+                printf("~ literal = 0x%09llX\n", value);
+            }
+            type = NUMBER_AVAILABLE;
+            number_value = value;
+            return;
+        } else {
+            type = INVALID_INSTRUCTION;
+            return;
+        }
     }
 }    

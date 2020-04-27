@@ -12,9 +12,11 @@
 extern "C" {
 #endif
 
-void interpret_number(uint32_t);
+void interpreter_process();
+    
+//void interpret_number(uint32_t);
 
-void interpret_code(uint32_t)
+//void interpret_code(uint32_t);
 
 
 #ifdef	__cplusplus

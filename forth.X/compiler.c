@@ -3,20 +3,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "debug.h"
 #include "forth.h"
 #include "code.h"
+#include "parser.h"
+#include "dictionary.h"
 #include "compiler.h"
 
-static void compile(char*);
-static uint16_t find_word(char *);
-static uint16_t find_dictionay_entry(char *, uint16_t);
-static void add_constant_entry(char *);
-static void add_variable_entry(char *);
-static void add_word_entry(char *);
 static void add_literal(uint64_t);
 static void complete_word(void);
-static void list_dictionary_entries(uint16_t);
-static uint8_t code_for(char * instruction);
+
 
 enum immediate {
     INTERACTIVE,
@@ -32,81 +28,37 @@ enum immediate {
     RUN_TASK
 };
 
-static uint16_t words; // last non-scratch entry in dictionary
 static uint16_t constants;
 static uint16_t variables;
-static uint16_t next_entry;  // next free space in dictionary for a new entry
 
-static uint8_t* compilation;
-static uint8_t *jumps[6];
-static uint8_t jp = 0;
 static uint8_t immediate = INTERACTIVE;
 static uint8_t previous = INTERACTIVE;
 
-static uint8_t ZBRANCH, BRANCH, RETURN, PROCESS, CONST, VAR, LIT, RUN, END, PRINT_TEXT;
+//static uint8_t ZBRANCH, BRANCH, RETURN, PROCESS, CONST, VAR, LIT, RUN, END, PRINT_TEXT;
 
 void compiler_init()
 {
- 	compilation = dictionary;
-    compiler_reset();
-    
-    ZBRANCH = code_for("__ZBRANCH");
-    BRANCH = code_for("__BRANCH");
-    PROCESS = code_for("__PROCESS");
-    VAR = code_for("__VAR");
-    CONST = code_for("__CONSTANT");
-    LIT = code_for("__LIT");
-    RUN = code_for("__RUN");
-    END = code_for("END");
-    RETURN = code_for("__RETURN");
-    PRINT_TEXT = code_for(".\"");
+     
+//    ZBRANCH = code_for("__ZBRANCH");
+//    BRANCH = code_for("__BRANCH");
+//    PROCESS = code_for("__PROCESS");
+//    VAR = code_for("__VAR");
+//    CONST = code_for("__CONSTANT");
+//    LIT = code_for("__LIT");
+//    RUN = code_for("__RUN");
+//    END = code_for("END");
+//    RETURN = code_for("__RETURN");
+//    PRINT_TEXT = code_for(".\"");
 }
-
-void compiler_reset()
-{
-    words = constants = variables = 0xffff;
-    next_entry = 0;
-    
-    // TODO use same size as in forth.c
-    memset(dictionary, 0, 1024 * 8);   
-    // TODO free memory and reset pointers: constants, variables
-}
-
-static uint8_t code_for(char * instruction)
-{
-    int i;
-    for (i = 0; i < WORD_COUNT; i++) {
-        if (core_words[i].word != NULL && strcmp(instruction, core_words[i].word) == 0) {
-            return i;
-        }
-    }
-    return 0xff;
-}
-
-uint16_t compiler_scratch() 
-{
-    return next_entry;
-}
-
-void compile_number(uint32_t value) 
-{
-    add_literal(value);
-}
-
-void compile_code(uint32_t code)
-{
-    
-}
-
-
 
 bool compiler_compile(char* source)
 {
     uint8_t * start;
     
     if (trace) {
-        printf("# input: %s\n", source);
+        printf("+ input: %s\n", source);
     }
+/*
     if (immediate == INTERACTIVE) {
         start = dictionary + next_entry;
         compilation = start;
@@ -122,35 +74,134 @@ bool compiler_compile(char* source)
     } else {
         return false;
     }
+ */
+    return false;
 }    
 
-void compiler_words() {
-    int i;
-    for (i = 0; i < WORD_COUNT; i++) {
-        printf("%s (%02X)\n", core_words[i].word, i);
-    }
-    printf("\n");
+
+void compiler_compile_new()
+{
+    char name[32];
     
-    list_dictionary_entries(words);
+    if (trace) printf("+ compiling new word\n");
+    
+    if (parser_next_token() != INVALID_INSTRUCTION) {
+        parser_drop_line();
+        parser_token_text(name);
+        printf("!compile failed on %s\n", name);
+    }
+    parser_token_text(name);
+    printf("# new word %s\n", name);
+    dictionary_add_entry(name);
+    
+    while (true) 
+    {
+        switch (parser_next_token())
+        {
+            case NUMBER_AVAILABLE:
+                add_literal(parser_token_number());
+                break;
+            case WORD_AVAILABLE:
+                // TODO check for immediate!
+                
+                parser_token_text(name);
+                printf("+ append word %s\n", name);
+                if (strcmp(name, ";") == 0) 
+                {
+                    complete_word();
+                    return;
+                }
+                
+                uint32_t word = parser_token_word();
+                dictionary_append(word);
+                break;
+            case INVALID_INSTRUCTION:
+                parser_drop_line();
+                return;
+            case END_LINE:
+                return;
+        }
+    }
 }
 
-void compiler_dump() {
-    printf("next entry @%04x\n", next_entry);
-    printf("words %04x\n", words);
-    list_dictionary_entries(words);
 
-    printf("\nconstants @%04x\n", constants);
-    list_dictionary_entries(constants);
+void compiler_constant()
+{
+    char name[32];
+    
+    if (parser_next_token() != INVALID_INSTRUCTION) {
+        parser_drop_line();
+        parser_token_text(name);
+        printf("!constant failed on %s\n", name);
+    }
+    
+    parser_token_text(name);
+    dictionary_add_entry(name);
+    
+    dictionary_append(LIT);
+    uint32_t value = pop();
+    dictionary_append(value);
+}
 
-    printf("\nvariables @%04x\n", variables);
-    list_dictionary_entries(variables);
- }
 
+void compiler_variable()
+{
+    // TBC
+}
+
+void compiler_if()
+{
+    dictionary_append(ZBRANCH);
+    jumps[jp++] = compilation;
+    compilation++;
+}
+
+void compiler_then()
+{
+    uint8_t distance = compilation - jumps[--jp];
+    *(jumps[jp]) = distance;
+}
+
+/*
+            } else if (strcmp(instruction, "BEGIN") == 0) {
+                jumps[jp++] = compilation;
+
+            } else if (strcmp(instruction, "AGAIN") == 0) {
+                *compilation++ = BRANCH;
+                uint8_t distance = jumps[--jp] - compilation;
+                *compilation++ = distance;
+
+            } else if (strcmp(instruction, "UNTIL") == 0) {
+                *compilation++ = ZBRANCH;
+                uint8_t distance = jumps[--jp] - compilation;
+                *compilation++ = distance;
+ */
+
+                
+void compiler_eol_comment()
+{
+    parser_drop_line();
+}
+
+              
+void compiler_inline_comment()
+{
+    char text[80];
+    
+    do
+    {
+        parser_next_token();
+        parser_token_text(text);
+    } while(text[strlen(text) - 1] != ')')
+}
+
+
+/*
 static void compile(char* source) {
 	char* start = source;
 
 	if (trace) {
-		printf("# compile [%s]\n", source);
+		printf("+ compile [%s]\n", source);
 	}
 
 	while (true) {
@@ -158,7 +209,7 @@ static void compile(char* source) {
 			source++;
 			start = source;
 		}
-		if (*source == 0 /* || *source == '\n' */) {
+		if (*source == 0) {
             if (immediate == EOL_COMMENT) {
                 immediate = previous;
             }
@@ -180,19 +231,19 @@ static void compile(char* source) {
         to_upper(instruction, len);
 
 		if (trace) {
-			printf("# instruction [%s] %i @ %0x\n", instruction, len, compilation - dictionary);
+			printf("+ instruction [%s] %i @ %0x\n", instruction, len, compilation - dictionary);
 		}
 
                   
 		if (immediate == TASK) {
             immediate = INTERACTIVE;
             new_task(5, instruction);
-            printf("# new task %s\n", instruction);
+            printf("+ new task %s\n", instruction);
           
 		} else if (immediate == WORD) {
             immediate = DEFINITION;
-            add_word_entry(instruction);
-            printf("# new word %s\n", instruction);
+            dictionary_add_entry(instruction);
+            printf("+ new word %s\n", instruction);
           
 		} else if (immediate == COMPILE_ERROR) {
             if (strcmp(instruction, ";") == 0) {
@@ -203,18 +254,18 @@ static void compile(char* source) {
 		} else if (immediate == CONSTANT) {
             immediate = INTERACTIVE;
             add_constant_entry(instruction);
-            printf("# new constant %s\n", instruction);
+            printf("+ new constant %s\n", instruction);
           
 		} else if (immediate == VARIABLE) {
             immediate = INTERACTIVE;
             add_variable_entry(instruction);
-            printf("# new variable %s\n", instruction);
+            printf("+ new variable %s\n", instruction);
           
 		} else if (immediate == TICK) {
             immediate = INTERACTIVE;
             uint16_t word = find_word(instruction);
             main_process->stack[++(main_process->sp)] = word;
-            printf("# xt %s @ %04x onto stack\n", instruction, word);
+            printf("+ xt %s @ %04x onto stack\n", instruction, word);
 
         } else if (immediate == PAREN_COMMENT && strcmp(instruction, ")") == 0) {
                 immediate = previous;
@@ -255,13 +306,6 @@ static void compile(char* source) {
 
             } else if (strcmp(instruction, "(") == 0) {
                 // TODO any reason not to have comments in interactive code?
-                /* if (immediate != WORD) {
-                    printf("Error: invalid place for comment\n");
-                    *compilation++ = END;  
-                    immediate = INTERACTIVE;
-                } else {
-                    immediate = PAREN_COMMENT;
-                } */
                 previous = immediate;
                 immediate = PAREN_COMMENT;
                 
@@ -317,10 +361,10 @@ static void compile(char* source) {
                         //printf("not a word\n");
                         struct Process * process = processes;
                         do {
-                            //printf("# check process %s against %s\n", process->name, instruction);
+                            //printf("+ check process %s against %s\n", process->name, instruction);
                             if (strcmp(instruction, process->name) == 0) {
                                 if (trace) {
-                                    printf("# process %s found\n", process->name);
+                                    printf("+ process %s found\n", process->name);
                                 }
                                 *compilation++ = PROCESS;
                                 *compilation++ = process->id;
@@ -391,7 +435,7 @@ static void compile(char* source) {
                                         int64_t value = strtoll(instruction, NULL, 0);
                                         *compilation++ = LIT;
                                         if (trace) {
-                                            printf("# literal = 0x%09llx @ %04x\n", value, compilation - dictionary);
+                                            printf("+ literal = 0x%09llx @ %04x\n", value, compilation - dictionary);
                                         }
                                         *compilation++ = value % 0x100;
                                         *compilation++ = (value / 0x100) % 0x100;
@@ -416,100 +460,18 @@ static void compile(char* source) {
 	}
 	source++;
 }
-
-/*
- Returns the address of the code for for the specified word.
- */
-static uint16_t find_dictionay_entry(char *search_name, uint16_t start) 
-{
-    uint16_t entry;
-    uint8_t *code;
-    char name[32];    
-    
-    entry = start;
-    while (entry != 0xffff) {
-        code = dictionary + entry;
-        entry = *code++ * 0x100 + *code++;
-        uint8_t len = *code++ & 0x1f;
-        int i;
-        for (i = 0; i < len; i++) {
-            name[i] = *code++;
-        }
-        name[i] = 0;
-        // if (trace) printf("previous %04x, %s\n", entry, name);
-
-        if (strcmp(name, search_name) == 0) {
-            if (trace) {
-                printf("# entry %s found at %04x\n", name, code - dictionary);
-            }
-            // the next byte is the start of the code
-            return code - dictionary;
-        }
-    }
-    return 0xffff;
-}
-
-/*
- Return the address of the dictionary entry for the code at the specified address
- */
-void find_word_for(uint16_t offset, char *name) {
-    uint16_t entry;
-    uint8_t *code;
-
-    strcpy(name, "Unknown!");    
-    
-    entry = words;
-    while (entry != 0xffff) {
-        code = dictionary + entry;
-        entry = *code++ * 0x100 + *code++;
-        uint8_t len = *code++ & 0x1f;
-        if (dictionary + offset == code + len) {
-            strncpy(name, code, len);
-            name[len] = 0;
-            break;
-        }
-    }
-}
-
-static uint16_t find_word(char *instruction) 
-{
-    return find_dictionay_entry(instruction, words);
-}
-
-static void add_word_entry(char *name)
-{
-    int len = strlen(name);
-    compilation = dictionary + next_entry;              
-
-    // previous entry
-    uint16_t previous_entry;
-    if (next_entry == 0) {
-        previous_entry = 0xffff;  // first entry; code to indicate no more previous
-    } else {
-        previous_entry = words;
-    }
-    if (trace) printf("previous_entry %0x %x %x, %i\n", previous_entry, previous_entry / 0x100,  previous_entry % 0x100, len & 0x1f);
-    *compilation++ = previous_entry / 0x100;
-    *compilation++ = previous_entry % 0x100;
-    *compilation++ = len & 0x1f;
-
-    strcpy(compilation, name);
- //   *(compilation + len) = 0;
-    compilation += len;
-    if (trace) {
-        printf("# compiling word, code at %04X\n", compilation - dictionary);
-    }
-}
+*/
 
 static void complete_word() 
 {
-    *compilation++ = RETURN;
-    *compilation = END; // TODO check this stop the runner from failing with instruction 0;
-    words = next_entry;
-    next_entry = compilation - dictionary;
+//    dictionary_append_byte(RETURN);
+    dictionary_append(RETURN);
+    printf("+   word ends at %04X\n", dictionary_index());
+    dictionary_append(END); // TODO check this stop the runner from failing with instruction 0;
+    dictionary_end_entry();
     immediate = INTERACTIVE;
 }
-
+/*
 static void add_constant_entry(char *name)
 {
     uint8_t len = strlen(name);
@@ -567,47 +529,14 @@ static void add_variable_entry(char *name)
     variables = next_entry;
     next_entry += len + 7;
 }
+*/
 
 static void add_literal(uint64_t value)
 {
-    *compilation++ = LIT;
+    dictionary_append(LIT);
     if (trace)
     {
-        printf("# literal = 0x%09llx @ %0x\n", value, compilation);
+        printf("+ literal = 0x%09llx @ %0x\n", value, dictionary_index());
     }
-    *compilation++ = value % 0x100;
-    *compilation++ = (value / 0x100) % 0x100;
-    *compilation++ = (value / 0x10000) % 0x100;
-    *compilation++ = (value / 0x1000000) % 0x100;
-}
-
-/*
- * List the entries in the dictionary starting at index position
- */
-static void list_dictionary_entries(uint16_t index)
-{
-    uint16_t entry;
-    uint8_t * code;
-    char name[32];
-
-	if (index == 0xffff) {
-		printf("No entries\n");
-	}
-    
-    entry = index;
-    while (entry != 0xffff)
-    {
-        printf("@%04x ", entry);
-        code = dictionary + entry;
-        entry = *code++ * 0x100 + *code++;
-        uint8_t len = *code++ & 0x1f;
-        if (trace) printf("[%0x - %i]  ", entry, len);
-
-        int i;
-        for (i = 0; i < len; i++) {
-            name[i] = *code++;
-        }
-        name[i] = 0;
-        printf("%s => @%04x\n", name, code - dictionary);
-    }
+    dictionary_append(value);
 }
