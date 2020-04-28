@@ -27,17 +27,29 @@ extern "C" {
 
 //#define FUNCTION 1 
 
-void compiler_compile_new();
+void compiler_compile_new(void);
 
-bool compiler_compile(char*);
 
-//void compiler_compile_core_word(char *, void (*)(void));
 
-// void compiler_dump(void);
 
-//uint16_t compiler_scratch(void);
+void compiler_if(void);
 
-//void compiler_words(void);
+
+void compiler_constant(void);
+
+void compiler_variable(void);
+
+void compiler_begin(void);
+
+void compiler_then(void);
+
+void compiler_again(void);
+
+void compiler_until(void);
+
+void compiler_eol_comment(void);
+
+void compiler_inline_comment(void);
 
 #ifdef __cplusplus
 }

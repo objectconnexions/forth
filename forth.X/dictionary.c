@@ -10,6 +10,9 @@
 #include "dictionary.h"
 
 
+static uint16_t insertion_index(void);
+
+
 #define CODE_SIZE 1024 * 8
 #define CORE_WORDS 128
 
@@ -20,11 +23,7 @@ static CODE_INDEX last_entry_offset; // last non-scratch entry in dictionary
 static CODE_INDEX new_entry_offset;  // next free space in dictionary for a new entry
 static CODE_INDEX last_core_entry;
 static uint8_t last_function_index;
-
-static uint8_t* compilation;
-static uint8_t* jumps[6];
-static uint8_t jp = 0;
-
+static uint8_t* insertion_point;
 
 static uint16_t find_word(char *);
 static uint16_t find_dictionay_entry(char *);
@@ -41,12 +40,142 @@ void dictionary_reset()
 {
     last_entry_offset = 0xffff;
     new_entry_offset = 0;
-    compilation = code;
+    insertion_point = code;
     
     memset(code, 0, CODE_SIZE);   
 }
 
-CORE_FUNC dictionary_core_word_function(CODE_INDEX instruction) 
+void dictionary_add_entry(char *name)
+{
+    printf("#   word ends at %04X\n", insertion_index());
+
+    int len = strlen(name);
+    insertion_point = code + new_entry_offset;              
+    if (trace) {
+        printf("# adding entry for '%s' at @%04X\n", name, insertion_index());
+    }
+    // previous entry
+    uint16_t previous_entry;
+    if (new_entry_offset == 0) {
+        previous_entry = 0xffff;  // first entry; code to indicate no more previous
+    } else {
+        previous_entry = last_entry_offset;
+    }
+    if (trace) printf("#   previous_entry @%04x, %i\n", previous_entry, len & 0x1f);
+    dictionary_append_value(previous_entry);
+    dictionary_append_value(len & 0x1f);
+
+    strcpy(insertion_point, name);
+    insertion_point += len;
+    if (trace) {
+        printf("#   code at ~%04X (at %08X)\n", insertion_index(), insertion_point);
+    }
+}
+
+void dictionary_append_byte(uint8_t value)
+{
+    *insertion_point++ = value;
+}
+
+
+
+void dictionary_append_value(uint32_t value)
+{
+    uint8_t segment;
+    while (true) {
+        segment = value % 0x80;
+        if (value > segment) {
+            segment = segment | 0x80;
+            *insertion_point++ = segment;
+            value = value / 0x80;
+        } else {
+            *insertion_point++ = segment;
+            break;
+        }
+    }
+}
+
+dictionary_write_byte(CODE_INDEX index, uint8_t value)
+{
+    code[index] = value;
+}
+
+void dictionary_end_entry() 
+{
+    last_entry_offset = new_entry_offset;
+    new_entry_offset = insertion_point - code;
+}
+
+void dictionary_insert_internal_instruction(uint8_t entry, CORE_FUNC function)
+{
+    core_functions[entry] = function;
+    last_function_index = entry > last_function_index ? entry : last_function_index;
+}
+
+void dictionary_add_core_word(char * name, CORE_FUNC function)
+{
+    printf("# core word %s %02X @%04x\n", name, last_function_index, insertion_index());
+    core_functions[last_function_index] = function;
+    dictionary_add_entry(name);
+    dictionary_append_value(last_function_index);
+    last_function_index++;
+ 
+    dictionary_end_entry();
+    last_core_entry = new_entry_offset;
+}
+
+
+
+
+/*
+    Returns the address of the code for for the specified word.
+ */
+ // TODO RENAME to compiler_find_word())
+CODE_INDEX dictionary_find_entry(char * name)
+{
+    CODE_INDEX entry_index;
+    CODE_INDEX current_index;
+    char entry_name[32];    
+    
+    entry_index = last_entry_offset;
+    while (entry_index != CODE_END) {
+        current_index = entry_index;
+//        if (trace) {
+//            printf("# looking for '%s' at @%04x\n", instruction, current_index);
+//        }
+        entry_index = read(&current_index);
+        uint8_t len = code[current_index++] & 0x1f;
+        strncpy(entry_name, &(code[current_index]), len);
+        entry_name[len] = 0;
+
+//        if (trace) {
+//            printf("#   checking '%s' at @%04x/@%04x\n", entry_name, current_index, entry_index);
+//        }
+//        
+        if (strcmp(entry_name, name) == 0) {
+            current_index += len;
+            if (trace) {
+                printf("# code found '%s' at ~%04x\n", entry_name, current_index);
+            }
+            // the next byte is the start of the code
+            if (current_index < last_core_entry)
+            {
+                // use short code
+                return code[current_index];
+            }
+            else 
+            {
+                return current_index;
+            }
+        }
+    }
+    return CODE_END;
+}
+
+
+
+
+CORE_FUNC dictionary_find_core_function(CODE_INDEX instruction) 
 {
     return core_functions[instruction];
 }
@@ -81,125 +210,24 @@ uint32_t dictionary_read_at(CODE_INDEX offset)
     return read(&offset);
 }
 
+
+
+
+static uint16_t insertion_index() 
+{
+    return insertion_point - code;
+}
+
+CODE_INDEX dictionary_offset() 
+{
+    return insertion_index();
+}
 /*
-    Returns the address of the code for for the specified word.
- */
- // TODO RENAME to compiler_find_word())
-CODE_INDEX dictionary_code_for(char * instruction)
-{
-    CODE_INDEX entry_index;
-    CODE_INDEX current_index;
-    char entry_name[32];    
-    
-    entry_index = last_entry_offset;
-    while (entry_index != CODE_END) {
-        current_index = entry_index;
-//        if (trace) {
-//            printf("# looking for '%s' at @%04x\n", instruction, current_index);
-//        }
-        entry_index = read(&current_index);
-        uint8_t len = code[current_index++] & 0x1f;
-        strncpy(entry_name, &(code[current_index]), len);
-        entry_name[len] = 0;
-
-//        if (trace) {
-//            printf("#   checking '%s' at @%04x/@%04x\n", entry_name, current_index, entry_index);
-//        }
-//        
-        if (strcmp(entry_name, instruction) == 0) {
-            current_index += len;
-            if (trace) {
-                printf("# code found '%s' at ~%04x\n", entry_name, current_index);
-            }
-            // the next byte is the start of the code
-            if (current_index < last_core_entry)
-            {
-                // use short code
-                return code[current_index];
-            }
-            else 
-            {
-                return current_index;
-            }
-        }
-    }
-    return CODE_END;
-}
-
-bool dictionary_is_core_word(CODE_INDEX entry)
-{
-    return entry <= last_function_index;
-}
-
-void dictionary_append(uint32_t value)
-{
-    uint8_t segment;
-    while (true) {
-        segment = value % 0x80;
-        if (value > segment) {
-            segment = segment | 0x80;
-            *compilation++ = segment;
-            value = value / 0x80;
-        } else {
-            *compilation++ = segment;
-            break;
-        }
-    }
-}
-
-uint16_t dictionary_index() 
-{
-    return compilation - code;
-}
-
-void dictionary_add_entry(char *name)
-{
-    int len = strlen(name);
-    compilation = code + new_entry_offset;              
-    if (trace) {
-        printf("# adding entry for '%s' at @%04X\n", name, dictionary_index());
-    }
-    // previous entry
-    uint16_t previous_entry;
-    if (new_entry_offset == 0) {
-        previous_entry = 0xffff;  // first entry; code to indicate no more previous
-    } else {
-        previous_entry = last_entry_offset;
-    }
-    if (trace) printf("#   previous_entry @%04x, %i\n", previous_entry, len & 0x1f);
-    dictionary_append(previous_entry);
-    dictionary_append(len & 0x1f);
-
-    strcpy(compilation, name);
-    compilation += len;
-    if (trace) {
-        printf("#   code at ~%04X (at %08X)\n", dictionary_index(), compilation);
-    }
-}
-
-void dictionary_insert_internal_instruction(uint8_t entry, CORE_FUNC function)
-{
-    core_functions[entry] = function;
-    last_function_index = entry > last_function_index ? entry : last_function_index;
-}
-
-void dictionary_add_core_word(char * name, CORE_FUNC function)
-{
-    printf("# core word %s %02X @%04x\n", name, last_function_index, dictionary_index());
-    core_functions[last_function_index] = function;
-    dictionary_add_entry(name);
-    dictionary_append(last_function_index);
-    last_function_index++;
- 
-    dictionary_end_entry();
-    last_core_entry = new_entry_offset;
-}
-
-
 uint32_t dictionary_memory_address(uint16_t offset)
 {
     return (uint32_t) code + offset;
 }
+ */
 
 /*
  Return the address of the dictionary entry for the code at the specified address
@@ -238,10 +266,9 @@ void dictionary_find_word_for(CODE_INDEX instruction, char *name) {
     }
 }
 
-void dictionary_end_entry() 
+bool dictionary_is_core_word(CODE_INDEX entry)
 {
-    last_entry_offset = new_entry_offset;
-    new_entry_offset = compilation - code;
+    return entry <= last_function_index;
 }
 
 /*

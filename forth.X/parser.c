@@ -86,7 +86,7 @@ void parse_next()
     if (trace) {
         printf("~ token [%s] %i\n", token, len);
     }
-    uint16_t code = dictionary_code_for(token); 
+    uint16_t code = dictionary_find_entry(token); 
     if (code != CODE_END) {
         type = WORD_AVAILABLE;
         instruction = code;

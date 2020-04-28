@@ -37,9 +37,9 @@ void dictionary_insert_internal_instruction(uint8_t, CORE_FUNC);
 
 void dictionary_add_core_word(char *, CORE_FUNC);
 
-CORE_FUNC dictionary_core_word_function(uint16_t);
+CORE_FUNC dictionary_find_core_function(uint16_t);
 
-CODE_INDEX dictionary_code_for(char * instruction);
+CODE_INDEX dictionary_find_entry(char *);
 /*
 uint8_t dictionary_read_byte(uint16_t);
 
@@ -59,16 +59,12 @@ uint32_t dictionary_memory_address(CODE_INDEX);
 void dictionary_memory_dump(CODE_INDEX, uint16_t);
 
 void dictionary_words(void);
-/*
- * 
+
 void dictionary_append_byte(uint8_t);
 
-void dictionary_append_word(uint16_t);
-                  
-void dictionary_append_long(uint32_t);
- */
+void dictionary_append_value(uint32_t);
 
-void dictionary_append(uint32_t);
+CODE_INDEX dictionary_offset(void);
 
 #ifdef	__cplusplus
 }

@@ -65,14 +65,6 @@ int forth_init()
 void forth_execute(uint8_t* line)
 {
     if (echo) printf("> %s\n", line);
-    /*
-    if (compiler_compile(line))
-    {
-        //if (trace) dump();
-        main_process->ip = compiler_scratch();  // scratch code is the temporary entry in dictionary
-        main_process->next_time_to_run = timer;
-    }
-     */
     parser_input(line);
     if (trace) 
     {
@@ -108,6 +100,11 @@ static bool isAccessibleMemory(uint32_t address)
         printf("LIMIT %X!", address);
         return false;
     }
+}
+
+static void test_compile(char * input) {
+    parser_input(input);
+    compiler_compile_new();
 }
 
 void forth_run()
@@ -157,10 +154,10 @@ void forth_run()
             }
             else if (strcmp(buf, "load") == 0)
             {
-                compiler_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
-                compiler_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
-                compiler_compile(": FLASH on 200 ms off 200 ms ;");
-                compiler_compile(": FLASH2 flash flash flash ;");
+                test_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
+                test_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
+                test_compile(": FLASH on 200 ms off 200 ms ;");
+                test_compile(": FLASH2 flash flash flash ;");
             
             }
             else if (strcmp(buf, "##") == 0)
@@ -205,9 +202,9 @@ void execute_next_instruction()
     if (process->ip < 0x80) {
         if (trace) 
         {   
-            printf("&   C function %08X\n", dictionary_core_word_function(process->ip));
+            printf("&   C function %08X\n", dictionary_find_core_function(process->ip));
         }
-        dictionary_core_word_function(process->ip)();
+        dictionary_find_core_function(process->ip)();
         return_to();
         
     } else {
@@ -702,11 +699,14 @@ inline void constant()
 
 void variable()
 {
+    compiler_variable();
     // address in memory
 //    uint32_t tos_value = dictionary_read_word(process->ip++);
 //    process->ip += 2;
-    uint32_t tos_value = dictionary_read(process);
-    process->stack[++(process->sp)] = (uint32_t) dictionary_memory_address(tos_value);
+    
+    // TODO rename tos to address
+//    uint32_t tos_value = dictionary_read(process);
+//    process->stack[++(process->sp)] = (uint32_t) dictionary_memory_address(tos_value);
 }
 
 void read_memory()
@@ -1019,6 +1019,26 @@ void debug_word()
      * */
 }
 
+static void push_char()
+{
+    char name[32];
+    parser_next_token();
+    parser_token_text(name);    
+
+    PUSH_DATA(name[0]);
+}
+
+// TODO move to compiler.c
+static void compile_char()
+{
+    char name[32];
+    parser_next_token();
+    parser_token_text(name);    
+    
+    dictionary_append_value(LIT);
+    dictionary_append_value(name[0]);
+}
+
 void load_words()
 {
     
@@ -1044,7 +1064,8 @@ void load_words()
 //    dictionary_add_core_word("__PROCESS", exec_process);
 //    dictionary_add_core_word("__LIT", lit);
 //    dictionary_add_core_word("__VAR", variable);
-    dictionary_add_core_word("CONSTANT", constant);
+    dictionary_add_core_word("VARIABLE", compiler_variable);
+    dictionary_add_core_word("CONSTANT", compiler_constant);
 //    dictionary_add_core_word("__ZBRANCH", zero_branch);
 //    dictionary_add_core_word("__BRANCH", branch);
 //    dictionary_add_core_word("__RETURN", return_to);
@@ -1091,8 +1112,19 @@ void load_words()
     dictionary_add_core_word("_NODEBUG", debug_off);
     dictionary_add_core_word("_RESET", reset);
     dictionary_add_core_word("_CLEAR", clear_registers);
-    
+
+    dictionary_add_core_word("\\", compiler_eol_comment);
+    dictionary_add_core_word("(", compiler_inline_comment);
+    dictionary_add_core_word("IF", compiler_if);
+    dictionary_add_core_word("THEN", compiler_then);
+    dictionary_add_core_word("BEGIN", compiler_begin);
+    dictionary_add_core_word("AGAIN", compiler_again);
+    dictionary_add_core_word("UNTIL", compiler_until);
+
     dictionary_add_core_word("'", tick);
     dictionary_add_core_word("DBG", debug_word);
 
+    
+     dictionary_add_core_word("CHAR", push_char);
+     dictionary_add_core_word("[CHAR]", compile_char);
 }
