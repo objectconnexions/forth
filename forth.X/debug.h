@@ -12,7 +12,8 @@
 extern "C" {
 #endif
 
-extern bool trace;
+#include <stdbool.h>
+
 extern bool debug;
 
 #ifdef	__cplusplus

@@ -22,23 +22,23 @@
 extern "C" {
 #endif
 
-  
-//#define WORD_COUNT 80        
-//#define SCRATCHPAD 80
+#include <stdint.h>
+
+typedef uint32_t FORTH_WORD;
+
+typedef uint32_t CELL;
 
 enum codes {
     NOP,
 
     LIT, 
-  //  RUN, 
-
-    ZBRANCH,
+    ADDR,
     BRANCH, 
+    ZBRANCH,
     RETURN, 
-    END,
+    PROCESS_LINE,
     
-    PROCESS, 
-    CONST, VAR
+    PROCESS
 };
 
 struct Process {
@@ -58,8 +58,6 @@ struct Process {
 };
 
 extern struct Process* processes;
-
-// extern uint8_t code_store[];
 
 void code_init();
 

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "logger.h"
 #include "debug.h"
 #include "forth.h"
 #include "code.h"
@@ -10,66 +11,36 @@
 #include "dictionary.h"
 #include "compiler.h"
 
+#define LOG "compiler"
 
 static void add_literal(uint64_t);
 static void complete_word(void);
 
-/*
-enum immediate {
-    INTERACTIVE,
-    EOL_COMMENT,
-    PAREN_COMMENT,
-    WORD,
-    DEFINITION,
-    COMPILE_ERROR,
-    CONSTANT,
-    VARIABLE,
-    TASK,
-    TICK,
-    RUN_TASK
-};
- * */
-/*
-static uint16_t constants;
-static uint16_t variables;
-
-static uint8_t immediate = INTERACTIVE;
-static uint8_t previous = INTERACTIVE;
- */
-
 static CODE_INDEX jumps[6];
 static uint8_t jp = 0;
-
-//static uint8_t ZBRANCH, BRANCH, RETURN, PROCESS, CONST, VAR, LIT, RUN, END, PRINT_TEXT;
+static bool compiling;
 
 void compiler_init()
 {
-     
-//    ZBRANCH = code_for("__ZBRANCH");
-//    BRANCH = code_for("__BRANCH");
-//    PROCESS = code_for("__PROCESS");
-//    VAR = code_for("__VAR");
-//    CONST = code_for("__CONSTANT");
-//    LIT = code_for("__LIT");
-//    RUN = code_for("__RUN");
-//    END = code_for("END");
-//    RETURN = code_for("__RETURN");
-//    PRINT_TEXT = code_for(".\"");
 }
 
-void compiler_compile_new()
+void compiler_compile()
 {
+    char buf[128]; 
     char name[32];
+    bool read;
     
-    if (trace) printf("+ compiling new word\n");
+    compiling = true;
+    log_trace(LOG, "compiling new word");
     
     if (parser_next_token() != INVALID_INSTRUCTION) {
         parser_drop_line();
+        compiling = false;
         parser_token_text(name);
-        printf("!compile failed on %s\n", name);
+        log_error(LOG, "compile failed on %s", name);
     }
     parser_token_text(name);
-    printf("# new word %s\n", name);
+    log_info(LOG, "new word %s", name);
     dictionary_add_entry(name);
     
     while (true) 
@@ -79,27 +50,58 @@ void compiler_compile_new()
             case NUMBER_AVAILABLE:
                 add_literal(parser_token_number());
                 break;
-            case WORD_AVAILABLE:
-                // TODO check for immediate!
                 
+            case WORD_AVAILABLE:
                 parser_token_text(name);
-                printf("+ append word %s\n", name);
-                if (strcmp(name, ";") == 0) 
+                struct Dictionary_Entry entry;
+                parser_token_entry(&entry);
+                if ((entry.flags & IMMEDIATE) == IMMEDIATE)
                 {
-                    complete_word();
+                    log_debug(LOG, "run immediate %s", name);
+                    forth_execute(entry.instruction);
+                }
+                else if ((entry.flags & SCRUB) == SCRUB)
+                {
+                    // TODO will this even occur as the entry won't appear to exist until it is completed
+                    log_debug(LOG, "recursive call to %s", name);
+                    parser_drop_line();
+                    compiling = false;
                     return;
                 }
-                
-                uint32_t word = parser_token_word();
-                dictionary_append_value(word);
+                else
+                {
+                    log_debug(LOG, "append entry %s", name);
+                    dictionary_append_instruction(entry.instruction);
+                }
                 break;
+                
             case INVALID_INSTRUCTION:
                 parser_drop_line();
+                compiling = false;
                 return;
+                
             case END_LINE:
-                return;
+                if (compiling)
+                {
+                    read = uart_next_line(buf);
+                    if (read)
+                    {
+                        log_debug(LOG, "input line: '%s'", buf);
+                        parser_input(buf);
+                    }                
+                    break;
+                }
+                else
+                {
+                    return;
+                }
         }
     }
+}
+
+void compiler_end()
+{
+    complete_word();
 }
 
 
@@ -109,16 +111,20 @@ void compiler_constant()
     
     if (parser_next_token() != INVALID_INSTRUCTION) {
         parser_drop_line();
+        compiling = false;
         parser_token_text(name);
-        printf("!constant failed on %s\n", name);
+        log_error(LOG, "constant failed on %s", name);
     }
     
     parser_token_text(name);
     dictionary_add_entry(name);
     
-    dictionary_append_value(LIT);
+    dictionary_append_instruction(LIT);
     uint32_t value = pop_stack();
     dictionary_append_value(value);
+    
+    complete_word();
+
 }
 
 
@@ -128,28 +134,29 @@ void compiler_variable()
     
     if (parser_next_token() != INVALID_INSTRUCTION) {
         parser_drop_line();
+        compiling = false;
         parser_token_text(name);
-        printf("!variable failed on %s\n", name);
+        log_error(LOG, "variable failed on %s", name);
     }
     
     parser_token_text(name);
     dictionary_add_entry(name);
     
-    dictionary_append_value(LIT);
-//    dictionary_append_value_address(1);
-    dictionary_append_value(RETURN);
+    dictionary_append_instruction(ADDR);
 
     dictionary_append_byte(0); // space for value
     dictionary_append_byte(0); // space for value
     dictionary_append_byte(0); // space for value
     dictionary_append_byte(0); // space for value
+    
+    complete_word();
 }
 
 void compiler_if()
 {
-    dictionary_append_value(ZBRANCH);
-    jumps[jp++] = dictionary_offset();  // compilation;
-    dictionary_append_value(0);  
+    dictionary_append_instruction(ZBRANCH);
+    jumps[jp++] = dictionary_offset();
+    dictionary_append_byte(0);  
 }
 
 void compiler_begin()
@@ -159,20 +166,30 @@ void compiler_begin()
     
 void compiler_then()
 {
-    uint8_t distance = dictionary_offset() - jumps[--jp];
+    uint8_t distance = 0x80 + dictionary_offset() - jumps[--jp];
+    dictionary_write_byte(jumps[jp], distance);
+}
+
+void compiler_else()
+{
+    dictionary_append_instruction(BRANCH);
+    jumps[jp++] = dictionary_offset();
+    dictionary_append_byte(0);  
+    
+    uint8_t distance = 0x80 + dictionary_offset() - jumps[--jp];
     dictionary_write_byte(jumps[jp], distance);
 }
 
 void compiler_again()
 {
-    dictionary_append_value(BRANCH);
-    uint8_t distance = jumps[--jp] - dictionary_offset();
+    dictionary_append_instruction(BRANCH);
+    uint8_t distance = 0x80 + jumps[--jp] - dictionary_offset();
     dictionary_append_byte(distance);
 }    
 
 void compiler_until()
 {
-    dictionary_append_value(ZBRANCH);
+    dictionary_append_instruction(ZBRANCH);
     uint8_t distance = jumps[--jp] - dictionary_offset();
     dictionary_append_byte(distance);
 }
@@ -193,6 +210,8 @@ void compiler_inline_comment()
         parser_token_text(text);
     } while(text[strlen(text) - 1] != ')');
 }
+
+
 
 
 /*
@@ -323,7 +342,7 @@ static void compile(char* source) {
             }
             else if (strcmp(instruction, "HALT") == 0)
             {
-                process->ip = 0xffff;
+                process->ip = CODE_END;
                 process->next_time_to_run = 0;
 
             }
@@ -347,7 +366,7 @@ static void compile(char* source) {
                 {
                     // defined words
                     uint16_t code = find_dictionay_entry(instruction, words); //find_word(instruction);
-                    if (code != 0xffff) 
+                    if (code != CODE_END) 
                     {
                         *compilation++ = RUN;
                         *compilation++ = code / 0x100;
@@ -376,7 +395,7 @@ static void compile(char* source) {
                         if (process == NULL) 
                         {
                             code = find_dictionay_entry(instruction, constants);
-                            if (code != 0xffff) 
+                            if (code != CODE_END) 
                             {
                                 *compilation++ = CONST;
                                 *compilation++ = code / 0x100;
@@ -384,7 +403,7 @@ static void compile(char* source) {
                                 
                             } else {
                                 code = find_dictionay_entry(instruction, variables);
-                                if (code != 0xffff)
+                                if (code != CODE_END)
                                 {
                                     *compilation++ = VAR;
                                     *compilation++ = code / 0x100;
@@ -464,9 +483,11 @@ static void compile(char* source) {
 static void complete_word() 
 {
     dictionary_append_value(RETURN);
-    dictionary_append_value(END); // TODO check this stop the runner from failing with instruction 0;
     dictionary_end_entry();
+    compiling = false;
 }
+
+
 /*
 static void add_constant_entry(char *name)
 {
@@ -481,7 +502,7 @@ static void add_constant_entry(char *name)
     
     uint16_t previous_entry;
     if (next_entry == 0) {
-        previous_entry = 0xffff;  // first entry; code to indicate no more previous
+        previous_entry = CODE_END;  // first entry; code to indicate no more previous
     } else {
         previous_entry = constants;
     }
@@ -509,7 +530,7 @@ static void add_variable_entry(char *name)
     
     uint16_t previous_entry;
     if (next_entry == 0) {
-        previous_entry = 0xffff;  // first entry; code to indicate no more previous
+        previous_entry = CODE_END;  // first entry; code to indicate no more previous
     } else {
         previous_entry = variables;
     }
@@ -529,11 +550,8 @@ static void add_variable_entry(char *name)
 
 static void add_literal(uint64_t value)
 {
-    dictionary_append_value(LIT);
-    if (trace)
-    {
-        printf("+ literal = 0x%09llx\n", value);
-    }
+    dictionary_append_instruction(LIT);
+    log_trace(LOG, "literal = 0x%09llx", value);
     dictionary_append_value(value);
 }
 

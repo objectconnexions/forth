@@ -1,9 +1,15 @@
+
 : Y ( -- n ) 1 + 2 + 3 + ;
-: X ( n -- n doubls the number DUP ) * ;
+: X ( n -- n doubls the number ) DUP * ;
 : Z Y X ; \ n n -- n multiple numbers
 : TEST0 Z DUP Z . CR . CR ;
 
 : IFF IF 222 . CR THEN ;
+
+
+: 0= ( n -- flag )
+	0 =
+;
 
 : test1 ( -- )
   IF
@@ -29,7 +35,7 @@
 		DUP .
 		DUP test2
 		0= 
-		STACK
+		.S
 	UNTIL
 	DROP
 	CR
@@ -44,7 +50,7 @@
 	BEGIN
 		1 - DUP
 		0=
-		STACK
+		.S
 	UNTIL
 	DROP
 	CR

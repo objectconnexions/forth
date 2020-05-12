@@ -11,6 +11,7 @@
 #include <stdint.h>         /* For uint32_t definition                        */
 #include <stdbool.h>        /* For true/false definition                      */
 #include <string.h>
+#include "logger.h"
 #include "system.h"         /* System funct/params, like osc/periph config    */
 #include "user.h"           /* User funct/params, such as InitApp             */
 #include "stdio.h"
@@ -27,7 +28,6 @@
 #define PWR_LED PORTEbits.RE18
 #endif
 
-bool trace = false;
 bool debug = false;
 
 extern uint32_t timer;
@@ -90,10 +90,13 @@ int32_t main(void)
     TRISEbits.TRISE1 = 0;
 #endif
 
+    log_init();
+    
     PWR_LED = 1;
 
     uart_init();
     uart_transmit_buffer("PIC 32MX board\r\n");
+    log_info("MAIN", "starting up");
         
     // Timer1 Setup
     T1CONbits.ON = 0;       // disable before set up
@@ -110,26 +113,7 @@ int32_t main(void)
     IEC0bits.T1IE = 1; // Enable Interrupt    
     
     forth_init();
-    
-    uint32_t pattern = 0x00000707; //0x00333;
-    uint32_t power_led = pattern;
-    
-    while(1)
-    {
-        if (run_task) { 
-            run_task = false;
-            if (timer % 30 == 0) {            
-            	// display the bits of a pattern int
-                PWR_LED = power_led & 0x01;
-                power_led = power_led >> 1;
-                if (timer % 1200 == 0) {
-                    power_led = pattern;
-                }               
-            }
-        }
-
-        forth_run();
-    }
+    forth_run();
 }
 
 /*
@@ -139,6 +123,6 @@ int32_t main(void)
 void __ISR(_TIMER_1_VECTOR, IPL5SOFT) Timer1Handler(void)
 {
     timer++;
-    run_task = true;
+//    run_task = true;
     IFS0bits.T1IF = 0; 
 }

@@ -14,6 +14,7 @@
       <itemPath>interpreter.h</itemPath>
       <itemPath>dictionary.h</itemPath>
       <itemPath>debug.h</itemPath>
+      <itemPath>logger.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -35,6 +36,7 @@
       <itemPath>parser.c</itemPath>
       <itemPath>interpreter.c</itemPath>
       <itemPath>dictionary.c</itemPath>
+      <itemPath>logger.c</itemPath>
     </logicalFolder>
     <logicalFolder name="ExternalFiles"
                    displayName="Important Files"

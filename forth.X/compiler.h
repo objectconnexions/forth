@@ -27,13 +27,11 @@ extern "C" {
 
 //#define FUNCTION 1 
 
-void compiler_compile_new(void);
+void compiler_compile(void);
 
-
-
+void compiler_end(void);
 
 void compiler_if(void);
-
 
 void compiler_constant(void);
 
@@ -42,6 +40,8 @@ void compiler_variable(void);
 void compiler_begin(void);
 
 void compiler_then(void);
+
+void compiler_else(void);
 
 void compiler_again(void);
 

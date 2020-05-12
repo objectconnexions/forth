@@ -13,29 +13,30 @@ extern "C" {
 #endif
     
 #include <stdint.h>
+#include "dictionary.h"
+#include "code.h"
 
 enum TYPE 
 {
+    END_LINE,
+    INVALID_INSTRUCTION,
     START,
     WORD_AVAILABLE,
     NUMBER_AVAILABLE,
-    END_LINE,
-    INVALID_INSTRUCTION
 };
 
-void parser_input(char* source);
+void parser_init(void);
+
+void parser_input(char *);
 
 enum TYPE parser_next_token(void);
  
 uint32_t parser_token_number(void);
 
-uint32_t parser_token_word(void);
+void parser_token_entry(struct Dictionary_Entry *);
  
 void parser_token_text(char *); 
-/*
-uint32_t parser_token_text(void); 
- */
-
+ 
 void parser_drop_line(void);
 
 uint16_t code_for(char *);

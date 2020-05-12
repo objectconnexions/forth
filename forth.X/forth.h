@@ -15,7 +15,7 @@ extern "C" {
 #include <stdint.h>
 
 extern struct Process* process;
-extern struct Process* main_process;
+//extern struct Process* main_process;
 
 extern uint8_t dictionary[];
 
@@ -23,7 +23,7 @@ void start_code(uint32_t);
 
 int forth_init();
 
-void forth_execute(uint8_t*);
+void forth_execute(uint32_t);
 
 void forth_run();
 
