@@ -1,7 +1,7 @@
 \ turn on LED
+PORTB 1 digital_out
 PORTB 1 port_on
-50 ms
-PORTB 1 port_off
+
 
 \ read status reg
 ENABLE_ID_CHIP
@@ -11,6 +11,7 @@ DISABLE_ID_CHIP
 SPI1STAT @ .HEX
 . CR
 
+CR
 
 ENABLE_ID_CHIP
 0x03 WRITE_SPI			\ read
@@ -19,3 +20,4 @@ READ_SPI 	. CR
 DISABLE_ID_CHIP
 SPI1STAT @ .HEX CR
 
+PORTB 1 port_off

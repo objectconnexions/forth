@@ -13,7 +13,7 @@
 
 #define LOG "Dictionary"
 
-#define CODE_SIZE 1024 * 8
+#define CODE_SIZE (1024 * 8)
 #define CORE_WORDS 128
 
 static uint8_t code[CODE_SIZE];
@@ -22,6 +22,7 @@ static CORE_FUNC *core_functions;
 static CODE_INDEX last_entry_offset; // last non-scratch entry in dictionary
 static CODE_INDEX new_entry_offset;  // next free space in dictionary for a new entry
 static CODE_INDEX last_core_entry;
+static CODE_INDEX locked_before;
 static uint8_t last_function_index;
 static uint8_t* insertion_point;
 
@@ -32,16 +33,31 @@ static uint32_t read(CODE_INDEX *);
 void dictionary_init()
 {
     core_functions = (CORE_FUNC *)malloc(sizeof(CORE_FUNC) * CORE_WORDS);
+    last_entry_offset = LAST_ENTRY;
+    locked_before = 0;
+    last_core_entry = 0;
+    last_function_index = 0;
     dictionary_reset();
 }
     
 void dictionary_reset()
 {
-    last_entry_offset = LAST_ENTRY;
-    new_entry_offset = 0;
-    insertion_point = code;
+    CODE_INDEX entry;
+
+    entry = last_entry_offset;
+    while (entry != LAST_ENTRY) {
+        entry = read(&entry);
+        
+        if (entry < locked_before) {
+            last_entry_offset = entry;
+            break;
+        }
+    }
+
+    new_entry_offset = locked_before;
+    log_debug(LOG, "last entry reset to %04x, next entry reset to %04x", last_entry_offset, new_entry_offset);
     
-    memset(code, 0, CODE_SIZE);   
+    memset(code + locked_before, 0, CODE_SIZE - locked_before);   
 }
 
 static void add_entry(char *name, uint8_t flags)
@@ -68,9 +84,36 @@ static void add_entry(char *name, uint8_t flags)
     log_debug(LOG, "   code at ~%04X (at %08X)", dictionary_offset(), insertion_point);
 }
 
+void dictionary_lock()
+{
+    locked_before = new_entry_offset;
+}
+
 void dictionary_add_entry(char *name)
 {
     add_entry(name, 0);
+}
+
+static uint32_t align(uint32_t address)
+{
+    uint8_t offset = address % 4;
+    log_debug(LOG, "alignment offset %i", offset);
+    address = offset == 0 ? address : address + 4 - offset;
+    log_debug(LOG, "aligned to %08x", address);
+    return address;
+}
+
+/*
+ * Align data in memory so it is on a four-byte boundary as accessing memory at other 
+ * positions fails with an exception.
+ */
+void dictionary_align(void)
+{
+    log_debug(LOG, "alignment offset %i", ((uint32_t) insertion_point) % 4);
+    while (((uint32_t) insertion_point) % 4 != 0) {
+        dictionary_append_byte(0);
+    }
+    log_debug(LOG, "aligned to %08x", insertion_point);
 }
 
 void dictionary_append_byte(uint8_t value)
@@ -229,7 +272,7 @@ CODE_INDEX dictionary_offset()
 
 uint32_t dictionary_data_address(CODE_INDEX offset)
 {
-    return (uint32_t) insertion_point + offset;
+    return align(((uint32_t) code) + offset);
 }
 
 /*
@@ -238,23 +281,25 @@ uint32_t dictionary_data_address(CODE_INDEX offset)
 void dictionary_find_word_for(CODE_INDEX instruction, char *name) {
     CODE_INDEX entry;
     CODE_INDEX next_entry;
+    bool short_code;
 
-    log_debug(LOG, "seeking name for instruction %04x | %04x", instruction, last_core_entry);
+    log_debug(LOG, "seeking name for instruction %04x | %04x", instruction, last_function_index);
 
-    bool short_code = instruction <= last_core_entry;
     entry = last_entry_offset;
     strcpy(name, "Unknown!");        
     while (entry != LAST_ENTRY) {
         next_entry = read(&entry);
-        if (entry >= last_core_entry)
-        {
-            entry = next_entry;
-            continue;
-        }
+//        if (entry >= last_core_entry)
+//        {
+//            entry = next_entry;
+//            continue;
+//        }
         
         uint8_t len = (code[entry++] & 0x1f);
-        log_trace(LOG, " checking entry ~%04x %02x", entry + len, code[entry+ len]);
-        if (short_code ? instruction == code[entry + len] : instruction == entry + len) {
+        CODE_INDEX code_at = entry + len;
+        short_code = entry <= last_core_entry;
+        log_trace(LOG, " checking entry %s%04x [%02x]", short_code ? "S " : "", code_at, code[code_at]);
+        if ((short_code && instruction == code[code_at]) || (!short_code && instruction == code_at)) {
             strncpy(name, &(code[entry]), len);
             name[len] = 0;
             break;
@@ -397,7 +442,7 @@ void dictionary_debug_entry(CODE_INDEX instruction)
     CODE_INDEX addr;
     char name[32];
     uint32_t value;
-    uint8_t offset;
+    int8_t relative;
     
     log_debug(LOG, " debug entry for @%04x", instruction);
     
@@ -435,6 +480,12 @@ void dictionary_debug_entry(CODE_INDEX instruction)
                 debug_print(addr, entry - addr);
                 printf("LIT %i", value);
             }
+            else if (value == ADDR)
+            {
+                value = align(((uint32_t) code) + entry);
+                debug_print(addr, entry - addr);
+                printf("ADDR %08x", value);
+            }
             else if (value == RETURN)
             {
                 debug_print(addr, entry - addr);
@@ -442,15 +493,15 @@ void dictionary_debug_entry(CODE_INDEX instruction)
             }
             else if (value == BRANCH)
             {
-                offset = code[entry++];
+                relative = code[entry++];
                 debug_print(addr, entry - addr);
-                printf("BRANCH %i", offset - 0x80);
+                printf("BRANCH %i", relative);
             }
             else if (value == ZBRANCH)
             {
-                offset = code[entry++];
+                relative = code[entry++];
                 debug_print(addr, entry - addr);
-                printf("ZBRANCH %i", offset - 0x80);
+                printf("ZBRANCH %i", relative);
             }
             else if (value == NOP)
             {
@@ -460,16 +511,16 @@ void dictionary_debug_entry(CODE_INDEX instruction)
             else
             {
                 dictionary_find_word_for(value, name);
-                value = (uint32_t) core_functions[value];
+                uint32_t function = (uint32_t) core_functions[value];
                 debug_print(addr, entry - addr);
-                printf("%s  func()<%08x>", name, value);
+                printf("%s  func(%x)<%08x>", name, value, function);
             }
         }
         else 
         {
             dictionary_find_word_for(value, name);
             debug_print(addr, entry - addr);
-            printf("%s", name);
+            printf("%s (%04x)", name, value);
         }
         printf("\n");
     }
@@ -477,13 +528,17 @@ void dictionary_debug_entry(CODE_INDEX instruction)
 
 void dictionary_debug()
 {
-    int i;
-    for (i = 0; i < CORE_WORDS; i++) {
-        printf("%0X -> %08X", i, core_functions[i]);
-        
-        printf("\n");
-    }
-   
+//    int i;
+//    for (i = 0; i < CORE_WORDS; i++) {
+//        printf("%0X -> %08X", i, core_functions[i]);
+//        
+//        printf("\n");
+//    }
+//   
+    printf("last: %04x\n", last_entry_offset);
+    printf("new: %04x\n", new_entry_offset);
+    printf("locked at: %04x\n", locked_before);
+    printf("code at: %08x\n", code);
     
     CODE_INDEX entry;
     CODE_INDEX next_entry;
@@ -507,7 +562,8 @@ void dictionary_debug()
         if (entry <= last_core_entry)
         {
             // C function address
-            printf(" func()<%08x>\n", core_functions[code[entry + len]]);            
+            uint8_t short_code = code[entry + len];
+            printf(" func(%x)<%08x>\n", short_code, core_functions[short_code]);            
         }
         else
         {

@@ -17,11 +17,11 @@
 #include "dictionary.h"
 #include "uart.h"
 
-//#define NEXT_INSTRUCTION process->code[process->ip++]
-#define PEEK_DATA process->stack[process->sp]
-#define PUSH_DATA(value) (process->stack[++(process->sp)] = (value))
-#define POP_DATA process->stack[process->sp--]
-#define PUSH_RETURN(address) (process->return_stack[++(process->rsp)] =  (address))
+//#define NEXT_INSTRUCTION current_process->code[current_process->ip++]
+#define PEEK_DATA current_process->stack[current_process->sp]
+#define PUSH_DATA(value) (current_process->stack[++(current_process->sp)] = (value))
+#define POP_DATA current_process->stack[current_process->sp--]
+#define PUSH_RETURN(address) (current_process->return_stack[++(current_process->rsp)] =  (address))
 
 #define LOG "Forth"
 
@@ -38,7 +38,8 @@ void tasks(void);
 void load_words(void);
 void reset(void);
 void print_top_of_stack(void);
-void return_to(void);
+static void return_to(void);
+static void abort_task(void);
 void lit(void);
 
 static void dump_base(void);
@@ -46,32 +47,56 @@ static void dump_base(void);
 uint32_t timer = 0;
 static bool waiting = true;
 
-struct Process* processes;
-struct Process* process;
-struct Process* interpreter_process;
-uint8_t next_process_id = 0;
-bool in_error;
+static struct Process* processes;
+static struct Process* current_process;
+static struct Process* idle_process;
+static struct Process* power_process;
+static struct Process* interpreter_process;
+static uint8_t next_process_id = 0;
+static bool in_error;
+
+static uint16_t interpreter_code;  // start of interpreter code
+static uint16_t idle_code;
 
 int forth_init()
 {   
     parser_init();
-    dictionary_init();
     compiler_init();
-    load_words();
-    processes = new_task(3, "IDLE");
-    new_task(3, "POWER");
-    interpreter_process = new_task(3, "INTERPRETER");
-    process = interpreter_process;
-	uart_transmit_buffer("FORTH v0.3\n\n");
     
-    struct Dictionary_Entry entry;
-    dictionary_find_entry("INTERACTIVE", &entry);
-    interpreter_process->ip = entry.instruction;
+    idle_process = new_task(1, "IDLE");
+    power_process = new_task(5, "POWER");
+    interpreter_process = new_task(5, "INTERPRETER");
+    current_process = interpreter_process;
+    
+    dictionary_init();
+    load_words();
+	
+    uart_transmit_buffer("FORTH v0.3\n\n");        
+}
+
+void process_interrupt(uint8_t level)
+{
+    log_info(LOG, "restarting interpreter %i", level);
+    current_process->sp = -1;
+    current_process->rsp = -1;
+    current_process->ip = interpreter_code;
+    current_process->next_time_to_run = 0;
+}
+
+uint8_t find_process(char *name) {
+    struct Process* next = processes;
+    do {
+        if (strcmp(name, next->name) == 0) {
+            return next->id;
+        }
+        next = next->next;
+    } while (next != NULL);
+    return 0xff;
 }
 
 bool stack_underflow()
 {
-    if (process->sp < 0)
+    if (current_process->sp < 0)
     {
         printf("stack underflow; aborting\n");
         return true;
@@ -84,6 +109,8 @@ bool stack_underflow()
 
 static bool isAccessibleMemory(uint32_t address)
 {
+    return true;
+    /*
     if ((address >= 0xBF800000 && address <= 0xBF8FFFFF) ||
             (address >= 0x80000000 && address <= 0x8000FFFF)) 
     {
@@ -94,6 +121,7 @@ static bool isAccessibleMemory(uint32_t address)
         printf("LIMIT %X!", address);
         return false;
     }
+     */
 }
 
 static void test_compile(char * input) {
@@ -106,118 +134,24 @@ void forth_run()
     in_error = false;
     while (true)
     {
-        uint32_t instruction = dictionary_read_instruction(process);
+        uint32_t instruction = dictionary_read_instruction(current_process);
         forth_execute(instruction);
 
-        // TODO how do we set up the errors? needs to be part of the process struct
+        // TODO how do we set up the errors? needs to be part of the current_process struct
         if (in_error)
         {
             // TODO extract into abort_task() function
             in_error = false;
-            process->sp = 0;
-            process->rsp = 0;
-            process->ip = 0;
-            process->ip = LAST_ENTRY;
-            process->next_time_to_run = 0;
-            next_task();
+            abort_task();
             printf(" ABORTED\n");
         }
     }
 }
-//
-//static void process_input()
-//{
-//    char buf[128]; 
-//    
-////    if (interpreter_process->ip == LAST_ENTRY)
-////    {
-//        bool read = uart_next_line(buf);
-//        if (read)
-//        {
-//            //buf[strlen(buf) - 1] = 0;
-//            if (trace) 
-//                log_trace(LOG, "input line: '%s'\n", buf);
-//
-//            if (strcmp(buf, "usb") == 0)
-//            {
-//      //          sprintf(buf, "OTG = %08x CON = %08x PWRC = %08x\n", U1OTGCON, U1CON, U1PWRC);   
-//      //          uart_transmit_buffer(buf);    
-//
-//            }
-//            else if (strncmp(buf, "led ", 4) == 0)
-//            {
-//         /*       if (strcmp(buf + 4, "on") == 0) {
-//                    PORTCbits.RC4 = 1;
-//                    uart_transmit_buffer("led on\n");
-//                } else if (strcmp(buf + 4, "off") == 0) {
-//                    PORTCbits.RC4 = 0;
-//                    uart_transmit_buffer("led off\n");
-//                }
-//         */       
-//            }
-//            else if (strcmp(buf, "timer") == 0)
-//            {
-//            /*    sprintf(buf, "timer = %04x\n", TMR1);   
-//                uart_transmit_buffer(buf);    
-//*/
-//            }
-//            else if (strcmp(buf, "ddd") == 0)
-//            {
-//                dictionary_memory_dump(0, 0x10);
-//                dictionary_memory_dump(0, 5);
-//                dictionary_memory_dump(9, 7);
-//                dictionary_memory_dump(8, 5);
-//                dictionary_memory_dump(18, 3);
-//                dictionary_memory_dump(0, 0x100);
-//            }
-//            else if (strcmp(buf, "load") == 0)
-//            {
-//                test_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
-//                test_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
-//                test_compile(": FLASH on 200 ms off 200 ms ;");
-//                test_compile(": FLASH2 flash flash flash ;");
-//
-//            }
-//            else if (strcmp(buf, "##") == 0)
-//            {
-//                uart_debug();            
-//            }
-//            else if (strcmp(buf, "??") == 0)
-//            {
-//                tasks();            
-//            }
-//            else if (strcmp(buf, "echo") == 0)
-//            {
-//                echo = true;   
-//            }
-//            else if (strcmp(buf, "noecho") == 0)
-//            {
-//                echo = false;
-//            }
-//            else
-//            {                
-////                process_buffer(buf);
-//                
-//                if (echo) printf("> %s\n", buf);
-//                parser_input(buf);
-//                if (trace) 
-//                {
-//                    dump_parameter_stack(process);
-//                    printf("\n");
-//                }
-//
-//                interpreter_process();
-//
-//            }
-//        }
-//        
-////    }
-//}
-//
+
 void start_code(uint32_t at_address)
 {
-    PUSH_RETURN(process->ip);
-    // TODO this should be the main process only
+    PUSH_RETURN(current_process->ip);
+    // TODO this should be the main current_process only
     interpreter_process->ip = at_address;
 }
 
@@ -229,14 +163,14 @@ void forth_execute(uint32_t instruction)
     }
     else
     {
-        PUSH_RETURN(process->ip);
+        PUSH_RETURN(current_process->ip);
         if (log_level <= TRACE) 
         {
             char word_name[64];
             dictionary_find_word_for(instruction, word_name);
-            log_trace(LOG, "run %s jump to ~%04x return to~%04x", word_name, instruction, process->ip);
+            log_trace(LOG, "run %s jump to ~%04x return to~%04x", word_name, instruction, current_process->ip);
         }
-        process->ip = instruction;
+        current_process->ip = instruction;
     }
 }
 
@@ -245,30 +179,29 @@ void execute_next_instruction()
     in_error = false;
     
     // TODO move location into trace block
-    uint32_t location = process->ip; // capture first as can't infer how many bytes it was later on
+    uint32_t location = current_process->ip; // capture first as can't infer how many bytes it was later on
     
     if (location == LAST_ENTRY) {
         return;
     }
     
-    uint32_t instruction = dictionary_read_instruction(process);
+    uint32_t instruction = dictionary_read_instruction(current_process);
     if (log_level <= TRACE)
     {   
         char word_name[64];
         dictionary_find_word_for(instruction, word_name);
-        log_trace(LOG, "execute #%i ~%04X: %0X: %s", process->id, location, instruction, word_name);
+        log_trace(LOG, "execute #%i ~%04X: %0X: %s", current_process->id, location, instruction, word_name);
     }
     forth_execute(instruction);
 
-    // TODO how do we set up the errors? needs to be part of the process struct
+    // TODO how do we set up the errors? needs to be part of the current_process struct
     if (in_error)
     {
         in_error = false;
-        process->sp = 0;
-        process->rsp = 0;
-        process->ip = 0;
-        process->ip = LAST_ENTRY;
-        process->next_time_to_run = 0;
+        current_process->sp = -1;
+        current_process->rsp = -1;
+        current_process->ip = LAST_ENTRY;
+        current_process->next_time_to_run = 0;
         next_task();
         printf(" ABORTED\n");
     }
@@ -276,12 +209,12 @@ void execute_next_instruction()
     
 void push(uint32_t value)
 {
-    process->stack[++(process->sp)] = value;
+    current_process->stack[++(current_process->sp)] = value;
 }
     
 void duplicate() 
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         return;	
     }
@@ -291,236 +224,236 @@ void duplicate()
 
 void over()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t nos_value = process->stack[process->sp - 1];
+    uint32_t nos_value = current_process->stack[current_process->sp - 1];
     PUSH_DATA(nos_value);
 }
 
 void drop() 
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         return;
     }
-    process->sp--;
+    current_process->sp--;
 }
 
 void nip() 
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    process->stack[process->sp] = tos_value;
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    current_process->stack[current_process->sp] = tos_value;
 }
 
 void swap()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
     uint32_t tos_value = PEEK_DATA;
-    process->stack[process->sp] = process->stack[process->sp - 1];
-    process->stack[process->sp - 1] = tos_value;
+    current_process->stack[current_process->sp] = current_process->stack[current_process->sp - 1];
+    current_process->stack[current_process->sp - 1] = tos_value;
 }
 
 void tuck() 
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp];
-    process->stack[++(process->sp)] = tos_value;
-    process->stack[process->sp - 1] = process->stack[process->sp - 2];
-    process->stack[process->sp - 2] = tos_value;
+    uint32_t tos_value = current_process->stack[current_process->sp];
+    current_process->stack[++(current_process->sp)] = tos_value;
+    current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 2];
+    current_process->stack[current_process->sp - 2] = tos_value;
 }
 
 void rot() 
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp];
-    process->stack[process->sp] = process->stack[process->sp - 1];
-    process->stack[process->sp - 1] = process->stack[process->sp - 2];
-    process->stack[process->sp - 2] = tos_value;
+    uint32_t tos_value = current_process->stack[current_process->sp];
+    current_process->stack[current_process->sp] = current_process->stack[current_process->sp - 1];
+    current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 2];
+    current_process->stack[current_process->sp - 2] = tos_value;
 }
 
 void lit()
 {
-    uint32_t tos_value = dictionary_read(process);
+    uint32_t tos_value = dictionary_read(current_process);
     PUSH_DATA(tos_value);
 }
 
 /*
  * Using the address in the dictionary work out the corresponding memory address
  */
-void address()
+void memory_address()
 {
-    PUSH_DATA(dictionary_data_address(process->ip));
+    PUSH_DATA(dictionary_data_address(current_process->ip));
     return_to();
 }
 
 /*
 void exec_process()
 {
-   uint32_t tos_value = process->code[process->ip++];
-   process->stack[++(process->sp)] = tos_value;
+   uint32_t tos_value = current_process->code[current_process->ip++];
+   current_process->stack[++(current_process->sp)] = tos_value;
 }
 */
 void add()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value + tos_value;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void subtract()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value - tos_value;
-    process->stack[++process->sp] = tos_value;
+    current_process->stack[++current_process->sp] = tos_value;
 }
 
 void divide()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value / tos_value;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void muliply() 
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value * tos_value;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void greater_than()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value > tos_value ? 1 : 0;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void equal_to()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value == tos_value ? 1 : 0;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void and() 
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value &tos_value;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void or()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value | tos_value;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void xor()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value ^ tos_value;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void not()
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
     tos_value = tos_value > 0 ? 0 : 1;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void left_shift()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value << tos_value;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void right_shift()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
-    uint32_t nos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value >> tos_value;
-    process->stack[++(process->sp)] = tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
 }
 
 void ticks()
 {
-    process->stack[++(process->sp)] = timer;
+    current_process->stack[++(current_process->sp)] = timer;
 }
 
 void yield()
@@ -530,34 +463,33 @@ void yield()
 
 void wait_for()
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t time = process->stack[process->sp--];
+    uint32_t time = current_process->stack[current_process->sp--];
     wait(time);
 }
 
 void branch()
 {
-    uint16_t pos = process->ip;
-    int32_t relative = dictionary_read_byte(process);
-    relative = relative - 0x80;
-    process->ip = pos + relative;
+    uint16_t pos = current_process->ip;
+    int8_t relative = dictionary_read_byte(current_process);
+    current_process->ip = pos + relative;
 }
 
 void zero_branch()
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t offset = process->stack[process->sp--];
+    uint32_t offset = current_process->stack[current_process->sp--];
     log_trace(LOG, "zbranch for %i -> %s", offset, (offset == 0 ? "zero" : "non-zero"));
     if (offset == 0) {
         branch();
     } else {
-        process->ip++;
+        current_process->ip++;
     }
 }
 
@@ -566,69 +498,69 @@ void execute_word()
     if (stack_underflow()) {
         return;
     }
-    uint32_t instruction = process->stack[process->sp--];
+    uint32_t instruction = current_process->stack[current_process->sp--];
     log_debug(LOG, "execute from %i", instruction);
-    process->return_stack[++(process->rsp)] = process->ip + 1;
-    process->ip = instruction;
+    current_process->return_stack[++(current_process->rsp)] = current_process->ip + 1;
+    current_process->ip = instruction;
 }
  
-void initiate()
+static void initiate()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t id = process->stack[process->sp--];
-    uint32_t instruction = process->stack[process->sp--];
+    uint32_t id = current_process->stack[current_process->sp--];
+    uint32_t instruction = current_process->stack[current_process->sp--];
     struct Process *run_process = processes;
     do {
         if (run_process->id == id) {
             run_process->ip = instruction;
             run_process->next_time_to_run = timer + 1;
-            log_debug(LOG, "initiate from %04x with %s at %i", run_process->ip, run_process->name, run_process->next_time_to_run);
+            log_info(LOG, "initiate from %04x with %s at %i", run_process->ip, run_process->name, run_process->next_time_to_run);
             break;
         }
         run_process = run_process->next;
     } while (run_process != NULL);
     if (run_process == NULL) {
-        printf("no process with ID %i\n", id);                
+        log_error(LOG, "no current_process with ID %i", id);                
     }
 //    if (trace) {
 //        tasks();
 //    }
 }
 
-void return_to()
+static void return_to()
 {
     char buf[64];
     if (log_level <= TRACE) 
     {
-        dump_return_stack(buf, process);
+        dump_return_stack(buf, current_process);
         log_trace(LOG, "return %s", buf);
     }
-    if (process->rsp < 0) {
+    if (current_process->rsp < 0) {
         // copy of END code - TODO refactor
         if (log_level <= TRACE) 
         {
-            dump_parameter_stack(buf, process);
+            dump_parameter_stack(buf, current_process);
             log_trace(LOG, "  %s", buf);
         }
-        process->ip = LAST_ENTRY;
-        process->next_time_to_run = 0;
+        current_process->ip = LAST_ENTRY;
+        current_process->next_time_to_run = 0;
         next_task();
-        log_trace(LOG, "end, go to %s", process->name);
+        log_trace(LOG, "end, go to %s", current_process->name);
     } else {
-        process->ip = process->return_stack[process->rsp--];
+        current_process->ip = current_process->return_stack[current_process->rsp--];
     }
 }
 
 void print_top_of_stack()
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = process->stack[process->sp--];
+    uint32_t tos_value = current_process->stack[current_process->sp--];
     printf("%i ", tos_value);
 }
 
@@ -639,30 +571,30 @@ void print_line()
 
 void emit()
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t ch = process->stack[process->sp--];
+    uint32_t ch = current_process->stack[current_process->sp--];
     printf("%c", ch);
 }
 
 void read_memory()
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         in_error = true;
         return;
     }
 
-    uint32_t address = process->stack[process->sp--];
+    uint32_t address = current_process->stack[current_process->sp--];
     log_trace(LOG, "address 0x%x", address);
     if (isAccessibleMemory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
         uint32_t value = (uint32_t) *ptr;
         log_debug(LOG, "value at %0X = 0x%x", address, value);
-        process->stack[++(process->sp)] = value;
+        current_process->stack[++(current_process->sp)] = value;
     }
     else 
     {
@@ -672,14 +604,14 @@ void read_memory()
 
 void write_memory()
 {
-    if (process->sp < 0) {
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         in_error = true;
         return;
     }
 
-    uint32_t address = process->stack[process->sp--]; // address
-    uint32_t value = process->stack[process->sp--]; // write value
+    uint32_t address = current_process->stack[current_process->sp--]; // address
+    uint32_t value = current_process->stack[current_process->sp--]; // write value
     log_debug(LOG, "set address %04X to %04X", address, value);
     if (isAccessibleMemory(address)) 
     {
@@ -694,7 +626,7 @@ void write_memory()
 
 void print_hex()
 {
-    uint32_t value = process->stack[process->sp--];
+    uint32_t value = current_process->stack[current_process->sp--];
     printf("0x%X", value);
 }
 
@@ -706,7 +638,7 @@ inline void print_cr()
 void stack()
 {
     char buf[64];
-    dump_parameter_stack(buf, process);
+    dump_parameter_stack(buf, current_process);
     printf("%s\n", buf);
 }
 
@@ -721,49 +653,62 @@ inline void debug_off()
 }
 
 void reset() {
-    dictionary_reset();
+    log_info(LOG, "reseting memory");
     struct Process* next = processes;
     do {
-        if (next != interpreter_process)
-        {
-            next->sp = -1;
-            next->rsp = 0;
+        next->sp = -1;
+        next->rsp = -1;
+//        if (next != interpreter_process && next != idle_process)
+//        {
             next->ip = LAST_ENTRY;
-            next = next->next;
-        }
+//        }
+        next = next->next;
     } while (next != NULL);
+    idle_process->ip = idle_code;
+    interpreter_process->ip = interpreter_code;
+    
+    
+    dictionary_reset();
+    tasks();
+    dictionary_debug();
+    dump_base();
+    
+    //load_words();
+    //dump_base();
 }
 
 void clear_registers()
 {
-    process->sp = 0;
-    process->rsp = 0;
-    process->ip = 0;
+    current_process->sp = -1;
+    current_process->rsp = -1;
+    current_process->ip = LAST_ENTRY;
 }
 
 void end()
 {
-    process->ip = LAST_ENTRY;
-    process->next_time_to_run = 0;
+    current_process->ip = LAST_ENTRY;
+    current_process->next_time_to_run = 0;
     next_task();
-    log_trace(LOG, "end, go to %s", process->name);
+    log_trace(LOG, "end, go to %s", current_process->name);
 }
 
 void wait(uint32_t wait_time) {
-    process->next_time_to_run = timer + wait_time;
+    current_process->next_time_to_run = timer + wait_time;
     next_task();
 }
 
-uint32_t pop_stack() {
-    if (process->sp < 0) {
+uint32_t pop_stack()
+{
+    if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
         // TODO need to use exception or some other way of dropping out
         return;
     }
-    return process->stack[process->sp--];
+    return current_process->stack[current_process->sp--];
 }
 
-void dump_return_stack(char *buf, struct Process *p) {
+void dump_return_stack(char *buf, struct Process *p)
+{
 	if (p->rsp >= 0) {
 		uint8_t len = sprintf(buf, "[ ");
         int i;
@@ -780,7 +725,8 @@ void dump_return_stack(char *buf, struct Process *p) {
 	}
 }
 
-void dump_parameter_stack(char *buf, struct Process *p) {
+void dump_parameter_stack(char *buf, struct Process *p)
+{
 	if (p->sp >= 0) {
 		uint8_t len = sprintf(buf, "< ");
         int i;
@@ -797,7 +743,8 @@ void dump_parameter_stack(char *buf, struct Process *p) {
 	}
 }
 
-void to_upper(char *string, int len) {
+void to_upper(char *string, int len)
+{
     int i;
     for (i = 0; i <= len; i++) {
         if (*string >= 97 && *string <= 122) {
@@ -807,51 +754,76 @@ void to_upper(char *string, int len) {
     }
 }
 
-struct Process* new_task(uint8_t priority, char *name) {
-    struct Process* nextProcess;
-    nextProcess = malloc(sizeof(struct Process));
+struct Process* new_task(uint8_t priority, char *name)
+{
+    struct Process* new_process;
+    new_process = malloc(sizeof(struct Process));
 
-    if (processes != NULL) {
-        struct Process* lastProcess = processes;
-        while (lastProcess->next != NULL) {
-            lastProcess = lastProcess->next;
+    if (processes == NULL) 
+    {
+        processes = new_process;
+    }
+    else
+    {
+        struct Process* last_process = processes;
+        while (last_process->next != NULL) {
+            last_process = last_process->next;
         }
-        lastProcess->next = nextProcess;
+        last_process->next = new_process;
     }
     
-    nextProcess->id = next_process_id++;
-    nextProcess->sp = -1;
-    nextProcess->rsp = -1;
-    nextProcess->priority = priority;
-    nextProcess->next_time_to_run = 0;
-    nextProcess->name = malloc(sizeof(strlen(name) + 1));
-    strcpy(nextProcess->name, name);
+    new_process->id = next_process_id++;
+    new_process->sp = -1;
+    new_process->rsp = -1;
+    new_process->ip = LAST_ENTRY;
+    new_process->priority = priority;
+    new_process->next_time_to_run = 0;
+    new_process->name = malloc(sizeof(strlen(name) + 1));
+    strcpy(new_process->name, name);
     
-    nextProcess->ip = LAST_ENTRY;
     
-    log_debug(LOG, "new task %s (P%i)", nextProcess->name, priority);
+    log_info(LOG, "new task %s (P%i)", new_process->name, priority);
     
-    return nextProcess;
+    return new_process;
 }
 
+static void add_task()
+{
+    char name[32];
+    parser_next_token();
+    parser_token_text(name);    
+    new_task(5, name);
+    log_info("add task %s", name);
+}
+
+static void task_priority()
+{
+    CELL priority = current_process->stack[current_process->sp--];
+    current_process->priority = priority;
+    log_info(LOG, "process priority %i now on %s", priority, current_process->name);
+}
 /*
  * Find the next task to execute. This is the highest priority task that has a next run
- * time that is less than the current time. If such a process exists then the waiting
+ * time that is less than the current time. If such a current_process exists then the waiting
  * flag is cleared.
  */
 void next_task()
 {
+    uint8_t highest_priority = 0;
+    
     waiting = true;
     struct Process* next = processes;
     do {
-        if (next->ip != LAST_ENTRY && next->next_time_to_run <= timer) {
-            process = next;
+        if (next->ip != LAST_ENTRY && timer >= next->next_time_to_run && next->priority >= highest_priority) {
+            highest_priority = next->priority;
+            current_process = next;
             waiting = false;
-            log_trace(LOG, "switch to process %s\n", process->name);
-            break;
         }
         next = next->next;
     } while (next != NULL);
+    if (!waiting) {
+//        log_trace(LOG, "switch to current_process %s", current_process->name);
+    }
 }
 
 void tasks()
@@ -860,9 +832,9 @@ void tasks()
     printf("Time %i\n", timer);
     do {
         char buf[64];
-        dump_return_stack(buf, process);
-        printf("Task #%i%s %s (P%i) ~%04X, next %i  %s ", 
-                p->id, p == process ? "*" : "", p->name, p->priority,  
+        dump_return_stack(buf, current_process);
+        printf("Task #%i%s %s (P%i) %04X, next %i  %s ", 
+                p->id, p == current_process ? "*" : "", p->name, p->priority,  
                 p->ip, p->next_time_to_run, buf);
         dump_parameter_stack(buf, p);
         printf("%s\n", buf);
@@ -872,12 +844,12 @@ void tasks()
 
 void dump()
 {
-    if (process->sp < 1) {
+    if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
         return;
     }
-    CELL length = process->stack[process->sp--];
-    CELL code_index = process->stack[process->sp--];
+    CELL length = current_process->stack[current_process->sp--];
+    CELL code_index = current_process->stack[current_process->sp--];
     dictionary_memory_dump(code_index, length);
 }
 
@@ -886,10 +858,15 @@ static void dump_base()
     dictionary_memory_dump(0, 0x200);
 }
 
-void aborted() 
+static void abort_task() 
 {
-    // TODO kill process
-    printf("invalid execution\n");
+    log_debug("abort task %s", current_process->name);
+    current_process->sp = -1;
+    current_process->rsp = -1;
+    current_process->ip = 0;
+    current_process->ip = (current_process == interpreter_process) ? interpreter_code : LAST_ENTRY;
+    current_process->next_time_to_run = 0;
+    next_task();
 }
 
 /*
@@ -908,7 +885,7 @@ void tick()
     if (entry.instruction == LAST_ENTRY) 
     {
         printf("No entry %s!\n", entry.name);
-        aborted();
+        abort_task();
     }
     else
     {
@@ -943,7 +920,7 @@ static void compile_char()
 
 static void set_log_level() 
 {
-    log_level = process->stack[process->sp--];
+    log_level = current_process->stack[current_process->sp--];
 }
 
 void load_words()
@@ -951,7 +928,7 @@ void load_words()
     // Internal codes
 //    dictionary_insert_internal_instruction("__PROCESS", exec_process);
     dictionary_insert_internal_instruction(LIT, lit);
-    dictionary_insert_internal_instruction(ADDR, address);
+    dictionary_insert_internal_instruction(ADDR, memory_address);
     dictionary_insert_internal_instruction(BRANCH, branch);
     dictionary_insert_internal_instruction(ZBRANCH, zero_branch);
     dictionary_insert_internal_instruction(RETURN, return_to);
@@ -1004,7 +981,8 @@ void load_words()
     dictionary_add_core_word("MS", wait_for, false);
     dictionary_add_core_word(".S", stack, false);
     dictionary_add_core_word("TICKS", ticks, false);
-    
+    dictionary_add_core_word("TASK", add_task, false);
+    dictionary_add_core_word("PRIORITY", task_priority, false);
 
     dictionary_add_core_word("'", tick, false);
 
@@ -1039,20 +1017,36 @@ void load_words()
     dictionary_add_core_word("LOG", set_log_level, false);
     dictionary_add_core_word("DICT", dictionary_debug, false);
     
-    
-    dictionary_add_entry("INTERACTIVE");
+    dictionary_add_core_word("DRESET", dictionary_reset, false);
+    dictionary_add_core_word("LOCK", dictionary_lock, false);
+    dictionary_add_core_word("ABORT", abort_task, false);
+            
+    dictionary_add_entry("_INTERACTIVE");
     compiler_begin();
     dictionary_append_instruction(PROCESS_LINE);
     compiler_again();
     dictionary_end_entry();
     
-        
-    dictionary_add_entry("TEST");
-    dictionary_append_instruction(1);
-    dictionary_append_instruction(2);
-    dictionary_append_instruction(1);
-    dictionary_append_instruction(0x13);
-    dictionary_append_instruction(12);
+    struct Dictionary_Entry entry;
+    dictionary_find_entry("PAUSE", &entry);
+    
+    dictionary_add_entry("_IDLE");
+    compiler_begin();
+    dictionary_append_instruction(entry.instruction);
+    compiler_again();
     dictionary_end_entry();
 
+    
+    
+        
+ //   struct Dictionary_Entry entry;
+    dictionary_find_entry("_INTERACTIVE", &entry);
+    interpreter_code = entry.instruction;
+    interpreter_process->ip = interpreter_code;
+
+    dictionary_find_entry("_IDLE", &entry);
+    idle_code = entry.instruction;
+    idle_process->ip = idle_code;
+
+    dictionary_lock();
 }

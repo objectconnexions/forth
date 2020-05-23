@@ -64,6 +64,8 @@ uint32_t dictionary_data_address(CODE_INDEX);
 
 void dictionary_memory_dump(CODE_INDEX, uint16_t);
 
+void dictionary_align(void);
+
 void dictionary_write_byte(CODE_INDEX, uint8_t);
 
 void dictionary_words(void);
@@ -82,6 +84,7 @@ bool dictionary_shortcode(CODE_INDEX);
 
 void dictionary_execute_function(CODE_INDEX);
 
+void dictionary_lock(void);
 
 #ifdef	__cplusplus
 }

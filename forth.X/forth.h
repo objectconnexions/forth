@@ -14,8 +14,10 @@ extern "C" {
 
 #include <stdint.h>
 
-extern struct Process* process;
+//extern struct Process* process;
 //extern struct Process* main_process;
+    
+extern uint32_t timer;
 
 extern uint8_t dictionary[];
 
@@ -32,6 +34,10 @@ void forth_tasks(uint32_t);
 void push(uint32_t);
 
 uint32_t pop(void);
+
+void process_interrupt(uint8_t);
+
+uint8_t find_process(char *);
 
 #ifdef	__cplusplus
 }

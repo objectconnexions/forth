@@ -22,6 +22,8 @@
 #define XON 0x11
 #define XOFF 0x13
 #define LENGTH 512
+#define CTRL_C 3
+#define CTRL_D 4
 
 static char uart_buffer[LENGTH];
 static volatile uint16_t receive_head;
@@ -190,6 +192,14 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
             if (c == '\r' || c == '\n')
             {
                 line_available = true;
+            }
+            else if (c == CTRL_C)
+            {
+                process_interrupt(1);
+            }
+            else if (c == CTRL_D)
+            {
+                process_interrupt(2);
             }
         }
         receive_head %= LENGTH;

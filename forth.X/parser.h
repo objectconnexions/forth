@@ -23,6 +23,7 @@ enum TYPE
     START,
     WORD_AVAILABLE,
     NUMBER_AVAILABLE,
+    PROCESS_AVAILABLE,
 };
 
 void parser_init(void);

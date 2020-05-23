@@ -100,6 +100,14 @@ void parse_next()
 
     } else {
         log_debug(LOG, "not a word %s", token);
+        
+        uint8_t process = find_process(token);
+        if (process != 0xff) {
+            type = PROCESS_AVAILABLE;
+            number_value = process;
+            return;
+        }
+        
 
         bool is_number = true;
         int radix = 10;

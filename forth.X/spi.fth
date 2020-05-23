@@ -124,7 +124,7 @@ noecho
 : READ_ID ( -- )
 	ENABLE_ID_CHIP
 	0x03 WRITE_DROP_SPI			\ read
-	0x0fa WRITE_DROP_SPI			\ serial number address
+	0x0fa WRITE_DROP_SPI		\ serial number address
 	READ_SPI .HEX
 	READ_SPI .HEX
 	READ_SPI .HEX
@@ -139,7 +139,7 @@ noecho
 : TEST_ID ( -- )
 	ENABLE_ID_CHIP
 	0x03 WRITE_DROP_SPI			\ read
-	0x0fa WRITE_DROP_SPI			\ serial number address
+	0x0fa WRITE_DROP_SPI		\ serial number address
 	READ_SPI
 	DISABLE_ID_CHIP
 
@@ -154,6 +154,7 @@ noecho
 	0x02 WRITE_DROP_SPI			\ write mode
 	0x00 WRITE_DROP_SPI			\ address high byte
 	0x00 WRITE_DROP_SPI			\ address low byte
+
 	0x12 WRITE_DROP_SPI 			\ write 4 bytes
 	0x34 WRITE_DROP_SPI
 	0x56 WRITE_DROP_SPI
@@ -165,6 +166,7 @@ noecho
 	0x03 WRITE_DROP_SPI			\ read mode
 	0x00 WRITE_DROP_SPI			\ address high byte
 	0x00 WRITE_DROP_SPI			\ address low byte
+
 	READ_SPI
 	READ_SPI
 	READ_SPI
@@ -174,6 +176,25 @@ noecho
 	. . . . . CR
 
 ;
+
+
+: READ_FROM_ID ( a -- n )
+	ENABLE_ID_CHIP
+	0x03 WRITE_DROP_SPI			\ read
+	WRITE_DROP_SPI				\ serial number address
+	READ_SPI
+	DISABLE_ID_CHIP
+;
+
+: READ_FROM_EEPROM ( a -- n )
+	ENABLE_EEPROM_CHIP
+	0x03 WRITE_DROP_SPI			\ read
+\ need to split address into two bytes
+	WRITE_DROP_SPI				\ serial number address
+	READ_SPI
+	DISABLE_EEPROM_CHIP
+;
+
 
 : DEBUG_SPI ( -- ) 
 \	 ." Status=" 

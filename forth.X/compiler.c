@@ -19,6 +19,7 @@ static void complete_word(void);
 static CODE_INDEX jumps[6];
 static uint8_t jp = 0;
 static bool compiling;
+static bool has_error;
 
 void compiler_init()
 {
@@ -30,14 +31,17 @@ void compiler_compile()
     char name[32];
     bool read;
     
+    has_error = true;
     compiling = true;
-    log_trace(LOG, "compiling new word");
+    log_trace(LOG, "has_error new word");
     
-    if (parser_next_token() != INVALID_INSTRUCTION) {
-        parser_drop_line();
-        compiling = false;
+    enum TYPE type = parser_next_token();
+    if (type != WORD_AVAILABLE && type != INVALID_INSTRUCTION) {
+//        parser_drop_line();
+        has_error = false;
         parser_token_text(name);
-        log_error(LOG, "compile failed on %s", name);
+        log_error(LOG, "can't compile %s", name);
+        return;
     }
     parser_token_text(name);
     log_info(LOG, "new word %s", name);
@@ -64,8 +68,8 @@ void compiler_compile()
                 {
                     // TODO will this even occur as the entry won't appear to exist until it is completed
                     log_debug(LOG, "recursive call to %s", name);
-                    parser_drop_line();
-                    compiling = false;
+//                    parser_drop_line();
+                    has_error = false;
                     return;
                 }
                 else
@@ -76,8 +80,10 @@ void compiler_compile()
                 break;
                 
             case INVALID_INSTRUCTION:
-                parser_drop_line();
-                compiling = false;
+//                parser_drop_line();
+                parser_token_text(name);
+                log_error(LOG, "invalid instruction %s", name);
+                has_error = false;
                 return;
                 
             case END_LINE:
@@ -99,21 +105,17 @@ void compiler_compile()
     }
 }
 
-void compiler_end()
-{
-    complete_word();
-}
-
-
 void compiler_constant()
 {
     char name[32];
-    
+    has_error = true;
+    compiling = true;
+
     if (parser_next_token() != INVALID_INSTRUCTION) {
-        parser_drop_line();
-        compiling = false;
+//        parser_drop_line();
+        has_error = false;
         parser_token_text(name);
-        log_error(LOG, "constant failed on %s", name);
+        log_error(LOG, "non-unique name %s", name);
     }
     
     parser_token_text(name);
@@ -127,28 +129,35 @@ void compiler_constant()
 
 }
 
-
 void compiler_variable()
 {
     char name[32];
+    has_error = true;
+    compiling = true;
     
     if (parser_next_token() != INVALID_INSTRUCTION) {
-        parser_drop_line();
-        compiling = false;
+//        parser_drop_line();
+        has_error = false;
         parser_token_text(name);
-        log_error(LOG, "variable failed on %s", name);
+        log_error(LOG, "non-unique name %s", name);
     }
     
     parser_token_text(name);
     dictionary_add_entry(name);
     
     dictionary_append_instruction(ADDR);
+    dictionary_align();
 
     dictionary_append_byte(0); // space for value
     dictionary_append_byte(0); // space for value
     dictionary_append_byte(0); // space for value
     dictionary_append_byte(0); // space for value
     
+    complete_word();
+}
+
+void compiler_end()
+{
     complete_word();
 }
 
@@ -164,26 +173,29 @@ void compiler_begin()
     jumps[jp++] = dictionary_offset();
 }
     
+// TODO these need to check if bounds are exceeded (> 128 or < -127)
 void compiler_then()
 {
-    uint8_t distance = 0x80 + dictionary_offset() - jumps[--jp];
+    uint8_t distance = dictionary_offset() - jumps[--jp];
     dictionary_write_byte(jumps[jp], distance);
 }
 
 void compiler_else()
 {
     dictionary_append_instruction(BRANCH);
-    jumps[jp++] = dictionary_offset();
+    CODE_INDEX jump_offset = dictionary_offset();
     dictionary_append_byte(0);  
-    
-    uint8_t distance = 0x80 + dictionary_offset() - jumps[--jp];
+
+    uint8_t distance = dictionary_offset() - jumps[--jp];
     dictionary_write_byte(jumps[jp], distance);
+    
+    jumps[jp++] = jump_offset;
 }
 
 void compiler_again()
 {
     dictionary_append_instruction(BRANCH);
-    uint8_t distance = 0x80 + jumps[--jp] - dictionary_offset();
+    uint8_t distance = jumps[--jp] - dictionary_offset();
     dictionary_append_byte(distance);
 }    
 
@@ -482,8 +494,10 @@ static void compile(char* source) {
 
 static void complete_word() 
 {
-    dictionary_append_value(RETURN);
-    dictionary_end_entry();
+    if (has_error) {
+        dictionary_append_value(RETURN);
+        dictionary_end_entry();
+    }
     compiling = false;
 }
 

@@ -54,10 +54,7 @@ struct Process {
     char *name;
     uint8_t priority;
     uint32_t next_time_to_run;
-//    uint8_t* code;  // TODO remove
 };
-
-extern struct Process* processes;
 
 void code_init();
 

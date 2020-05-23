@@ -17,6 +17,12 @@ static void interpret_code(uint32_t);
 static bool echo = true;
 
 
+static void test_compile(char *code)
+{
+    parser_input(code);
+    compiler_compile();
+}
+
 void interpreter_run() {
     char buf[128]; 
     char instruction[32];
@@ -35,6 +41,10 @@ void interpreter_run() {
             interpret_code(entry.instruction);
             break;
 
+        case PROCESS_AVAILABLE:
+            interpret_number(parser_token_number());
+            break;
+
         case INVALID_INSTRUCTION:
             parser_token_text(instruction);
             printf("%s!\n", instruction);
@@ -49,21 +59,26 @@ void interpreter_run() {
 
                 if (strcmp(buf, "ddd") == 0)
                 {
-                    dictionary_memory_dump(0, 0x100);
+                    dictionary_memory_dump(0, 0x250);
+                }
+                else if (strcmp(buf, "eee") == 0)
+                {
+                    dictionary_debug();
                 }
                 else if (strcmp(buf, "load") == 0)
                 {
-//                        test_compile(": ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
-//                        test_compile(": OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
-//                        test_compile(": FLASH on 200 ms off 200 ms ;");
-//                        test_compile(": FLASH2 flash flash flash ;");
+                    test_compile("TEST 1 2 3 + + . CR ;");
+                    test_compile("ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
+                    test_compile("OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
+                    test_compile("FLASH on 200 ms off 200 ms ;");
+                    test_compile("FLASH2 flash flash flash ;");
 
                 }
                 else if (strcmp(buf, "##") == 0)
                 {
                     uart_debug();            
                 }
-                else if (strcmp(buf, "??") == 0)
+                else if (strcmp(buf, "eee") == 0)
                 {
                     tasks();            
                 }
@@ -93,10 +108,9 @@ void interpreter_run() {
 //                }
                     
                     
-//                wait(250);
+                wait(250);
             }
 
-//                return;
             break;
     }
 }
