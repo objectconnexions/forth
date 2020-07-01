@@ -31,10 +31,10 @@ noecho
 	0 = NOT
 ;
 
-: 2DUP ( n1 n2 -- n1 n2 n1 n2 )
-	over
-	over
-;
+\: 2DUP ( n1 n2 -- n1 n2 n1 n2 )
+\	over
+\	over
+\;
 
 
 : SET_BITS ( value value position -- value )
@@ -93,7 +93,7 @@ noecho
 	swap bit_clr		\ set to output
 
 	PORT +				\ PORT register
-	swap bit_clr		\ set to off
+	swap bit_clr		\ set to output
 ;
 
 : PORT_ON ( port bit -- )

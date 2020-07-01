@@ -14,7 +14,6 @@ extern "C" {
     
 #include <stdint.h>
 #include "dictionary.h"
-#include "code.h"
 
 enum TYPE 
 {

@@ -12,7 +12,7 @@
 #define LOG "Interpreter"
 
 static void interpret_number(uint32_t);
-static void interpret_code(uint32_t);
+static void interpret_code(CODE_INDEX);
 
 static bool echo = true;
 
@@ -121,7 +121,7 @@ static void interpret_number(uint32_t value)
     push(value);
 }
 
-static void interpret_code(uint32_t code)
+static void interpret_code(CODE_INDEX code)
 {
     log_debug(LOG, "execute 0x%04X", code);
     forth_execute(code);

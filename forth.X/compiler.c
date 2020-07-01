@@ -121,7 +121,7 @@ void compiler_constant()
     parser_token_text(name);
     dictionary_add_entry(name);
     
-    dictionary_append_instruction(LIT);
+    dictionary_append_instruction((CODE_INDEX) LIT);
     uint32_t value = pop_stack();
     dictionary_append_value(value);
     
@@ -145,7 +145,7 @@ void compiler_variable()
     parser_token_text(name);
     dictionary_add_entry(name);
     
-    dictionary_append_instruction(ADDR);
+    dictionary_append_instruction((CODE_INDEX) ADDR);
     dictionary_align();
 
     dictionary_append_byte(0); // space for value
@@ -163,7 +163,7 @@ void compiler_end()
 
 void compiler_if()
 {
-    dictionary_append_instruction(ZBRANCH);
+    dictionary_append_instruction((CODE_INDEX) ZBRANCH);
     jumps[jp++] = dictionary_offset();
     dictionary_append_byte(0);  
 }
@@ -182,7 +182,7 @@ void compiler_then()
 
 void compiler_else()
 {
-    dictionary_append_instruction(BRANCH);
+    dictionary_append_instruction((CODE_INDEX) BRANCH);
     CODE_INDEX jump_offset = dictionary_offset();
     dictionary_append_byte(0);  
 
@@ -194,14 +194,14 @@ void compiler_else()
 
 void compiler_again()
 {
-    dictionary_append_instruction(BRANCH);
+    dictionary_append_instruction((CODE_INDEX) BRANCH);
     uint8_t distance = jumps[--jp] - dictionary_offset();
     dictionary_append_byte(distance);
 }    
 
 void compiler_until()
 {
-    dictionary_append_instruction(ZBRANCH);
+    dictionary_append_instruction((CODE_INDEX) ZBRANCH);
     uint8_t distance = jumps[--jp] - dictionary_offset();
     dictionary_append_byte(distance);
 }
@@ -564,7 +564,7 @@ static void add_variable_entry(char *name)
 
 static void add_literal(uint64_t value)
 {
-    dictionary_append_instruction(LIT);
+    dictionary_append_instruction((CODE_INDEX) LIT);
     log_trace(LOG, "literal = 0x%09llx", value);
     dictionary_append_value(value);
 }

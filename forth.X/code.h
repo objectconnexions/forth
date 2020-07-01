@@ -24,9 +24,12 @@ extern "C" {
 
 #include <stdint.h>
 
-typedef uint32_t FORTH_WORD;
-
+//#include "dictionary.h"
+    
+    
 typedef uint32_t CELL;
+
+typedef uint8_t* CODE_INDEX;
 
 enum codes {
     NOP,
@@ -41,11 +44,14 @@ enum codes {
     PROCESS
 };
 
+CODE_INDEX memory_test;
+
 struct Process {
     uint8_t id;
     uint32_t stack[16];
     uint32_t return_stack[8];
-    /*volatile */ uint16_t ip; // instruction pointer
+    /*volatile */ 
+    CODE_INDEX ip; // instruction pointer
     //TODO change both to unsigned --> then change -1 to 0xffff
     volatile int sp; // stack pointer
     volatile int rsp; // return stack pointer
@@ -57,7 +63,6 @@ struct Process {
 };
 
 void code_init();
-
     
 #ifdef __cplusplus
 }

@@ -21,7 +21,7 @@
 #define PEEK_DATA current_process->stack[current_process->sp]
 #define PUSH_DATA(value) (current_process->stack[++(current_process->sp)] = (value))
 #define POP_DATA current_process->stack[current_process->sp--]
-#define PUSH_RETURN(address) (current_process->return_stack[++(current_process->rsp)] =  (address))
+#define PUSH_RETURN(address) (current_process->return_stack[++(current_process->rsp)] =  (uint32_t) (address))
 
 #define LOG "Forth"
 
@@ -35,7 +35,7 @@ void wait(uint32_t);
 void next_task();
 struct Process* new_task(uint8_t, char*);
 void tasks(void);
-void load_words(void);
+static void load_words(void);
 void reset(void);
 void print_top_of_stack(void);
 static void return_to(void);
@@ -55,8 +55,8 @@ static struct Process* interpreter_process;
 static uint8_t next_process_id = 0;
 static bool in_error;
 
-static uint16_t interpreter_code;  // start of interpreter code
-static uint16_t idle_code;
+static CODE_INDEX interpreter_code;  // start of interpreter code
+static CODE_INDEX idle_code;
 
 int forth_init()
 {   
@@ -77,10 +77,10 @@ int forth_init()
 void process_interrupt(uint8_t level)
 {
     log_info(LOG, "restarting interpreter %i", level);
-    current_process->sp = -1;
-    current_process->rsp = -1;
-    current_process->ip = interpreter_code;
-    current_process->next_time_to_run = 0;
+    interpreter_process->sp = -1;
+    interpreter_process->rsp = -1;
+    interpreter_process->ip = interpreter_code;
+    interpreter_process->next_time_to_run = 0;
 }
 
 uint8_t find_process(char *name) {
@@ -134,7 +134,7 @@ void forth_run()
     in_error = false;
     while (true)
     {
-        uint32_t instruction = dictionary_read_instruction(current_process);
+        CODE_INDEX instruction = dictionary_read_instruction(current_process);
         forth_execute(instruction);
 
         // TODO how do we set up the errors? needs to be part of the current_process struct
@@ -148,14 +148,14 @@ void forth_run()
     }
 }
 
-void start_code(uint32_t at_address)
+void start_code(CODE_INDEX at_address)
 {
     PUSH_RETURN(current_process->ip);
     // TODO this should be the main current_process only
     interpreter_process->ip = at_address;
 }
 
-void forth_execute(uint32_t instruction)
+void forth_execute(CODE_INDEX instruction)
 {
     if (dictionary_shortcode(instruction))
     {
@@ -179,13 +179,13 @@ void execute_next_instruction()
     in_error = false;
     
     // TODO move location into trace block
-    uint32_t location = current_process->ip; // capture first as can't infer how many bytes it was later on
+    CODE_INDEX location = current_process->ip; // capture first as can't infer how many bytes it was later on
     
     if (location == LAST_ENTRY) {
         return;
     }
     
-    uint32_t instruction = dictionary_read_instruction(current_process);
+    CODE_INDEX instruction = dictionary_read_instruction(current_process);
     if (log_level <= TRACE)
     {   
         char word_name[64];
@@ -280,7 +280,7 @@ void rot()
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = current_process->stack[current_process->sp];
+    CELL tos_value = current_process->stack[current_process->sp];
     current_process->stack[current_process->sp] = current_process->stack[current_process->sp - 1];
     current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 2];
     current_process->stack[current_process->sp - 2] = tos_value;
@@ -297,7 +297,7 @@ void lit()
  */
 void memory_address()
 {
-    PUSH_DATA(dictionary_data_address(current_process->ip));
+    PUSH_DATA((CELL) dictionary_data_address(current_process->ip));
     return_to();
 }
 
@@ -473,7 +473,7 @@ void wait_for()
 
 void branch()
 {
-    uint16_t pos = current_process->ip;
+    CODE_INDEX pos = current_process->ip;
     int8_t relative = dictionary_read_byte(current_process);
     current_process->ip = pos + relative;
 }
@@ -498,9 +498,9 @@ void execute_word()
     if (stack_underflow()) {
         return;
     }
-    uint32_t instruction = current_process->stack[current_process->sp--];
+    CODE_INDEX instruction = (CODE_INDEX) current_process->stack[current_process->sp--];
     log_debug(LOG, "execute from %i", instruction);
-    current_process->return_stack[++(current_process->rsp)] = current_process->ip + 1;
+    current_process->return_stack[++(current_process->rsp)] = (CELL) current_process->ip + 1;
     current_process->ip = instruction;
 }
  
@@ -510,8 +510,8 @@ static void initiate()
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t id = current_process->stack[current_process->sp--];
-    uint32_t instruction = current_process->stack[current_process->sp--];
+    CELL id = current_process->stack[current_process->sp--];
+    CODE_INDEX instruction = (CODE_INDEX) current_process->stack[current_process->sp--];
     struct Process *run_process = processes;
     do {
         if (run_process->id == id) {
@@ -550,7 +550,7 @@ static void return_to()
         next_task();
         log_trace(LOG, "end, go to %s", current_process->name);
     } else {
-        current_process->ip = current_process->return_stack[current_process->rsp--];
+        current_process->ip = (CODE_INDEX) current_process->return_stack[current_process->rsp--];
     }
 }
 
@@ -822,7 +822,7 @@ void next_task()
         next = next->next;
     } while (next != NULL);
     if (!waiting) {
-//        log_trace(LOG, "switch to current_process %s", current_process->name);
+        log_trace(LOG, "switch to current_process %s", current_process->name);
     }
 }
 
@@ -849,7 +849,7 @@ void dump()
         return;
     }
     CELL length = current_process->stack[current_process->sp--];
-    CELL code_index = current_process->stack[current_process->sp--];
+    CODE_INDEX code_index = (CODE_INDEX) current_process->stack[current_process->sp--];
     dictionary_memory_dump(code_index, length);
 }
 
@@ -864,7 +864,7 @@ static void abort_task()
     current_process->sp = -1;
     current_process->rsp = -1;
     current_process->ip = 0;
-    current_process->ip = (current_process == interpreter_process) ? interpreter_code : LAST_ENTRY;
+    current_process->ip = (current_process == interpreter_process) ? interpreter_code : (CODE_INDEX) LAST_ENTRY;
     current_process->next_time_to_run = 0;
     next_task();
 }
@@ -873,7 +873,7 @@ static void abort_task()
  * Push the address of the word in the dictionary (the execution token) that 
  * matched the next token on the input 
  */
-void tick()
+static void tick()
 {
     struct Dictionary_Entry entry;
     char name[32];
@@ -889,13 +889,13 @@ void tick()
     }
     else
     {
-        PUSH_DATA(entry.instruction);
+        PUSH_DATA((CELL) entry.instruction);
     }
 }
 
-void debug_word()
+static void debug_word()
 { 
-    dictionary_debug_entry(pop_stack());
+    dictionary_debug_entry((CODE_INDEX) pop_stack());
 }
 
 static void push_char()
@@ -914,7 +914,7 @@ static void compile_char()
     parser_next_token();
     parser_token_text(name);    
     
-    dictionary_append_instruction(LIT);
+    dictionary_append_instruction((CODE_INDEX) LIT);
     dictionary_append_value(name[0]);
 }
 
@@ -923,8 +923,93 @@ static void set_log_level()
     log_level = current_process->stack[current_process->sp--];
 }
 
-void load_words()
+static void question_dup() 
 {
+    if (PEEK_DATA != 0) 
+    {
+        duplicate();
+    }
+}
+
+/*
+ Push the depth of the stack (the number of items on it) onto the stack.
+ */
+static void depth() 
+{
+    PUSH_DATA(current_process->sp);
+}
+
+/* 
+ Place a copy of the item at the specified level (from TOS) on to the top of the stack.
+ */
+static void pick()
+{
+    uint8_t level = POP_DATA - 1;
+    PUSH_DATA(current_process->stack[current_process->sp - level]);
+}
+
+/*
+ Remove the top cell pair from the stack.
+ */
+static void two_drop()
+{
+   current_process->sp -= 2;
+}
+
+/*
+ Make a copy the top cell pair onto TOS.
+ */
+static void two_dup()
+{
+    uint32_t tos = current_process->stack[current_process->sp];
+    uint32_t nos = current_process->stack[current_process->sp - 1];
+    PUSH_DATA(nos);
+    PUSH_DATA(tos);
+}
+
+/*
+ * In a two cell pair stack copy the bottom pair to the TOS.
+ */
+static void two_over() {
+    PUSH_DATA(current_process->stack[current_process->sp - 3]);  
+    PUSH_DATA(current_process->stack[current_process->sp - 3]);  
+}
+
+/*
+ * In a two cell pair stack copy the bottom pair to the TOS.
+ */
+static void two_rot() {
+    
+    CELL tos = current_process->stack[current_process->sp];
+    CELL nos = current_process->stack[current_process->sp - 1];
+    
+    current_process->stack[current_process->sp] = current_process->stack[current_process->sp - 2];
+    current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 3];
+    current_process->stack[current_process->sp - 2] = current_process->stack[current_process->sp - 4];
+    current_process->stack[current_process->sp - 3] = current_process->stack[current_process->sp - 5];
+    
+    current_process->stack[current_process->sp - 4] = tos;
+    current_process->stack[current_process->sp - 5] = nos;
+}
+
+/*
+ * In a two cell pair stack copy the bottom pair to the TOS.
+ */
+static void two_swap() {
+    CELL tos = current_process->stack[current_process->sp - 0];
+    CELL nos = current_process->stack[current_process->sp - 1];
+    
+    current_process->stack[current_process->sp - 0] = current_process->stack[current_process->sp - 2];
+    current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 3];
+    
+    current_process->stack[current_process->sp - 2] = tos;
+    current_process->stack[current_process->sp - 3] = nos;
+}
+
+static void load_words()
+{
+    log_info(LOG, "load words");
+    
     // Internal codes
 //    dictionary_insert_internal_instruction("__PROCESS", exec_process);
     dictionary_insert_internal_instruction(LIT, lit);
@@ -934,14 +1019,29 @@ void load_words()
     dictionary_insert_internal_instruction(RETURN, return_to);
     dictionary_insert_internal_instruction(PROCESS_LINE, interpreter_run);
     
+    dictionary_add_core_word("END", end, false);
     
     // words with short codes
+    dictionary_add_core_word("?DUP", question_dup, false);
+    dictionary_add_core_word("DEPTH", depth, false);
+    dictionary_add_core_word("DROP", drop, false);
     dictionary_add_core_word("DUP", duplicate, false);
+    dictionary_add_core_word("NIP", nip, false);
+    dictionary_add_core_word("OVER", over, false);
+    dictionary_add_core_word("PICK", pick, false);
+    dictionary_add_core_word("ROT", rot, false);
     dictionary_add_core_word("SWAP", swap, false);
-    dictionary_add_core_word("WORDS", dictionary_words, false);
-    dictionary_add_core_word("DUMP", dump, false);
+    dictionary_add_core_word("TUCK", tuck, false);
 
-    dictionary_add_core_word("END", end, false);
+    dictionary_add_core_word("2DROP", two_drop, false);
+    dictionary_add_core_word("2DUP", two_dup, false);
+    dictionary_add_core_word("2OVER", two_over, false);
+    dictionary_add_core_word("2ROT", two_rot, false);
+    dictionary_add_core_word("2SWAP", two_swap, false);
+
+    
+    dictionary_add_core_word("DUMP", dump, false);
+    dictionary_add_core_word("WORDS", dictionary_words, false);
 //        
 //    dictionary_add_core_word("__RUN", run, false);
 //    dictionary_add_core_word("__PROCESS", exec_process, false);
@@ -951,11 +1051,6 @@ void load_words()
 //    dictionary_add_core_word("__BRANCH", branch, false);
 //    dictionary_add_core_word("__RETURN", return_to, false);
     
-    dictionary_add_core_word("OVER", over, false);
-    dictionary_add_core_word("DROP", drop, false);
-    dictionary_add_core_word("NIP", nip, false);
-    dictionary_add_core_word("ROT", rot, false);
-    dictionary_add_core_word("TUCK", tuck, false);
 
     dictionary_add_core_word("+", add, false);
     dictionary_add_core_word("-", subtract, false);
@@ -1020,18 +1115,20 @@ void load_words()
     dictionary_add_core_word("DRESET", dictionary_reset, false);
     dictionary_add_core_word("LOCK", dictionary_lock, false);
     dictionary_add_core_word("ABORT", abort_task, false);
-            
+
+
+    // create loop with process instruction
     dictionary_add_entry("_INTERACTIVE");
     compiler_begin();
-    dictionary_append_instruction(PROCESS_LINE);
+    dictionary_append_instruction((CODE_INDEX) PROCESS_LINE);
     compiler_again();
     dictionary_end_entry();
     
-    struct Dictionary_Entry entry;
-    dictionary_find_entry("PAUSE", &entry);
-    
+    // create loop with pause instruction
     dictionary_add_entry("_IDLE");
     compiler_begin();
+    struct Dictionary_Entry entry;
+    dictionary_find_entry("PAUSE", &entry);
     dictionary_append_instruction(entry.instruction);
     compiler_again();
     dictionary_end_entry();
@@ -1043,10 +1140,12 @@ void load_words()
     dictionary_find_entry("_INTERACTIVE", &entry);
     interpreter_code = entry.instruction;
     interpreter_process->ip = interpreter_code;
+    dictionary_debug_entry(entry.instruction);
 
     dictionary_find_entry("_IDLE", &entry);
     idle_code = entry.instruction;
     idle_process->ip = idle_code;
+    dictionary_debug_entry(entry.instruction);
 
     dictionary_lock();
 }

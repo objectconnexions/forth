@@ -14,6 +14,8 @@ extern "C" {
 
 #include <stdint.h>
 
+#include "dictionary.h"
+
 //extern struct Process* process;
 //extern struct Process* main_process;
     
@@ -21,15 +23,15 @@ extern uint32_t timer;
 
 extern uint8_t dictionary[];
 
-void start_code(uint32_t);
+void start_code(CODE_INDEX);
 
 int forth_init();
 
-void forth_execute(uint32_t);
+void forth_execute(CODE_INDEX);
 
 void forth_run();
 
-void forth_tasks(uint32_t);
+void forth_tasks(CODE_INDEX);
 
 void push(uint32_t);
 

@@ -18,7 +18,7 @@ static char * ptr;
 
 static char token[32];
 static enum TYPE type;
-static uint32_t instruction;
+static CODE_INDEX instruction;
 static uint8_t flags;
 static uint32_t number_value;
 

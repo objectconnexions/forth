@@ -9,7 +9,7 @@ enum LEVEL log_level;
 
 void log_init()
 {
-    log_level = ERROR;
+    log_level = INFO;
 }
 
 static void add_message(enum LEVEL log_level, char* context, char* message, va_list argptr)

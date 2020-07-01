@@ -12,12 +12,12 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
+//#include <stdint.h>
+#include <stdbool.h>
 #include "code.h"
 
-#define LAST_ENTRY 0xffff
-
-typedef uint16_t CODE_INDEX;
+#define LAST_ENTRY NULL
+    // 0xffff
     
 typedef void (*CORE_FUNC)(void);
 
@@ -29,7 +29,7 @@ typedef void (*CORE_FUNC)(void);
 struct Dictionary_Entry {
     char *name;
     uint8_t flags;
-    uint32_t instruction;
+    CODE_INDEX instruction;
 };
 
 void dictionary_init(void);
@@ -50,17 +50,19 @@ CORE_FUNC dictionary_find_core_function(uint16_t);
 
 bool dictionary_find_entry(char *, struct Dictionary_Entry *);
 
-uint32_t dictionary_read(struct Process*);
+uint32_t dictionary_read(struct Process *);
+
+CODE_INDEX dictionary_read_instruction(struct Process *);
 
 uint8_t dictionary_read_byte(struct Process *);
 
 void dictionary_find_word_for(CODE_INDEX, char*);
 
-void dictionary_debug_summary(uint32_t);
+void dictionary_debug_summary(CODE_INDEX);
         
 void dictionary_debug_entry(CODE_INDEX);
 
-uint32_t dictionary_data_address(CODE_INDEX);
+CODE_INDEX dictionary_data_address(CODE_INDEX);
 
 void dictionary_memory_dump(CODE_INDEX, uint16_t);
 
@@ -74,7 +76,7 @@ void dictionary_append_byte(uint8_t);
 
 void dictionary_append_value(uint32_t);
 
-void dictionary_append_instruction(FORTH_WORD);
+void dictionary_append_instruction(CODE_INDEX);
 
 CODE_INDEX dictionary_offset(void);
 
