@@ -1,3 +1,5 @@
+noecho
+
 0x0bf80f000 CONSTANT OSCCON
 0x0bf800200 CONSTANT RTCCON
 0x0bf800220 CONSTANT RTCTIME
@@ -38,12 +40,14 @@
 : rtcc_show ( -- )
 \	RTCDATE @ .HEX CR
 \	RTCTIME @ 0x100 / .HEX CR
-	." Date" rtcc_date .HEX CR
-	." Time" rtcc_time .HEX CR
+	." Date " rtcc_date .HEX CR
+	." Time " rtcc_time .HEX CR
 ;
 
 : rtcc_test ( -- )
 	clock_init
 	0x09304500 0x20190308	rtcc_set
-	rtcc_read
+	rtcc_show
 ;
+
+echo

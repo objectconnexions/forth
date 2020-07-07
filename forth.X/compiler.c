@@ -31,14 +31,14 @@ void compiler_compile()
     char name[32];
     bool read;
     
-    has_error = true;
+    has_error = false;
     compiling = true;
     log_trace(LOG, "has_error new word");
     
     enum TYPE type = parser_next_token();
     if (type != WORD_AVAILABLE && type != INVALID_INSTRUCTION) {
 //        parser_drop_line();
-        has_error = false;
+//        has_error = false;
         parser_token_text(name);
         log_error(LOG, "can't compile %s", name);
         return;
@@ -69,7 +69,7 @@ void compiler_compile()
                     // TODO will this even occur as the entry won't appear to exist until it is completed
                     log_debug(LOG, "recursive call to %s", name);
 //                    parser_drop_line();
-                    has_error = false;
+                    has_error = true;
                     return;
                 }
                 else
@@ -83,7 +83,7 @@ void compiler_compile()
 //                parser_drop_line();
                 parser_token_text(name);
                 log_error(LOG, "invalid instruction %s", name);
-                has_error = false;
+                has_error = true;
                 return;
                 
             case END_LINE:
@@ -108,52 +108,67 @@ void compiler_compile()
 void compiler_constant()
 {
     char name[32];
-    has_error = true;
+    struct Dictionary_Entry entry;
+    has_error = false;
     compiling = true;
 
-    if (parser_next_token() != INVALID_INSTRUCTION) {
-//        parser_drop_line();
-        has_error = false;
-        parser_token_text(name);
+    parser_next_text(name);
+//    if (parser_next_text(name) == INVALID_INSTRUCTION) {
+////        parser_drop_line();
+//        has_error = false;
+//        to_upper(name);
+//        log_error(LOG, "non-unique name %s", name);
+//    }
+    
+    to_upper(name);
+    if (dictionary_find_entry(name, &entry)) {
         log_error(LOG, "non-unique name %s", name);
-    }
-    
-    parser_token_text(name);
-    dictionary_add_entry(name);
-    
-    dictionary_append_instruction((CODE_INDEX) LIT);
-    uint32_t value = pop_stack();
-    dictionary_append_value(value);
-    
-    complete_word();
+        has_error = true;
+        
+    } else {
+        dictionary_add_entry(name);
 
+        dictionary_append_instruction((CODE_INDEX) LIT);
+        uint32_t value = pop_stack();
+        dictionary_append_value(value);
+
+        complete_word();
+    }
 }
 
 void compiler_variable()
 {
     char name[32];
-    has_error = true;
+    struct Dictionary_Entry entry;
+    has_error = false;
     compiling = true;
-    
-    if (parser_next_token() != INVALID_INSTRUCTION) {
-//        parser_drop_line();
-        has_error = false;
-        parser_token_text(name);
-        log_error(LOG, "non-unique name %s", name);
-    }
-    
-    parser_token_text(name);
-    dictionary_add_entry(name);
-    
-    dictionary_append_instruction((CODE_INDEX) ADDR);
-    dictionary_align();
 
-    dictionary_append_byte(0); // space for value
-    dictionary_append_byte(0); // space for value
-    dictionary_append_byte(0); // space for value
-    dictionary_append_byte(0); // space for value
+    parser_next_text(name);
+//    if (parser_next_text(name) == INVALID_INSTRUCTION) {
+////        parser_drop_line();
+//        has_error = false;
+//        to_upper(name);
+//        log_error(LOG, "non-unique name %s", name);
+//    }
     
-    complete_word();
+    to_upper(name);
+    if (dictionary_find_entry(name, &entry)) {
+        log_error(LOG, "non-unique name %s", name);
+        has_error = true;
+        
+    } else {
+        dictionary_add_entry(name);
+
+        dictionary_append_instruction((CODE_INDEX) ADDR);
+        dictionary_align();
+
+        dictionary_append_byte(0); // space for value
+        dictionary_append_byte(0); // space for value
+        dictionary_append_byte(0); // space for value
+        dictionary_append_byte(0); // space for value
+
+        complete_word();
+    }
 }
 
 void compiler_end()
@@ -218,12 +233,89 @@ void compiler_inline_comment()
     
     do
     {
-        parser_next_token();
-        parser_token_text(text);
+        parser_next_text(text);
     } while(text[strlen(text) - 1] != ')');
 }
 
+void compiler_char()
+{
+    char name[32];
+    parser_next_text(name);    
+    
+    dictionary_append_instruction((CODE_INDEX) LIT);
+    dictionary_append_value(name[0]);
+}
+    
+static void add_string(CODE_INDEX instruction)
+{
+    char text[80];
+    uint8_t len;
+    
+    len = 0;
+    do
+    {
+        if (len > 0)
+        {
+            text[len++] = ' ';
+        }
+        if (parser_next_text(text + len) == END_LINE) 
+        {
+            log_error(LOG, "no end quote %s", text);
+            has_error = true;
+            return;
+        }
+        len = strlen(text);
+        log_debug(LOG, "%i string %s", len, text);
+    } while(text[len - 1] != '"');
+    len--;
+    
+    dictionary_append_instruction(instruction);
+    dictionary_append_byte(len);
+    int i;
+    for (i = 0; i < len; i++) {
+        char c = text[i];
+        if (c == '\\')
+        {
+            char c = text[++i];
+            switch (c)
+            {
+                case 'n':
+                    dictionary_append_byte('\n');
+                    break;
+                case 'r':
+                    dictionary_append_byte('\r');
+                    break;
+                case 't':
+                    dictionary_append_byte('\t');
+                    break;
+                case '\\':
+                    dictionary_append_byte('\\');
+                    break;
+                default:
+                   dictionary_append_byte(c);
+            }
+        }
+        else 
+        {
+           dictionary_append_byte(c);
+        }
+    }
+}
 
+void compiler_print_string()
+{
+    add_string((CODE_INDEX) PRINT_STRING);
+}
+
+void compiler_c_string()
+{
+    add_string((CODE_INDEX) C_STRING);
+}
+
+void compiler_s_string()
+{
+    add_string((CODE_INDEX) S_STRING);
+}
 
 
 /*
@@ -495,6 +587,10 @@ static void compile(char* source) {
 static void complete_word() 
 {
     if (has_error) {
+        printf("Compile failed!\n");
+    }
+    else
+    {
         dictionary_append_value(RETURN);
         dictionary_end_entry();
     }

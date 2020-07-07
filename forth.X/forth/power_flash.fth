@@ -1,3 +1,5 @@
+noecho
+
 
 \PORTB 1 DIGITAL_OUT
 \PORTB 1 port_on
@@ -62,4 +64,4 @@ variable flash_rate
 task test_flashing
 ' red_flash test_flashing initiate
 
-
+echo

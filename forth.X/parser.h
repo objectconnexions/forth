@@ -20,6 +20,7 @@ enum TYPE
     END_LINE,
     INVALID_INSTRUCTION,
     START,
+    TEXT_AVAILABLE,
     WORD_AVAILABLE,
     NUMBER_AVAILABLE,
     PROCESS_AVAILABLE,
@@ -29,6 +30,8 @@ void parser_init(void);
 
 void parser_input(char *);
 
+enum TYPE parser_next_text(char *);
+    
 enum TYPE parser_next_token(void);
  
 uint32_t parser_token_number(void);

@@ -190,7 +190,6 @@ void dictionary_add_core_word(char * name, CORE_FUNC function, bool immediate)
 
 
 
-
 /*
     Returns the address of the memory for for the specified word.
  */
@@ -248,7 +247,10 @@ static CELL read(CODE_INDEX *offset)
     
     while (true)
     {
-        segment = *((*offset)++);
+        log_trace(LOG, "read %08x", *offset);
+        
+        segment = *(*offset);
+        (*offset)++;
         value =  (segment & 0x7F) << (i * 7)  | value ; // (value * 0x80) | (segment & 0x7F);
         if (segment < 0x80) {
             return value;

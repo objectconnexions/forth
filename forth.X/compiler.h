@@ -51,6 +51,15 @@ void compiler_eol_comment(void);
 
 void compiler_inline_comment(void);
 
+void compiler_char(void);
+
+void compiler_print_string(void);
+
+void compiler_s_string(void);
+
+void compiler_c_string(void);
+
+
 #ifdef __cplusplus
 }
 #endif

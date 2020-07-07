@@ -109,10 +109,8 @@ bool stack_underflow()
 
 static bool isAccessibleMemory(uint32_t address)
 {
-    return true;
-    /*
     if ((address >= 0xBF800000 && address <= 0xBF8FFFFF) ||
-            (address >= 0x80000000 && address <= 0x8000FFFF)) 
+            (address >= 0xA0000000 && address <= 0xA000FFFF)) 
     {
         return true;
     } 
@@ -121,7 +119,6 @@ static bool isAccessibleMemory(uint32_t address)
         printf("LIMIT %X!", address);
         return false;
     }
-     */
 }
 
 static void test_compile(char * input) {
@@ -207,9 +204,9 @@ void execute_next_instruction()
     }
 }
     
-void push(uint32_t value)
+void push(CELL value)
 {
-    current_process->stack[++(current_process->sp)] = value;
+    PUSH_DATA(value);
 }
     
 void duplicate() 
@@ -743,8 +740,10 @@ void dump_parameter_stack(char *buf, struct Process *p)
 	}
 }
 
-void to_upper(char *string, int len)
+// TODO move to  a util file
+void to_upper(char *string)
 {
+    int len = strlen(string);
     int i;
     for (i = 0; i <= len; i++) {
         if (*string >= 97 && *string <= 122) {
@@ -790,8 +789,8 @@ struct Process* new_task(uint8_t priority, char *name)
 static void add_task()
 {
     char name[32];
-    parser_next_token();
-    parser_token_text(name);    
+    parser_next_text(name); 
+    to_upper(name);
     new_task(5, name);
     log_info("add task %s", name);
 }
@@ -877,8 +876,8 @@ static void tick()
 {
     struct Dictionary_Entry entry;
     char name[32];
-    parser_next_token();
-    parser_token_text(name);    
+    parser_next_text(name);
+    to_upper(name);
     
     dictionary_find_entry(name, &entry);
     
@@ -900,22 +899,10 @@ static void debug_word()
 
 static void push_char()
 {
-    char name[32];
-    parser_next_token();
-    parser_token_text(name);    
+    char text[32];
+    parser_next_text(text);    
 
-    PUSH_DATA(name[0]);
-}
-
-// TODO move to compiler.c
-static void compile_char()
-{
-    char name[32];
-    parser_next_token();
-    parser_token_text(name);    
-    
-    dictionary_append_instruction((CODE_INDEX) LIT);
-    dictionary_append_value(name[0]);
+    PUSH_DATA(text[0]);
 }
 
 static void set_log_level() 
@@ -970,7 +957,8 @@ static void two_dup()
 /*
  * In a two cell pair stack copy the bottom pair to the TOS.
  */
-static void two_over() {
+static void two_over()
+{
     PUSH_DATA(current_process->stack[current_process->sp - 3]);  
     PUSH_DATA(current_process->stack[current_process->sp - 3]);  
 }
@@ -978,7 +966,8 @@ static void two_over() {
 /*
  * In a two cell pair stack copy the bottom pair to the TOS.
  */
-static void two_rot() {
+static void two_rot()
+{
     
     CELL tos = current_process->stack[current_process->sp];
     CELL nos = current_process->stack[current_process->sp - 1];
@@ -995,7 +984,8 @@ static void two_rot() {
 /*
  * In a two cell pair stack copy the bottom pair to the TOS.
  */
-static void two_swap() {
+static void two_swap()
+{
     CELL tos = current_process->stack[current_process->sp - 0];
     CELL nos = current_process->stack[current_process->sp - 1];
     
@@ -1004,6 +994,41 @@ static void two_swap() {
     
     current_process->stack[current_process->sp - 2] = tos;
     current_process->stack[current_process->sp - 3] = nos;
+}
+
+/*
+ Outputs the string to the console.
+ */
+static void print_string()
+{
+    uint8_t len = dictionary_read_byte(current_process);
+    int i;
+    for (i = 0; i < len; i++) {
+        char ch = dictionary_read_byte(current_process);
+        printf("%c", ch);
+    }
+}
+
+/*
+ Pushes the count and address of the counted string onto the stack and 
+ * moves the IP forward to next instruction.
+ */
+static void s_string()
+{
+    uint8_t len = dictionary_read_byte(current_process);
+    PUSH_DATA(len);
+    PUSH_DATA((CELL) current_process->ip);
+    current_process->ip += len;
+}
+/*
+ Pushes the address of the counted string onto the stack and moves the 
+ * IP forward to next instruction.
+ */
+static void c_string()
+{
+    PUSH_DATA((CELL) current_process->ip);
+    uint8_t len = dictionary_read_byte(current_process);
+    current_process->ip += len;
 }
 
 static void load_words()
@@ -1018,6 +1043,10 @@ static void load_words()
     dictionary_insert_internal_instruction(ZBRANCH, zero_branch);
     dictionary_insert_internal_instruction(RETURN, return_to);
     dictionary_insert_internal_instruction(PROCESS_LINE, interpreter_run);
+ 
+    dictionary_insert_internal_instruction(PRINT_STRING, print_string);
+    dictionary_insert_internal_instruction(S_STRING, s_string);
+    dictionary_insert_internal_instruction(C_STRING, c_string);
     
     dictionary_add_core_word("END", end, false);
     
@@ -1106,8 +1135,11 @@ static void load_words()
     dictionary_add_core_word("AGAIN", compiler_again, true);
     dictionary_add_core_word("UNTIL", compiler_until, true);
     dictionary_add_core_word(":", compiler_compile, false);
-    dictionary_add_core_word(";", compiler_end ,true);
-    dictionary_add_core_word("[CHAR]", compile_char, true);
+    dictionary_add_core_word(";", compiler_end, true);
+    dictionary_add_core_word(".\"", compiler_print_string, true);
+    dictionary_add_core_word("S\"", compiler_s_string, true);
+    dictionary_add_core_word("C\"", compiler_c_string, true);
+    dictionary_add_core_word("[CHAR]", compiler_char, true);
     
     dictionary_add_core_word("LOG", set_log_level, false);
     dictionary_add_core_word("DICT", dictionary_debug, false);

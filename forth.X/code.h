@@ -41,6 +41,10 @@ enum codes {
     RETURN, 
     PROCESS_LINE,
     
+    PRINT_STRING,
+    S_STRING,
+    C_STRING,
+    
     PROCESS
 };
 

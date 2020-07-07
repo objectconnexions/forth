@@ -78,7 +78,7 @@ void interpreter_run() {
                 {
                     uart_debug();            
                 }
-                else if (strcmp(buf, "eee") == 0)
+                else if (strcmp(buf, "ttt") == 0)
                 {
                     tasks();            
                 }
@@ -94,9 +94,6 @@ void interpreter_run() {
                 {                
                     if (echo) printf("> %s\n", buf);
                     parser_input(buf);
-                    
-                    
-                    
                 }
             }
             else
