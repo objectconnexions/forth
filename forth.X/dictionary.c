@@ -19,7 +19,7 @@
 
 //static CODE_INDEX memory;
 static uint8_t memory[CODE_SIZE];
-static CORE_FUNC *core_functions;
+static CORE_FUNC core_functions[CORE_WORDS];
 
 static CODE_INDEX last_entry_offset; // last non-scratch entry in dictionary
 static CODE_INDEX new_entry_offset;  // next free space in dictionary for a new entry
@@ -39,8 +39,13 @@ static CODE_INDEX align(CODE_INDEX);
 void dictionary_init()
 {
  //   memory = malloc(CODE_SIZE);
-    log_info(LOG, "%i bytes allocated at %08x", CODE_SIZE, memory);
-    core_functions = (CORE_FUNC *)malloc(sizeof(CORE_FUNC) * CORE_WORDS);
+//    log_info(LOG, "%i bytes allocated at %08x", CODE_SIZE, memory);
+//    uint16_t size = sizeof(CORE_FUNC) * CORE_WORDS;
+//    log_info(LOG, "allocating %i bytes for function lookup", size);
+//    core_functions = (CORE_FUNC *)malloc(size);
+    log_info(LOG, "memory at %08x", memory);
+    log_info(LOG, "functions at %08x", core_functions);
+    log_info(LOG, "success");
     last_entry_offset = LAST_ENTRY;
     locked_before = memory;
     last_core_entry = memory;

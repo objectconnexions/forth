@@ -15,19 +15,27 @@
             <sourceRootList/>
             <confList>
                 <confElem>
-                    <name>XC32_PIC32MX270</name>
-                    <type>2</type>
-                </confElem>
-                <confElem>
                     <name>XC32_PIC32MX570</name>
                     <type>2</type>
                 </confElem>
                 <confElem>
-                    <name>Copy_of_XC32_PIC32MX270</name>
+                    <name>XC32_PIC32MX270</name>
                     <type>2</type>
                 </confElem>
                 <confElem>
-                    <name>NewConfiguration</name>
+                    <name>XC32_PIC32MX270_intosc</name>
+                    <type>2</type>
+                </confElem>
+                <confElem>
+                    <name>XC32_PIC32MX570_remove</name>
+                    <type>2</type>
+                </confElem>
+                <confElem>
+                    <name>Copy_of_XC32_PIC32MX270_remvoe</name>
+                    <type>2</type>
+                </confElem>
+                <confElem>
+                    <name>NewConfiguration_remove</name>
                     <type>2</type>
                 </confElem>
                 <confElem>

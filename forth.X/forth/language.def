@@ -7,12 +7,13 @@ noecho
 0x0bf886000 CONSTANT PORTA
 0x0bf886100 CONSTANT PORTB
 0x0bf886200 CONSTANT PORTC
+0x0bf886300 CONSTANT PORTD
+0x0bf886400 CONSTANT PORTE
 
 0x00 CONSTANT ANSEL
 0x10 CONSTANT TRIS
 0x20 CONSTANT PORT
 
-4 CONSTANT LED_COMM
 
 
 : 0= ( n -- flag )
@@ -121,6 +122,34 @@ noecho
 ;
 
 \ TODO add port state to read bit
+
+
+
+
+: led_flash ( on off addr port - )
+	\ on and off duration are one double (timing);
+	\ addr and port are another (location)
+
+    2DUP DIGITAL_OUT
+	begin
+        2DUP port_on
+
+		2SWAP	\ bring timings to top
+		2DUP	
+        ms		\ delay for first period (on) - in top of double
+		drop	\ drop the other half
+		
+		2SWAP 	\ return location to top
+        2DUP port_off
+
+		2SWAP	\ bring timings to top
+		2DUP	
+		drop	\ drop the first half ro expose the off time
+        ms		\ delay for second period
+
+		2SWAP	\ bring location back to top
+	again
+;
 
 echo
 

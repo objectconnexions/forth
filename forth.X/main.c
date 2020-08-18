@@ -25,7 +25,7 @@
 
 #ifdef MX570
 #include <proc/p32mx570f512h.h>
-#define PWR_LED PORTEbits.RE18
+#define PWR_LED PORTEbits.RE1
 #endif
 
 bool debug = false;
@@ -80,13 +80,12 @@ int32_t main(void)
     INTEnableInterrupts();
 
     
-#ifdef MX270
     // Power LED
+#ifdef MX270
     TRISAbits.TRISA8 = 0;
 #endif
 
 #ifdef MX570
-    ANSELEbits.ANSE1 = 0;
     TRISEbits.TRISE1 = 0;
 #endif
 
@@ -123,6 +122,5 @@ int32_t main(void)
 void __ISR(_TIMER_1_VECTOR, IPL5SOFT) Timer1Handler(void)
 {
     timer++;
-//    run_task = true;
     IFS0bits.T1IF = 0; 
 }

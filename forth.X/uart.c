@@ -11,7 +11,10 @@
 
 #include <stdio.h>
 #include <proc/ppic32mx.h>
-#include <proc/p32mx270f256d.h>
+
+#ifdef MX270
+    #include <proc/p32mx270f256d.h>
+#endif
 
 // Defines
 #define SYSCLK 48000000L
@@ -42,10 +45,9 @@ void uart_init() {
 
 #ifdef MX570
     // RX
-    ANSELAbits.ANSA1 = 0;
-    U2RXRbits.U2RXR = 0;    //SET RX to RA0
+    U2RXRbits.U2RXR = 2;    //SET RX to RF4
     // TX
-    RPC2Rbits.RPC2R = 2;    //SET RB9 to TX
+    RPF5Rbits.RPF5R = 1;    //SET RB9 to TX
 #endif
 
     

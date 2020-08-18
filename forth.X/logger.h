@@ -2,8 +2,6 @@
 #ifndef _LOGGER_H    /* Guard against multiple inclusion */
 #define _LOGGER_H
 
-
-
 enum LEVEL {
     TRACE,
     DEBUG,
