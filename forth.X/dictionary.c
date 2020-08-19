@@ -14,7 +14,11 @@
 
 #define LOG "Dictionary"
 
-#define CODE_SIZE (1024 * 32)
+#ifdef MX130
+    #define CODE_SIZE (1024 * 8)
+#else
+    #define CODE_SIZE (1024 * 40)
+#endif
 #define CORE_WORDS 128
 
 //static CODE_INDEX memory;

@@ -5,7 +5,6 @@
     #include <xc.h>          /* Defines special funciton registers, CP0 regs  */
 #endif
 
-// #include <p32xxxx.h>
 #include <plib.h>           /* Include to use PIC32 peripheral libraries      */
 #include <sys/attribs.h>
 #include <stdint.h>         /* For uint32_t definition                        */
@@ -18,14 +17,15 @@
 #include "uart.h"
 #include "forth.h"
 
-#ifdef MX270
-#include <proc/p32mx270f256d.h>
-#define PWR_LED PORTAbits.RA8
-#endif
-
-#ifdef MX570
-#include <proc/p32mx570f512h.h>
-#define PWR_LED PORTEbits.RE1
+#ifdef MX130
+//    #include <proc/p32mx130f064d.h>
+    #define PWR_LED PORTBbits.RB4
+#elif MX270
+    #include <proc/p32mx270f256d.h>
+    #define PWR_LED PORTAbits.RA8
+#elif MX570
+    #include <proc/p32mx570f512h.h>
+    #define PWR_LED PORTEbits.RE1
 #endif
 
 bool debug = false;
@@ -79,37 +79,37 @@ int32_t main(void)
     INTConfigureSystem(INT_SYSTEM_CONFIG_MULT_VECTOR);
     INTEnableInterrupts();
 
-    
+     
     // Power LED
-#ifdef MX270
+#ifdef MX130
+    TRISBbits.TRISB4 = 0;
+#elif MX270
     TRISAbits.TRISA8 = 0;
-#endif
-
-#ifdef MX570
+#elif MX570
     TRISEbits.TRISE1 = 0;
 #endif
-
-    log_init();
     
     PWR_LED = 1;
 
     uart_init();
+    log_init();
+
     uart_transmit_buffer("PIC 32MX board\r\n");
     log_info("MAIN", "starting up");
         
-    // Timer1 Setup
-    T1CONbits.ON = 0;       // disable before set up
-    PR1 = 1250;           // divide by to get 1kHz, eg 1ms ticks
-    TMR1 = 0X0;
-    T1CONbits.TCKPS = 2;    // prescale 1:64    
-    T1CONbits.TCS = 0;
-    T1CONbits.ON = 1;   // start timer
+    // Timer2 Setup
+    T2CONbits.ON = 0;       // disable before set up
+    PR2 = 48000;           // divide by to get 1kHz, eg 1ms ticks
+    TMR2 = 0X0;
+    T2CONbits.TCKPS = 0;    // prescale 1:1    
+    T2CONbits.TCS = 0;
+    T2CONbits.ON = 1;   // start timer
     
     // Timer1 Interrupt Setup
-    IPC1bits.T1IP = 5; // Main Priority
-    IPC1bits.T1IS = 0; // Sub-Priority
-    IFS0bits.T1IF = 0; // Clear flag
-    IEC0bits.T1IE = 1; // Enable Interrupt    
+    IPC2bits.T2IP = 5; // Main Priority
+    IPC2bits.T2IS = 0; // Sub-Priority
+    IFS0bits.T2IF = 0; // Clear flag
+    IEC0bits.T2IE = 1; // Enable Interrupt    
     
     forth_init();
     forth_run();
@@ -119,8 +119,8 @@ int32_t main(void)
     Timer handle gets called every 1ms and increments the timer variable.
     Getting the timer variable git the time in milliseconds since startup. 
  */
-void __ISR(_TIMER_1_VECTOR, IPL5SOFT) Timer1Handler(void)
+void __ISR(_TIMER_2_VECTOR, IPL5SOFT) Timer1Handler(void)
 {
     timer++;
-    IFS0bits.T1IF = 0; 
+    IFS0bits.T2IF = 0; 
 }

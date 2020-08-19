@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <GenericTypeDefs.h>
+#include <proc/p32mx270f256d.h>
 
 #include "logger.h"
 #include "debug.h"
@@ -448,9 +449,14 @@ void right_shift()
     current_process->stack[++(current_process->sp)] = tos_value;
 }
 
-void ticks()
+static void ticks()
 {
     current_process->stack[++(current_process->sp)] = timer;
+}
+
+static void time()
+{
+    current_process->stack[++(current_process->sp)] = timer * 1000 + (TMR2 / 48);
 }
 
 void yield()
@@ -1105,6 +1111,7 @@ static void load_words()
     dictionary_add_core_word("MS", wait_for, false);
     dictionary_add_core_word(".S", stack, false);
     dictionary_add_core_word("TICKS", ticks, false);
+    dictionary_add_core_word("TIME", time, false);
     dictionary_add_core_word("TASK", add_task, false);
     dictionary_add_core_word("PRIORITY", task_priority, false);
 

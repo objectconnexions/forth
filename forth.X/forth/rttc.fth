@@ -5,7 +5,7 @@ noecho
 0x0bf800220 CONSTANT RTCTIME
 0x0bf800230 CONSTANT RTCDATE
 
-: clock_init ( -- ) 
+: rtcc_init ( -- ) 
 	OSCCON 1 BIT_SET		\ SOSCEN - turn secondary oscillator on
 \	OSCCON 22 BIT_SET		\ SOSCRDY - make secondary oscillator ready
 
@@ -45,7 +45,7 @@ noecho
 ;
 
 : rtcc_test ( -- )
-	clock_init
+	rtcc_init
 	0x09304500 0x20190308	rtcc_set
 	rtcc_show
 ;

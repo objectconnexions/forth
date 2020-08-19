@@ -35,23 +35,25 @@ static volatile bool line_available;
 static volatile bool on_hold;
 
 void uart_init() {
-#ifdef MX270
+
+#ifdef MX130
+    U2RXRbits.U2RXR = 1;    //SET U2RX to RB5
+    // TX
+//    ANSELAbits.ANSA3 = 0;
+    RPA3Rbits.RPA3R = 2;    //SET RA3 to U2TX    
+#elif MX270
     // RX
     ANSELAbits.ANSA1 = 0;
-    U2RXRbits.U2RXR = 0;    //SET RX to RA0
+    U2RXRbits.U2RXR = 0;    //SET U2RX to RA0
     // TX
-    RPC2Rbits.RPC2R = 2;    //SET RB9 to TX
-#endif
-
-#ifdef MX570
+    RPC2Rbits.RPC2R = 2;    //SET RB9 to U2TX
+#elif MX570
     // RX
-    U2RXRbits.U2RXR = 2;    //SET RX to RF4
+    U2RXRbits.U2RXR = 2;    //SET U2RX to RF4
     // TX
-    RPF5Rbits.RPF5R = 1;    //SET RB9 to TX
+    RPF5Rbits.RPF5R = 1;    //SET RF5 to U2TX
 #endif
 
-    
- 
     uart_configure(57600);  // Configure UART2 for a baud rate of 57600
  
     IFS1bits.U2RXIF = 0;
