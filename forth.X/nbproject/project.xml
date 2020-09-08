@@ -35,10 +35,6 @@
                     <type>2</type>
                 </confElem>
                 <confElem>
-                    <name>NewConfiguration_remove</name>
-                    <type>2</type>
-                </confElem>
-                <confElem>
                     <name>XC32_PIC32MX130</name>
                     <type>2</type>
                 </confElem>

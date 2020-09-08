@@ -35,7 +35,11 @@ void compiler_if(void);
 
 void compiler_constant(void);
 
+void compiler_2constant(void);
+
 void compiler_variable(void);
+
+void compiler_2variable(void);
 
 void compiler_begin(void);
 
@@ -50,6 +54,8 @@ void compiler_until(void);
 void compiler_eol_comment(void);
 
 void compiler_inline_comment(void);
+
+void compiler_print_comment(void);
 
 void compiler_char(void);
 

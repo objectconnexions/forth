@@ -6,29 +6,31 @@ noecho
 \ 250 ms
 \ PORTB 1 port_off
 
-variable flash_rate
+2variable flash_rate
+450 50 flash_rate 2!
 
-500 flash_rate !
+2variable active_led
+2variable power_led
+
+\ PORTE 1 power_led 2!		\ for MX270 board
+\ PORTE 1 active_led 2!		\ for MX270 board
+
+ PORTB 4 power_led 2!		\ for MX130 breadboard
+ PORTA 4 active_led 2!		\ for MX130 breadboard
 
 : pwr_flash ( - )
-	450 50 PORTE 1 led_flash
+	450 50 power_led 2@ led_flash
 ;
-
 \ run flasher on power task
 ' pwr_flash power initiate
 
 
-
-: red_flash ( - )
-	450 50 PORTB 1 led_flash
+: active_flash ( - )
+	150 50 active_led 2@ led_flash
 ;
-
-: green_flash ( - )
-	150 50 PORTC 4 led_flash
-;
-
-\ run flasher on power task
+\ run flasher on another task
 \ task test_flashing
-\ ' red_flash test_flashing initiate
+\ ' active_flash test_flashing initiate
 
+.( added power flash)
 echo

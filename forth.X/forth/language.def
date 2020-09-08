@@ -1,5 +1,6 @@
-_reset
 noecho
+.( Dictionary reset)
+_reset
 
 0x0bf80f230 CONSTANT SYSKEY
 
@@ -13,29 +14,6 @@ noecho
 0x00 CONSTANT ANSEL
 0x10 CONSTANT TRIS
 0x20 CONSTANT PORT
-
-
-
-: 0= ( n -- flag )
-	0 =
-;
-
-: 0> ( n -- flag )
-	0 >
-;
-
-: 0< ( n -- flag )
-	0 > NOT
-;
-
-: 0<> ( n -- flag )
-	0 = NOT
-;
-
-\: 2DUP ( n1 n2 -- n1 n2 n1 n2 )
-\	over
-\	over
-\;
 
 
 : SET_BITS ( value value position -- value )
@@ -151,5 +129,6 @@ noecho
 	again
 ;
 
+.( added basic common words)
 echo
 

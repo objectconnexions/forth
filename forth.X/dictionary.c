@@ -160,6 +160,11 @@ void dictionary_append_instruction(CODE_INDEX word)
     dictionary_append_value((uint32_t) word);
 }
 
+uint8_t dictionary_read_byte(CODE_INDEX index) 
+{
+    return *index;
+}
+
 void dictionary_write_byte(CODE_INDEX index, uint8_t value)
 {
     *index = value;
@@ -220,7 +225,7 @@ bool dictionary_find_entry(char * name, struct Dictionary_Entry *entry)
         strncpy(entry_name, current_index, len);
         entry_name[len] = 0;
 
-        log_trace(LOG, "   checking '%s' at %08x (%08x)", entry_name, entry_index, current_index + len);
+        // log_trace(LOG, "   checking '%s' at %08x (%08x)", entry_name, entry_index, current_index + len);
         if (strcmp(entry_name, name) == 0) {
             current_index += len;
             log_debug(LOG, " code found for '%s' at %08x", entry_name, current_index);
@@ -242,8 +247,8 @@ bool dictionary_find_entry(char * name, struct Dictionary_Entry *entry)
     return false;
 }
 
-
-uint8_t dictionary_read_byte(struct Process *process) 
+// TODO rename to refer to character?
+uint8_t dictionary_read_next_byte(struct Process *process) 
 {
     return *(process->ip)++;
 }
@@ -256,7 +261,7 @@ static CELL read(CODE_INDEX *offset)
     
     while (true)
     {
-        log_trace(LOG, "read %08x", *offset);
+        // log_trace(LOG, "read %08x", *offset);
         
         segment = *(*offset);
         (*offset)++;
@@ -328,7 +333,7 @@ void dictionary_find_word_for(CODE_INDEX instruction, char *name) {
         uint8_t len = *entry++ & 0x1f;
         CODE_INDEX memory_at = entry + len;
         short_memory = entry <= last_core_entry;
-        log_trace(LOG, " checking %sentry %08x (%02x)", short_memory ? "short " : "", memory_at, *memory_at);
+//        log_trace(LOG, " checking %sentry %08x (%02x)", short_memory ? "short " : "", memory_at, *memory_at);
         if ((short_memory && ((uint32_t) instruction) == *memory_at) || (!short_memory && instruction == memory_at)) {
             strncpy(name, entry,len);
             name[len] = 0;

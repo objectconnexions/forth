@@ -134,11 +134,11 @@ bool uart_next_line(char *buffer) {
     {
         line_available = false;
         int limit = read_tail > receive_head ? receive_head + LENGTH : receive_head;
-        if (on_hold) printf("%i < %i\n", read_tail, limit) ;
+//        if (on_hold) printf("%i < %i\n", read_tail, limit) ;
         while (read_tail < limit) 
         {
             char c = uart_buffer[read_tail % LENGTH];
-            if (on_hold) printf("%c", c) ;
+//            if (on_hold) printf("%c", c) ;
             read_tail++;
             if (c == '\r' || c == '\n')
             {
@@ -165,7 +165,7 @@ bool uart_next_line(char *buffer) {
 
         read_tail %=  LENGTH;
         if (on_hold && (read_tail + LENGTH - receive_head) % LENGTH  > 250) {
-            printf("~RUN/n");
+//            printf("~RUN/n");
             uart_transmit_char(XON);
             on_hold = false;
         }
@@ -182,14 +182,14 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
         if (!on_hold && (read_tail + LENGTH - receive_head - 1) % LENGTH < 50) {
             uart_transmit_char(XOFF);
             on_hold = true;
-            printf("~HLD\n");
-            uart_debug();
+//            printf("~HLD\n");
+//            uart_debug();
         }
         
         while (U2STAbits.URXDA) 
         {
             char c = U2RXREG; 
-            if (on_hold) printf("%02x ", c);
+//            if (on_hold) printf("%02x ", c);
             uart_buffer[receive_head % LENGTH]  = c;
             receive_head++;
         
@@ -221,7 +221,7 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
 
 void uart_debug() {
     int free_space =  (read_tail + LENGTH - receive_head - 1) % LENGTH;
-    printf("%i? %04x/%04x (%i)\n", line_available, read_tail, receive_head, free_space);
+//    printf("%i? %04x/%04x (%i)\n", line_available, read_tail, receive_head, free_space);
     if (free_space < 50)
     {
         printf ("\n0000   ");

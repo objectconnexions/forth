@@ -72,7 +72,7 @@ int forth_init()
     dictionary_init();
     load_words();
 	
-    uart_transmit_buffer("FORTH v0.3\n\n");        
+    uart_transmit_buffer("FORTH v0.4\n\n");        
 }
 
 void process_interrupt(uint8_t level)
@@ -115,6 +115,11 @@ static bool isAccessibleMemory(uint32_t address)
     {
         return true;
     } 
+    else if (address % 4 != 0)
+    {
+        printf("NON-ALIGNED %X!", address); // reading from non-aligned address causes PIC exception
+        return false;        
+    }
     else 
     {
         printf("LIMIT %X!", address);
@@ -299,34 +304,47 @@ void memory_address()
     return_to();
 }
 
-/*
-void exec_process()
+static void add()
 {
-   uint32_t tos_value = current_process->code[current_process->ip++];
-   current_process->stack[++(current_process->sp)] = tos_value;
-}
-*/
-void add()
-{
-    if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
-        return;
-    }
     uint32_t tos_value = current_process->stack[current_process->sp--];
     uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value + tos_value;
     current_process->stack[++(current_process->sp)] = tos_value;
 }
 
-void subtract()
+static void add_1()
 {
-    if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
-        return;
-    }
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = 1 + tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void add_2()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = 2 + tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void subtract()
+{
     uint32_t tos_value = current_process->stack[current_process->sp--];
     uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value - tos_value;
+    current_process->stack[++current_process->sp] = tos_value;
+}
+
+static void subtract_1()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = tos_value - 1;
+    current_process->stack[++current_process->sp] = tos_value;
+}
+
+static void subtract_2()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = tos_value - 1;
     current_process->stack[++current_process->sp] = tos_value;
 }
 
@@ -354,27 +372,79 @@ void muliply()
     current_process->stack[++(current_process->sp)] = tos_value;
 }
 
-void greater_than()
+static void greater_than()
 {
-    if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
-        return;
-    }
     uint32_t tos_value = current_process->stack[current_process->sp--];
     uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value > tos_value ? 1 : 0;
     current_process->stack[++(current_process->sp)] = tos_value;
 }
 
-void equal_to()
+static void greater_than_equal()
 {
-    if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
-        return;
-    }
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
+    tos_value = nos_value >= tos_value ? 1 : 0;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void less_than()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
+    tos_value = nos_value < tos_value ? 1 : 0;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void less_than_equal()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
+    tos_value = nos_value <= tos_value ? 1 : 0;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void equal_to()
+{
     uint32_t tos_value = current_process->stack[current_process->sp--];
     uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value == tos_value ? 1 : 0;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void not_equal_to()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t nos_value = current_process->stack[current_process->sp--];
+    tos_value = nos_value != tos_value ? 1 : 0;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void equal_to_zero()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = tos_value == 0 ? 1 : 0;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void not_equal_to_zero()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = tos_value != 0 ? 1 : 0;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void greater_than_zero()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = tos_value > 0 ? 1 : 0;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void less_than_zero()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = tos_value < 0 ? 1 : 0;
     current_process->stack[++(current_process->sp)] = tos_value;
 }
 
@@ -425,7 +495,7 @@ void not()
     current_process->stack[++(current_process->sp)] = tos_value;
 }
 
-void left_shift()
+static void left_shift()
 {
     if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
@@ -437,7 +507,7 @@ void left_shift()
     current_process->stack[++(current_process->sp)] = tos_value;
 }
 
-void right_shift()
+static void right_shift()
 {
     if (current_process->sp < 1) {
         printf("stack underflow; aborting\n");
@@ -446,6 +516,19 @@ void right_shift()
     uint32_t tos_value = current_process->stack[current_process->sp--];
     uint32_t nos_value = current_process->stack[current_process->sp--];
     tos_value = nos_value >> tos_value;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+static void left_shift_1()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = tos_value << 1;
+    current_process->stack[++(current_process->sp)] = tos_value;
+}
+
+static void right_shift_1()
+{
+    uint32_t tos_value = current_process->stack[current_process->sp--];
+    tos_value = tos_value >> 1;
     current_process->stack[++(current_process->sp)] = tos_value;
 }
 
@@ -477,7 +560,7 @@ void wait_for()
 void branch()
 {
     CODE_INDEX pos = current_process->ip;
-    int8_t relative = dictionary_read_byte(current_process);
+    int8_t relative = dictionary_read_next_byte(current_process);
     current_process->ip = pos + relative;
 }
 
@@ -538,8 +621,13 @@ static void return_to()
     char buf[64];
     if (log_level <= TRACE) 
     {
-        dump_return_stack(buf, current_process);
-        log_trace(LOG, "return %s", buf);
+        if (log_level <= TRACE) 
+        {
+            dump_return_stack(buf, current_process);
+            log_trace(LOG, "return %s", buf);
+            dump_parameter_stack(buf, current_process);
+            log_trace(LOG, "  %s", buf);
+        }
     }
     if (current_process->rsp < 0) {
         // copy of END code - TODO refactor
@@ -582,7 +670,7 @@ void emit()
     printf("%c", ch);
 }
 
-void read_memory()
+static void read_memory()
 {
     if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
@@ -605,7 +693,43 @@ void read_memory()
     }
 }
 
-void write_memory()
+static void two_read_memory()
+{
+    uint32_t address = current_process->stack[current_process->sp--];
+    log_trace(LOG, "address 0x%x", address);
+    if (isAccessibleMemory(address)) 
+    {
+        uint32_t *ptr = (uint32_t *) address;
+        uint32_t tos = (uint32_t) *ptr;
+        uint32_t nos = (uint32_t) *(ptr + 1);
+        
+        log_debug(LOG, "value at %0X = 0x%x", address, nos);
+        current_process->stack[++(current_process->sp)] = nos;
+        log_debug(LOG, "value at %0X = 0x%x", address, tos);
+        current_process->stack[++(current_process->sp)] = tos;
+    }
+    else 
+    {
+        in_error = true;
+    }
+}
+
+static void read_char()
+{
+    if (current_process->sp < 0) {
+        printf("stack underflow; aborting\n");
+        in_error = true;
+        return;
+    }
+
+    uint32_t address = current_process->stack[current_process->sp--];
+    log_trace(LOG, "address 0x%x", address);
+    uint8_t value = dictionary_read_byte((CODE_INDEX) address) & 0xff;
+    log_debug(LOG, "char at %0X = 0x%x", address, value);
+    current_process->stack[++(current_process->sp)] = value;
+}
+
+static void write_memory()
 {
     if (current_process->sp < 0) {
         printf("stack underflow; aborting\n");
@@ -627,6 +751,43 @@ void write_memory()
     }
 }
 
+static void write_memory_add_1()
+{
+    uint32_t address = current_process->stack[current_process->sp--]; // address
+    log_debug(LOG, "increment value at address %04X", address);
+    if (isAccessibleMemory(address)) 
+    {
+        uint32_t *ptr = (uint32_t *) address;
+        *ptr = *ptr + 1;
+    }
+    else 
+    {
+        in_error = true;
+    }
+}
+
+static void two_write_memory()
+{
+    uint32_t address = current_process->stack[current_process->sp--]; // address
+    if (isAccessibleMemory(address)) 
+    {
+        uint32_t value = current_process->stack[current_process->sp--]; // write value
+        log_debug(LOG, "set address %04X to %04X", address, value);
+        uint32_t *ptr = (uint32_t *) address;
+        *ptr = value;
+        
+        ptr++;
+        value = current_process->stack[current_process->sp--]; // write value
+        log_debug(LOG, "set address %04X to %04X", address + 4, value);
+        *ptr = value;
+
+    }
+    else 
+    {
+        in_error = true;
+    }
+}
+
 void print_hex()
 {
     uint32_t value = current_process->stack[current_process->sp--];
@@ -638,11 +799,16 @@ inline void print_cr()
     printf("\n");
 }
 
-void stack()
+static void stack()
 {
     char buf[64];
     dump_parameter_stack(buf, current_process);
     printf("%s\n", buf);
+}
+
+static void clear_stack()
+{
+    current_process->sp = -1;
 }
 
 inline void debug_on()
@@ -672,12 +838,9 @@ void reset() {
     
     
     dictionary_reset();
-    tasks();
-    dictionary_debug();
-    dump_base();
-    
-    //load_words();
-    //dump_base();
+//    tasks();
+//    dictionary_debug();
+//    dump_base();
 }
 
 void clear_registers()
@@ -816,17 +979,22 @@ void next_task()
 {
     uint8_t highest_priority = 0;
     
-    waiting = true;
+    //waiting = true;
+    
+    struct Process* change_to = NULL;
     struct Process* next = processes;
     do {
         if (next->ip != LAST_ENTRY && timer >= next->next_time_to_run && next->priority >= highest_priority) {
             highest_priority = next->priority;
-            current_process = next;
-            waiting = false;
+            change_to = next;
+            //current_process = next;
+            //waiting = false;
         }
         next = next->next;
     } while (next != NULL);
-    if (!waiting) {
+    //if (!waiting) {
+    if (change_to != NULL && change_to != current_process) {
+        current_process = change_to;
         log_trace(LOG, "switch to current_process %s", current_process->name);
     }
 }
@@ -911,6 +1079,11 @@ static void push_char()
     PUSH_DATA(text[0]);
 }
 
+static void push_blank()
+{
+    PUSH_DATA(0x20);
+}
+
 static void set_log_level() 
 {
     log_level = current_process->stack[current_process->sp--];
@@ -937,8 +1110,9 @@ static void depth()
  */
 static void pick()
 {
-    uint8_t level = POP_DATA - 1;
-    PUSH_DATA(current_process->stack[current_process->sp - level]);
+    uint8_t level = POP_DATA;
+    CELL vos = current_process->stack[current_process->sp - level];
+    PUSH_DATA(vos);
 }
 
 /*
@@ -1007,10 +1181,10 @@ static void two_swap()
  */
 static void print_string()
 {
-    uint8_t len = dictionary_read_byte(current_process);
+    uint8_t len = dictionary_read_next_byte(current_process);
     int i;
     for (i = 0; i < len; i++) {
-        char ch = dictionary_read_byte(current_process);
+        char ch = dictionary_read_next_byte(current_process);
         printf("%c", ch);
     }
 }
@@ -1021,7 +1195,7 @@ static void print_string()
  */
 static void s_string()
 {
-    uint8_t len = dictionary_read_byte(current_process);
+    uint8_t len = dictionary_read_next_byte(current_process);
     PUSH_DATA(len);
     PUSH_DATA((CELL) current_process->ip);
     current_process->ip += len;
@@ -1033,7 +1207,7 @@ static void s_string()
 static void c_string()
 {
     PUSH_DATA((CELL) current_process->ip);
-    uint8_t len = dictionary_read_byte(current_process);
+    uint8_t len = dictionary_read_next_byte(current_process);
     current_process->ip += len;
 }
 
@@ -1077,22 +1251,27 @@ static void load_words()
     
     dictionary_add_core_word("DUMP", dump, false);
     dictionary_add_core_word("WORDS", dictionary_words, false);
-//        
-//    dictionary_add_core_word("__RUN", run, false);
-//    dictionary_add_core_word("__PROCESS", exec_process, false);
-//    dictionary_add_core_word("__LIT", lit, false);
-//    dictionary_add_core_word("__VAR", variable, false);
-//    dictionary_add_core_word("__ZBRANCH", zero_branch, false);
-//    dictionary_add_core_word("__BRANCH", branch, false);
-//    dictionary_add_core_word("__RETURN", return_to, false);
-    
 
     dictionary_add_core_word("+", add, false);
     dictionary_add_core_word("-", subtract, false);
     dictionary_add_core_word("/", divide, false);
     dictionary_add_core_word("*", muliply, false);
+    dictionary_add_core_word("1+", add_1, false);
+    dictionary_add_core_word("2+", add_2, false);
+    dictionary_add_core_word("1-", subtract_1, false);
+    dictionary_add_core_word("2-", subtract_2, false);
+    dictionary_add_core_word("2*", left_shift_1, false);
+    dictionary_add_core_word("2/", right_shift_1, false);
     dictionary_add_core_word(">", greater_than, false);
+    dictionary_add_core_word(">=", greater_than_equal, false);
+    dictionary_add_core_word("<", less_than, false);
+    dictionary_add_core_word("<=", less_than_equal, false);
     dictionary_add_core_word("=", equal_to, false);
+    dictionary_add_core_word("<>", not_equal_to, false);
+    dictionary_add_core_word("0=", equal_to_zero, false);
+    dictionary_add_core_word("0>", greater_than_zero, false);
+    dictionary_add_core_word("0<", less_than_zero, false);
+    dictionary_add_core_word("0<>", not_equal_to_zero, false);
     dictionary_add_core_word("AND", and, false);
     dictionary_add_core_word("OR", or, false);
     dictionary_add_core_word("XOR", xor, false);
@@ -1104,12 +1283,18 @@ static void load_words()
     dictionary_add_core_word("CR", print_cr, false);
     dictionary_add_core_word("EMIT", emit, false);
     dictionary_add_core_word("@", read_memory, false);
+    dictionary_add_core_word("2@", two_read_memory, false);
+    dictionary_add_core_word("@C", read_char, false);
     dictionary_add_core_word("!", write_memory, false);
+    dictionary_add_core_word("!+", write_memory_add_1, false);
+    dictionary_add_core_word("2!", two_write_memory, false);
+    dictionary_add_core_word("!C", write_memory, false);
     dictionary_add_core_word("EXECUTE", execute_word, false);
     dictionary_add_core_word("INITIATE", initiate, false);
     dictionary_add_core_word("PAUSE", yield, false);
     dictionary_add_core_word("MS", wait_for, false);
     dictionary_add_core_word(".S", stack, false);
+    dictionary_add_core_word("CLEAR", clear_stack, false);
     dictionary_add_core_word("TICKS", ticks, false);
     dictionary_add_core_word("TIME", time, false);
     dictionary_add_core_word("TASK", add_task, false);
@@ -1119,11 +1304,14 @@ static void load_words()
 
     
     dictionary_add_core_word("CHAR", push_char, false);
+    dictionary_add_core_word("BL", push_blank, false);
 
     dictionary_add_core_word("VARIABLE", compiler_variable, false);
+    dictionary_add_core_word("2VARIABLE", compiler_2variable, false);
     dictionary_add_core_word("CONSTANT", compiler_constant, false);
+    dictionary_add_core_word("2CONSTANT", compiler_2constant, false);
 
-    dictionary_add_core_word("DBG", debug_word, false);
+    dictionary_add_core_word("SEE", debug_word, false);
     dictionary_add_core_word("TASKS", tasks, false);
     dictionary_add_core_word("_DUMP", dump_base, false);
     dictionary_add_core_word("_DEBUG", debug_on, false);
@@ -1135,6 +1323,7 @@ static void load_words()
     // Immediate words
     dictionary_add_core_word("\\", compiler_eol_comment, true);
     dictionary_add_core_word("(", compiler_inline_comment, true);
+    dictionary_add_core_word(".(", compiler_print_comment, true);
     dictionary_add_core_word("IF", compiler_if, true);
     dictionary_add_core_word("THEN", compiler_then, true);
     dictionary_add_core_word("ELSE", compiler_else, true);
@@ -1173,18 +1362,16 @@ static void load_words()
     dictionary_end_entry();
 
     
-    
-        
- //   struct Dictionary_Entry entry;
+//    struct Dictionary_Entry entry;
     dictionary_find_entry("_INTERACTIVE", &entry);
     interpreter_code = entry.instruction;
     interpreter_process->ip = interpreter_code;
-    dictionary_debug_entry(entry.instruction);
+//    dictionary_debug_entry(entry.instruction);
 
     dictionary_find_entry("_IDLE", &entry);
     idle_code = entry.instruction;
     idle_process->ip = idle_code;
-    dictionary_debug_entry(entry.instruction);
+//    dictionary_debug_entry(entry.instruction);
 
     dictionary_lock();
 }

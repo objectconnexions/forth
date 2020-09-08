@@ -54,7 +54,7 @@ uint32_t dictionary_read(struct Process *);
 
 CODE_INDEX dictionary_read_instruction(struct Process *);
 
-uint8_t dictionary_read_byte(struct Process *);
+uint8_t dictionary_read_next_byte(struct Process *);
 
 void dictionary_find_word_for(CODE_INDEX, char*);
 
@@ -67,6 +67,8 @@ CODE_INDEX dictionary_data_address(CODE_INDEX);
 void dictionary_memory_dump(CODE_INDEX, uint16_t);
 
 void dictionary_align(void);
+
+uint8_t dictionary_read_byte(CODE_INDEX);
 
 void dictionary_write_byte(CODE_INDEX, uint8_t);
 

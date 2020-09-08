@@ -105,29 +105,31 @@ void compiler_compile()
     }
 }
 
-void compiler_constant()
-{
+static bool add_named_entry() {
     char name[32];
     struct Dictionary_Entry entry;
     has_error = false;
     compiling = true;
 
     parser_next_text(name);
-//    if (parser_next_text(name) == INVALID_INSTRUCTION) {
-////        parser_drop_line();
-//        has_error = false;
-//        to_upper(name);
-//        log_error(LOG, "non-unique name %s", name);
-//    }
-    
     to_upper(name);
-    if (dictionary_find_entry(name, &entry)) {
+    if (dictionary_find_entry(name, &entry))
+    {
         log_error(LOG, "non-unique name %s", name);
         has_error = true;
-        
-    } else {
+        return false;
+    }
+    else
+    {
         dictionary_add_entry(name);
+        return true;
+    }
+}
 
+void compiler_constant()
+{
+    if (add_named_entry())
+    {
         dictionary_append_instruction((CODE_INDEX) LIT);
         uint32_t value = pop_stack();
         dictionary_append_value(value);
@@ -136,38 +138,47 @@ void compiler_constant()
     }
 }
 
+void compiler_2constant()
+{
+    if (add_named_entry())
+    {
+        dictionary_append_instruction((CODE_INDEX) LIT);
+        uint32_t value = pop_stack();
+        dictionary_append_value(value);
+        value = pop_stack();
+        dictionary_append_value(value);
+        
+        complete_word();
+    }
+}
+
+static void add_variable(uint8_t size)
+{
+    dictionary_append_instruction((CODE_INDEX) ADDR);
+    dictionary_align();
+    
+    int i;
+    for (i = 0; i < size; i++) {
+        dictionary_append_byte(0); // space for value
+    }
+
+    complete_word();
+    
+}
+
 void compiler_variable()
 {
-    char name[32];
-    struct Dictionary_Entry entry;
-    has_error = false;
-    compiling = true;
+    if (add_named_entry())
+    {
+        add_variable(4);
+    }
+}
 
-    parser_next_text(name);
-//    if (parser_next_text(name) == INVALID_INSTRUCTION) {
-////        parser_drop_line();
-//        has_error = false;
-//        to_upper(name);
-//        log_error(LOG, "non-unique name %s", name);
-//    }
-    
-    to_upper(name);
-    if (dictionary_find_entry(name, &entry)) {
-        log_error(LOG, "non-unique name %s", name);
-        has_error = true;
-        
-    } else {
-        dictionary_add_entry(name);
-
-        dictionary_append_instruction((CODE_INDEX) ADDR);
-        dictionary_align();
-
-        dictionary_append_byte(0); // space for value
-        dictionary_append_byte(0); // space for value
-        dictionary_append_byte(0); // space for value
-        dictionary_append_byte(0); // space for value
-
-        complete_word();
+void compiler_2variable()
+{
+    if (add_named_entry())
+    {
+        add_variable(8);
     }
 }
 
@@ -225,7 +236,6 @@ void compiler_eol_comment()
 {
     parser_drop_line();
 }
-
               
 void compiler_inline_comment()
 {
@@ -235,6 +245,29 @@ void compiler_inline_comment()
     {
         parser_next_text(text);
     } while(text[strlen(text) - 1] != ')');
+}
+        
+void compiler_print_comment()
+{
+    char text[80];
+    bool end;
+    
+    do
+    {
+        parser_next_text(text);
+        end = text[strlen(text) - 1] == ')';
+        if (end)
+        {
+            text[strlen(text) - 1] = 0;
+            printf(text);            
+        } 
+        else
+        {
+            printf(text);
+            printf(" ");
+        }
+    } while(!end);
+    printf("\n");
 }
 
 void compiler_char()

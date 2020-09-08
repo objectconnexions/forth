@@ -2,7 +2,7 @@
 /*  Files to Include                                                          */
 /******************************************************************************/
 #ifdef __XC32
-    #include <xc.h>          /* Defines special funciton registers, CP0 regs  */
+#include <xc.h>          /* Defines special funciton registers, CP0 regs  */
 #endif
 
 #include <plib.h>           /* Include to use PIC32 peripheral libraries      */
@@ -19,13 +19,13 @@
 
 #ifdef MX130
 //    #include <proc/p32mx130f064d.h>
-    #define PWR_LED PORTBbits.RB4
+#define PWR_LED PORTBbits.RB4
 #elif MX270
-    #include <proc/p32mx270f256d.h>
-    #define PWR_LED PORTAbits.RA8
+#include <proc/p32mx270f256d.h>
+#define PWR_LED PORTAbits.RA8
 #elif MX570
-    #include <proc/p32mx570f512h.h>
-    #define PWR_LED PORTEbits.RE1
+#include <proc/p32mx570f512h.h>
+#define PWR_LED PORTEbits.RE1
 #endif
 
 bool debug = false;
@@ -40,10 +40,10 @@ bool run_task = false;
 
 /******************************************************************************/
 /* Main Program                                                               */
+
 /******************************************************************************/
 
-int32_t main(void)
-{
+int32_t main(void) {
 
 #ifndef PIC32_STARTER_KIT
     /*The JTAG is on by default on POR.  A PIC32 Starter Kit uses the JTAG, but
@@ -68,7 +68,7 @@ int32_t main(void)
     SYS_CFG_ALL (configures the flash wait states, PB bus, and pCache)*/
 
     /* TODO Add user clock/system configuration code if appropriate.  */
-    SYSTEMConfig(SYS_FREQ, SYS_CFG_ALL); 
+    SYSTEMConfig(SYS_FREQ, SYS_CFG_ALL);
 
     /* Initialize I/O and Peripherals for application */
     InitApp();
@@ -79,7 +79,7 @@ int32_t main(void)
     INTConfigureSystem(INT_SYSTEM_CONFIG_MULT_VECTOR);
     INTEnableInterrupts();
 
-     
+
     // Power LED
 #ifdef MX130
     TRISBbits.TRISB4 = 0;
@@ -88,29 +88,28 @@ int32_t main(void)
 #elif MX570
     TRISEbits.TRISE1 = 0;
 #endif
-    
+
     PWR_LED = 1;
 
     uart_init();
     log_init();
 
     uart_transmit_buffer("PIC 32MX board\r\n");
-    log_info("MAIN", "starting up");
-        
+
     // Timer2 Setup
-    T2CONbits.ON = 0;       // disable before set up
-    PR2 = 48000;           // divide by to get 1kHz, eg 1ms ticks
+    T2CONbits.ON = 0; // disable before set up
+    PR2 = 48000; // divide by to get 1kHz, eg 1ms ticks
     TMR2 = 0X0;
-    T2CONbits.TCKPS = 0;    // prescale 1:1    
+    T2CONbits.TCKPS = 0; // prescale 1:1    
     T2CONbits.TCS = 0;
-    T2CONbits.ON = 1;   // start timer
-    
+    T2CONbits.ON = 1; // start timer
+
     // Timer1 Interrupt Setup
     IPC2bits.T2IP = 5; // Main Priority
     IPC2bits.T2IS = 0; // Sub-Priority
     IFS0bits.T2IF = 0; // Clear flag
     IEC0bits.T2IE = 1; // Enable Interrupt    
-    
+
     forth_init();
     forth_run();
 }
@@ -119,8 +118,7 @@ int32_t main(void)
     Timer handle gets called every 1ms and increments the timer variable.
     Getting the timer variable git the time in milliseconds since startup. 
  */
-void __ISR(_TIMER_2_VECTOR, IPL5SOFT) Timer1Handler(void)
-{
+void __ISR(_TIMER_2_VECTOR, IPL5SOFT) Timer1Handler(void) {
     timer++;
-    IFS0bits.T2IF = 0; 
+    IFS0bits.T2IF = 0;
 }
