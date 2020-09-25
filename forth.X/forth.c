@@ -39,7 +39,6 @@ void tasks(void);
 static void load_words(void);
 void reset(void);
 void print_top_of_stack(void);
-static void return_to(void);
 static void abort_task(void);
 void lit(void);
 
@@ -48,8 +47,8 @@ static void dump_base(void);
 uint32_t timer = 0;
 static bool waiting = true;
 
+struct Process* current_process;
 static struct Process* processes;
-static struct Process* current_process;
 static struct Process* idle_process;
 static struct Process* power_process;
 static struct Process* interpreter_process;
@@ -64,15 +63,20 @@ int forth_init()
     parser_init();
     compiler_init();
     
-    idle_process = new_task(1, "IDLE");
-    power_process = new_task(5, "POWER");
     interpreter_process = new_task(5, "INTERPRETER");
     current_process = interpreter_process;
+    idle_process = new_task(1, "IDLE");
+    power_process = new_task(5, "POWER");
+    power_process->log = false;
+	
+    uart_transmit_buffer("FORTH v0.4\n\n");        
     
     dictionary_init();
     load_words();
-	
-    uart_transmit_buffer("FORTH v0.4\n\n");        
+    
+    log_info(LOG, "loaded initial words");
+    
+    tasks();
 }
 
 void process_interrupt(uint8_t level)
@@ -82,6 +86,8 @@ void process_interrupt(uint8_t level)
     interpreter_process->rsp = -1;
     interpreter_process->ip = interpreter_code;
     interpreter_process->next_time_to_run = 0;
+    next_task();
+    
 }
 
 uint8_t find_process(char *name) {
@@ -129,7 +135,7 @@ static bool isAccessibleMemory(uint32_t address)
 
 static void test_compile(char * input) {
     parser_input(input);
-    compiler_compile();
+    compiler_compile_definition();
 }
 
 void forth_run()
@@ -289,20 +295,39 @@ void rot()
     current_process->stack[current_process->sp - 2] = tos_value;
 }
 
-void lit()
+/*
+ Do nothing.
+ */
+void nop() {
+}
+
+/*
+ Read the next cell from the dictionary and push it onto the stack.
+ */
+void push_literal()
 {
     uint32_t tos_value = dictionary_read(current_process);
     PUSH_DATA(tos_value);
 }
 
 /*
- * Using the address in the dictionary work out the corresponding memory address
+ * Using the address in the dictionary to work out the corresponding memory address
  */
 void memory_address()
 {
     PUSH_DATA((CELL) dictionary_data_address(current_process->ip));
     return_to();
 }
+
+/*
+ * Pushes the address of the data (in the current entry) onto the stack.
+*/ 
+void data_address()
+{
+    PUSH_DATA((CELL) current_process->ip);
+    return_to();
+}
+
 
 static void add()
 {
@@ -616,7 +641,7 @@ static void initiate()
 //    }
 }
 
-static void return_to()
+void return_to()
 {
     char buf[64];
     if (log_level <= TRACE) 
@@ -651,7 +676,7 @@ void print_top_of_stack()
         printf("stack underflow; aborting\n");
         return;
     }
-    uint32_t tos_value = current_process->stack[current_process->sp--];
+    uint32_t tos_value = POP_DATA;
     printf("%i ", tos_value);
 }
 
@@ -843,7 +868,92 @@ void reset() {
 //    dump_base();
 }
 
-void clear_registers()
+static void unused()
+{
+    PUSH_DATA(dictionary_unused());
+}
+
+static void allot()
+{
+    int32_t size = POP_DATA;
+    dictionary_allot(size);
+    dictionary_end_entry();
+}
+
+static void append_char()
+{
+    uint8_t c = POP_DATA & 0xff;
+    dictionary_append_byte(c);
+    dictionary_end_entry();
+}
+
+static void append_cell()
+{
+    CELL c = POP_DATA;
+    dictionary_append_value(c);
+    dictionary_end_entry();
+}
+
+/*
+ * Add four bytes to the address to move to the next cell 
+ */
+static void add_cell()
+{
+    CELL address = POP_DATA;
+    PUSH_DATA(address + 4);
+}
+
+static void fill_with(char c)
+{
+    CELL size = POP_DATA;
+    CELL address = POP_DATA;
+    int i;
+    for (i = 0; i < size; i++) {
+        dictionary_write_byte((CODE_INDEX) address++, c);
+    }
+}
+
+static void erase()
+{
+    fill_with(0);
+}
+
+static void fill()
+{
+    char c = (char) POP_DATA;
+    fill_with(c);
+}
+
+static void here()
+{
+    PUSH_DATA((CELL) dictionary_here());
+}
+
+static void pad()
+{
+    PUSH_DATA((CELL) dictionary_pad());
+}
+
+static void count()
+{
+    CELL address = POP_DATA;
+    uint8_t len = dictionary_read_byte((CODE_INDEX) address);
+    PUSH_DATA(address + 1);
+    PUSH_DATA(len);
+}
+
+static void type()
+{
+    uint8_t len = POP_DATA % 0xff;
+    CELL address = POP_DATA;
+    int i;
+    for (i = 0; i < len; i++) {
+        char c = dictionary_read_byte((CODE_INDEX) address++);
+        printf("%c", c);
+    }
+}
+
+static void clear_registers()
 {
     current_process->sp = -1;
     current_process->rsp = -1;
@@ -947,10 +1057,13 @@ struct Process* new_task(uint8_t priority, char *name)
     new_process->priority = priority;
     new_process->next_time_to_run = 0;
     new_process->name = malloc(sizeof(strlen(name) + 1));
+    new_process->log = true;
     strcpy(new_process->name, name);
     
-    
-    log_info(LOG, "new task %s (P%i)", new_process->name, priority);
+    if (current_process)
+    {
+        log_info(LOG, "new task %s (P%i)", new_process->name, priority);
+    }
     
     return new_process;
 }
@@ -995,7 +1108,7 @@ void next_task()
     //if (!waiting) {
     if (change_to != NULL && change_to != current_process) {
         current_process = change_to;
-        log_trace(LOG, "switch to current_process %s", current_process->name);
+        // log_trace(LOG, "switch to current_process %s", current_process->name);
     }
 }
 
@@ -1068,6 +1181,7 @@ static void tick()
 
 static void debug_word()
 { 
+    tick(); 
     dictionary_debug_entry((CODE_INDEX) pop_stack());
 }
 
@@ -1179,7 +1293,7 @@ static void two_swap()
 /*
  Outputs the string to the console.
  */
-static void print_string()
+void print_string()
 {
     uint8_t len = dictionary_read_next_byte(current_process);
     int i;
@@ -1190,21 +1304,21 @@ static void print_string()
 }
 
 /*
- Pushes the count and address of the counted string onto the stack and 
+ * Pushes the count and address of the counted string onto the stack and 
  * moves the IP forward to next instruction.
  */
-static void s_string()
+void s_string()
 {
     uint8_t len = dictionary_read_next_byte(current_process);
-    PUSH_DATA(len);
     PUSH_DATA((CELL) current_process->ip);
+    PUSH_DATA(len);
     current_process->ip += len;
 }
 /*
- Pushes the address of the counted string onto the stack and moves the 
+ * Pushes the address of the counted string onto the stack and moves the 
  * IP forward to next instruction.
  */
-static void c_string()
+void c_string()
 {
     PUSH_DATA((CELL) current_process->ip);
     uint8_t len = dictionary_read_next_byte(current_process);
@@ -1214,19 +1328,18 @@ static void c_string()
 static void load_words()
 {
     log_info(LOG, "load words");
-    
-    // Internal codes
-//    dictionary_insert_internal_instruction("__PROCESS", exec_process);
-    dictionary_insert_internal_instruction(LIT, lit);
-    dictionary_insert_internal_instruction(ADDR, memory_address);
-    dictionary_insert_internal_instruction(BRANCH, branch);
-    dictionary_insert_internal_instruction(ZBRANCH, zero_branch);
-    dictionary_insert_internal_instruction(RETURN, return_to);
-    dictionary_insert_internal_instruction(PROCESS_LINE, interpreter_run);
- 
-    dictionary_insert_internal_instruction(PRINT_STRING, print_string);
-    dictionary_insert_internal_instruction(S_STRING, s_string);
-    dictionary_insert_internal_instruction(C_STRING, c_string);
+
+    dictionary_add_core_word(NULL, nop, false);
+    dictionary_add_core_word(NULL, push_literal, false);
+    dictionary_add_core_word(NULL, memory_address, false);
+    dictionary_add_core_word(NULL, branch, false);
+    dictionary_add_core_word(NULL, return_to, false);
+    dictionary_add_core_word(NULL, interpreter_run, false);
+    dictionary_add_core_word(NULL, print_string, false);
+    dictionary_add_core_word(NULL, s_string, false);
+    dictionary_add_core_word(NULL, c_string, false);
+    dictionary_add_core_word(NULL, data_address, false);
+
     
     dictionary_add_core_word("END", end, false);
     
@@ -1330,8 +1443,9 @@ static void load_words()
     dictionary_add_core_word("BEGIN", compiler_begin, true);
     dictionary_add_core_word("AGAIN", compiler_again, true);
     dictionary_add_core_word("UNTIL", compiler_until, true);
-    dictionary_add_core_word(":", compiler_compile, false);
+    dictionary_add_core_word(":", compiler_compile_definition, false);
     dictionary_add_core_word(";", compiler_end, true);
+    dictionary_add_core_word(",\"", compiler_compile_string, true);
     dictionary_add_core_word(".\"", compiler_print_string, true);
     dictionary_add_core_word("S\"", compiler_s_string, true);
     dictionary_add_core_word("C\"", compiler_c_string, true);
@@ -1339,6 +1453,19 @@ static void load_words()
     
     dictionary_add_core_word("LOG", set_log_level, false);
     dictionary_add_core_word("DICT", dictionary_debug, false);
+    dictionary_add_core_word("ALLOT", allot, false);
+    dictionary_add_core_word("CREATE", compiler_create_data, false);
+    dictionary_add_core_word("ALIGN", dictionary_align, false);
+    dictionary_add_core_word("UNUSED", unused, false);
+    dictionary_add_core_word(",", append_cell, false);
+    dictionary_add_core_word("C,", append_char, false);
+    dictionary_add_core_word("CELL+", add_cell, false);
+    dictionary_add_core_word("ERASE", erase, false);
+    dictionary_add_core_word("FILL", fill, false);
+    dictionary_add_core_word("HERE", here, false);
+    dictionary_add_core_word("PAD", pad, false);
+    dictionary_add_core_word("COUNT", count, false);
+    dictionary_add_core_word("TYPE", type, false);
     
     dictionary_add_core_word("DRESET", dictionary_reset, false);
     dictionary_add_core_word("LOCK", dictionary_lock, false);
@@ -1348,7 +1475,7 @@ static void load_words()
     // create loop with process instruction
     dictionary_add_entry("_INTERACTIVE");
     compiler_begin();
-    dictionary_append_instruction((CODE_INDEX) PROCESS_LINE);
+    dictionary_append_function(interpreter_run);
     compiler_again();
     dictionary_end_entry();
     
@@ -1361,17 +1488,13 @@ static void load_words()
     compiler_again();
     dictionary_end_entry();
 
-    
-//    struct Dictionary_Entry entry;
     dictionary_find_entry("_INTERACTIVE", &entry);
     interpreter_code = entry.instruction;
     interpreter_process->ip = interpreter_code;
-//    dictionary_debug_entry(entry.instruction);
 
     dictionary_find_entry("_IDLE", &entry);
     idle_code = entry.instruction;
     idle_process->ip = idle_code;
-//    dictionary_debug_entry(entry.instruction);
 
     dictionary_lock();
 }

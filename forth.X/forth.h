@@ -23,6 +23,8 @@ extern uint32_t timer;
 
 extern uint8_t dictionary[];
 
+extern struct Process* current_process;
+
 void start_code(CODE_INDEX);
 
 int forth_init();
@@ -40,6 +42,25 @@ uint32_t pop(void);
 void process_interrupt(uint8_t);
 
 uint8_t find_process(char *);
+
+
+
+void nop(void);
+
+void push_literal(void);
+
+void memory_address(void);
+
+void branch(void);
+
+void zero_branch(void);
+
+void return_to(void);
+void interpreter_run(void);
+void print_string(void);
+void s_string(void);
+void c_string(void);
+void data_address(void);
 
 #ifdef	__cplusplus
 }

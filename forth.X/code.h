@@ -23,37 +23,16 @@ extern "C" {
 #endif
 
 #include <stdint.h>
-
-//#include "dictionary.h"
-    
+#include <stdbool.h>   
     
 typedef uint32_t CELL;
 
 typedef uint8_t* CODE_INDEX;
 
-enum codes {
-    NOP,
-
-    LIT, 
-    ADDR,
-    BRANCH, 
-    ZBRANCH,
-    RETURN, 
-    PROCESS_LINE,
-    
-    PRINT_STRING,
-    S_STRING,
-    C_STRING,
-    
-    PROCESS
-};
-
-CODE_INDEX memory_test;
-
 struct Process {
     uint8_t id;
-    uint32_t stack[16];
-    uint32_t return_stack[8];
+    CELL stack[16];
+    CELL return_stack[8];
     /*volatile */ 
     CODE_INDEX ip; // instruction pointer
     //TODO change both to unsigned --> then change -1 to 0xffff
@@ -64,6 +43,7 @@ struct Process {
     char *name;
     uint8_t priority;
     uint32_t next_time_to_run;
+    bool log;
 };
 
 void code_init();

@@ -8,6 +8,7 @@
 #include "forth.h"
 #include "parser.h"
 #include "interpreter.h"
+#include "compiler.h"
 
 #define LOG "Interpreter"
 
@@ -20,7 +21,7 @@ static bool echo = true;
 static void test_compile(char *code)
 {
     parser_input(code);
-    compiler_compile();
+    compiler_compile_definition();
 }
 
 void interpreter_run() {

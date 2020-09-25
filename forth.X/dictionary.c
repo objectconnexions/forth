@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "logger.h"
 #include "dictionary.h"
+#include "forth.h"
 
 
 #define LOG "Dictionary"
@@ -25,7 +26,7 @@
 static uint8_t memory[CODE_SIZE];
 static CORE_FUNC core_functions[CORE_WORDS];
 
-static CODE_INDEX last_entry_offset; // last non-scratch entry in dictionary
+static CODE_INDEX search_from; // last non-scratch entry in dictionary
 static CODE_INDEX new_entry_offset;  // next free space in dictionary for a new entry
 static CODE_INDEX last_core_entry;
 static CODE_INDEX locked_before;
@@ -50,7 +51,7 @@ void dictionary_init()
     log_info(LOG, "memory at %08x", memory);
     log_info(LOG, "functions at %08x", core_functions);
     log_info(LOG, "success");
-    last_entry_offset = LAST_ENTRY;
+    search_from = LAST_ENTRY;
     locked_before = memory;
     last_core_entry = memory;
     last_function_index = 0;
@@ -61,21 +62,38 @@ void dictionary_reset()
 {
     CODE_INDEX entry;
 
-    entry = last_entry_offset;
+    entry = search_from;
     while (entry != LAST_ENTRY) {
         entry = read_address(&entry);
         
         if (entry < locked_before) {
-            last_entry_offset = entry;
+            search_from = entry;
             break;
         }
     }
 
+    insertion_point = locked_before;
     new_entry_offset = locked_before;
-    log_debug(LOG, "last entry reset to %08x, next entry reset to %08x", last_entry_offset, new_entry_offset);
+    log_debug(LOG, "last entry reset to %08x, next entry reset to %08x", search_from, new_entry_offset);
     
     uint32_t offset = ((uint32_t) locked_before) - ((uint32_t) memory);
     memset(locked_before, 0, CODE_SIZE - offset);   
+}
+
+uint32_t dictionary_unused() 
+{
+    uint32_t used = ((uint32_t) insertion_point) - ((uint32_t) memory);
+    return CODE_SIZE - used;
+}
+
+CODE_INDEX dictionary_here()
+{
+    return insertion_point;
+}
+
+CODE_INDEX dictionary_pad()
+{
+    return new_entry_offset;
 }
 
 static void add_entry(char *name, uint8_t flags)
@@ -91,12 +109,15 @@ static void add_entry(char *name, uint8_t flags)
     if (new_entry_offset == 0) {
         previous_entry = LAST_ENTRY;  // first entry; memory to indicate no more previous
     } else {
-        previous_entry = last_entry_offset;
+        previous_entry = search_from;
     }
+
+    search_from = new_entry_offset;
+    
     log_debug(LOG, "   link to previous_entry at %08x", previous_entry);
     dictionary_append_instruction(previous_entry);
     dictionary_append_value((len & 0x1f) | (flags << 5));
-
+    
     strcpy(insertion_point, name);
     insertion_point += len;
     log_debug(LOG, "   code start %08x", insertion_point);
@@ -134,11 +155,20 @@ void dictionary_align(void)
     log_debug(LOG, "aligned to %08x", insertion_point);
 }
 
+void dictionary_allot(int32_t size)
+{
+    size = max(0, size);
+    log_debug(LOG, "allot %i bytes", size);
+    insertion_point += size;
+}
+
 void dictionary_append_byte(uint8_t value)
 {
     *insertion_point++ = value;
 }
 
+
+// TODO rename to append_literal
 void dictionary_append_value(uint32_t value)
 {
     uint8_t segment;
@@ -151,6 +181,18 @@ void dictionary_append_value(uint32_t value)
         } else {
             *insertion_point++ = segment;
             break;
+        }
+    }
+}
+
+void dictionary_append_function(CORE_FUNC function)
+{
+    int i;
+    for (i = 0; i < last_function_index; i++) {
+        if (core_functions[i] == function)
+        {
+            dictionary_append_instruction((CODE_INDEX) i);
+            return;
         }
     }
 }
@@ -172,8 +214,8 @@ void dictionary_write_byte(CODE_INDEX index, uint8_t value)
 
 void dictionary_end_entry() 
 {
-    log_trace(LOG, "    code end %08x", insertion_point - 1);
-    last_entry_offset = new_entry_offset;
+    log_trace(LOG, "    entry ends at %08x", insertion_point - 1);
+//        search_from = new_entry_offset;
     new_entry_offset = insertion_point;
 }
 
@@ -191,18 +233,22 @@ void dictionary_add_core_word(char * name, CORE_FUNC function, bool immediate)
     if (immediate)
     {
         flags = IMMEDIATE;
-        add_entry(name, flags);
+//        add_entry(name, flags);
+//        dictionary_end_entry();
     }
   
-    add_entry(name, flags);
     core_functions[last_function_index] = function;
-    dictionary_append_value(last_function_index);
+
+    if (name)
+    {
+        add_entry(name, flags);
+        dictionary_append_value(last_function_index);
+        dictionary_end_entry();
+    }
+    
     last_function_index++;
-    dictionary_end_entry();
     last_core_entry = new_entry_offset;
 }
-
-
 
 /*
     Returns the address of the memory for for the specified word.
@@ -215,7 +261,7 @@ bool dictionary_find_entry(char * name, struct Dictionary_Entry *entry)
     CODE_INDEX next_entry;
     char entry_name[32];    
     
-    entry_index = last_entry_offset;
+    entry_index = search_from;
     log_debug(LOG, " looking for '%s' starting at @%08x", name, entry_index);
     while (entry_index != LAST_ENTRY) {
         current_index = entry_index;
@@ -320,7 +366,7 @@ void dictionary_find_word_for(CODE_INDEX instruction, char *name) {
 
     log_debug(LOG, "seeking name for instruction %08x (%02x)", instruction, last_function_index);
 
-    entry = last_entry_offset;
+    entry = search_from;
     strcpy(name, "Unknown!");        
     while (entry != LAST_ENTRY) {
         next_entry = read_address(&entry);
@@ -360,14 +406,14 @@ void dictionary_words() {
     char name[32];
     uint8_t width = 0;
     
-	if (last_entry_offset == LAST_ENTRY)
+	if (search_from == LAST_ENTRY)
     {
 		printf("No entries\n");
 	}
     else
     {
         printf("\n");
-        entry = last_entry_offset;
+        entry = search_from;
         while (entry != LAST_ENTRY)
         {
             next_entry = read_address(&entry);
@@ -427,13 +473,14 @@ void dictionary_memory_dump(CODE_INDEX start, uint16_t size) {
  * Return the offset of the dictionary that contains the specified offset (typically called using the offset
  * of the memory.
  */
+// TODO add check for setting of SCRUB flag to prevent recursive calls
 static CODE_INDEX find_entry(CODE_INDEX offset, char * name)
 {
     CODE_INDEX entry;
     CODE_INDEX next_entry;
     CODE_INDEX start_at;
        
-    entry = last_entry_offset;
+    entry = search_from;
     while (entry != LAST_ENTRY)
     {
         start_at = entry;
@@ -456,7 +503,7 @@ void dictionary_debug_summary(CODE_INDEX instruction)
      if (instruction > (CODE_INDEX) 0x90000000) 
      {
          // TODO lookup word that matches function address
-         printf("func()");
+         printf("func<%08X>", instruction);
      }
      else
      {
@@ -488,7 +535,7 @@ void dictionary_debug_entry(CODE_INDEX instruction)
     
     log_debug(LOG, " debug entry for @%08x", instruction);
     
-    entry = last_entry_offset;
+    entry = search_from;
     end_at = new_entry_offset;
     while (entry != LAST_ENTRY)
     {
@@ -516,36 +563,37 @@ void dictionary_debug_entry(CODE_INDEX instruction)
         addr = entry;
         value = read_address(&entry);
         if (value <= (CODE_INDEX) ((uint32_t) last_function_index)) {
-            if (value == (CODE_INDEX) LIT)
+            CORE_FUNC function = core_functions[(uint32_t) value];
+            if (function == push_literal)
             {
                 CELL value2 = read(&entry);
                 debug_print(addr, entry - addr);
                 printf("LIT %i", value2);
             }
-            else if (value == (CODE_INDEX) ADDR)
+            else if (function == memory_address)
             {
                 value = align(entry);
                 debug_print(addr, entry - addr);
                 printf("ADDR %08x", value);
             }
-            else if (value == (CODE_INDEX) RETURN)
+            else if (function == return_to)
             {
                 debug_print(addr, entry - addr);
                 printf("RETURN");
             }
-            else if (value == (CODE_INDEX) BRANCH)
+            else if (function == branch)
             {
                 relative = *entry++;
                 debug_print(addr, entry - addr);
                 printf("BRANCH %i", relative);
             }
-            else if (value == (CODE_INDEX) ZBRANCH)
+            else if (function == zero_branch)
             {
                 relative = *entry++;
                 debug_print(addr, entry - addr);
                 printf("ZBRANCH %i", relative);
             }
-            else if (value == (CODE_INDEX) NOP)
+            else if (function == nop)
             {
                 debug_print(addr, entry - addr);
                 printf("NOP");
@@ -577,20 +625,20 @@ void dictionary_debug()
 //        printf("\n");
 //    }
 //   
-    printf("last: %08x\n", last_entry_offset);
+    printf("last: %08x\n", search_from);
     printf("new: %08x\n", new_entry_offset);
     printf("locked at: %08x\n", locked_before);
-    printf("memory at: %08x\n", memory);
+    printf("memory at: %08x\n\n", memory);
     
     CODE_INDEX entry;
     CODE_INDEX next_entry;
     char name[32];
 
-	if (last_entry_offset == LAST_ENTRY) {
+	if (search_from == LAST_ENTRY) {
 		printf("No entries\n");
 	}
     
-    entry = last_entry_offset;
+    entry = search_from;
     while (entry != LAST_ENTRY)
     {
         printf("%08x ", entry);

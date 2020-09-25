@@ -27,7 +27,7 @@ extern "C" {
 
 //#define FUNCTION 1 
 
-void compiler_compile(void);
+void compiler_compile_definition(void);
 
 void compiler_end(void);
 
@@ -59,12 +59,15 @@ void compiler_print_comment(void);
 
 void compiler_char(void);
 
+void compiler_compile_string(void);
+
 void compiler_print_string(void);
 
 void compiler_s_string(void);
 
 void compiler_c_string(void);
 
+void compiler_create_data(void);
 
 #ifdef __cplusplus
 }

@@ -36,6 +36,10 @@ void dictionary_init(void);
 
 void dictionary_reset(void);
 
+uint32_t dictionary_unused(void);
+
+void dictionary_allot(int32_t);
+
 bool dictionary_is_core_word(CODE_INDEX);
 
 void dictionary_add_entry(char *);
@@ -80,6 +84,8 @@ void dictionary_append_value(uint32_t);
 
 void dictionary_append_instruction(CODE_INDEX);
 
+void dictionary_append_function(CORE_FUNC);
+
 CODE_INDEX dictionary_offset(void);
 
 void dictionary_debug(void);
@@ -89,6 +95,10 @@ bool dictionary_shortcode(CODE_INDEX);
 void dictionary_execute_function(CODE_INDEX);
 
 void dictionary_lock(void);
+
+CODE_INDEX dictionary_here(void);
+
+CODE_INDEX dictionary_pad(void);
 
 #ifdef	__cplusplus
 }
