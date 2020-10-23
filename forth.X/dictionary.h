@@ -54,7 +54,7 @@ CORE_FUNC dictionary_find_core_function(uint16_t);
 
 bool dictionary_find_entry(char *, struct Dictionary_Entry *);
 
-uint32_t dictionary_read(struct Process *);
+uint64_t dictionary_read(struct Process *);
 
 CODE_INDEX dictionary_read_instruction(struct Process *);
 
@@ -80,7 +80,7 @@ void dictionary_words(void);
 
 void dictionary_append_byte(uint8_t);
 
-void dictionary_append_value(uint32_t);
+void dictionary_append_value(uint64_t);
 
 void dictionary_append_instruction(CODE_INDEX);
 
@@ -96,9 +96,17 @@ void dictionary_execute_function(CODE_INDEX);
 
 void dictionary_lock(void);
 
+void dictionary_mark_internal(void);
+
 CODE_INDEX dictionary_here(void);
 
+void compiler_suspend(void);
+
+void compiler_resume(void);
+
 CODE_INDEX dictionary_pad(void);
+
+void dictionary_restart(CODE_INDEX);
 
 #ifdef	__cplusplus
 }

@@ -1,15 +1,16 @@
 noecho
 
-0x0bf80fa90 CONSTANT SDI2R
-0x03		CONSTANT RPB13
-0x0bf80fb8c CONSTANT RPC8R
-0x04		CONSTANT SDO2
+HEX
+0bf80fa90 	CONSTANT SDI2R
+03			CONSTANT RPB13
+0bf80fb8c 	CONSTANT RPC8R
+04			CONSTANT SDO2
 
-0x0bf805a00 CONSTANT SPI2CON
-0x0bf805a10 CONSTANT SPI2STAT
-0x0bf805a20 CONSTANT SPI2BUF
-0x0bf805a30 CONSTANT SPI2BRG
-0x0bf805a40 CONSTANT SPI2CON2
+0bf805a00 CONSTANT SPI2CON
+0bf805a10 CONSTANT SPI2STAT
+0bf805a20 CONSTANT SPI2BUF
+0bf805a30 CONSTANT SPI2BRG
+0bf805a40 CONSTANT SPI2CON2
 
 
 : WRITE_SPI ( send -- recv )
@@ -27,7 +28,7 @@ noecho
 ;
 
 : READ_SPI ( -- value )
-	0x0ff WRITE_SPI
+	ff WRITE_SPI
 \	1 SPI2BUF !
 \	SPI2BUF @
 ;
@@ -46,7 +47,7 @@ noecho
 ;
 
 : EEPROM_CHIP ( -- address bit )
-	PORTA 10
+	PORTA a
 ;
 
 
@@ -77,7 +78,7 @@ noecho
 
 : WRITE_DISABLE_EEPROM_CHIP ( -- )
 	ENABLE_EEPROM_CHIP
-	0x04 WRITE_SPI	
+	04 WRITE_SPI	
 	DISABLE_EEPROM_CHIP
 ;
 
@@ -92,7 +93,7 @@ noecho
 	RPB13 SDI2R !			\ use RPB13 for SDI
 	SDO2 RPC8R !			\ use RPC8 for SDO
 	PORTC 8 digital_out
-	PORTB 13 digital_in
+	PORTB d digital_in
 
 	PORTB 5 2dup
 	digital_out				\ B5 (!CE) as digital output
@@ -102,13 +103,13 @@ noecho
 	digital_out				\ A9 (!CE) as digital output
 	port_on					\ disable flash
 
-	PORTA 10 2dup
+	PORTA a 2dup
 	digital_out				\ A10 (!CE) as digital output
 	port_on					\ disable eeprom
 	
 	\ set up SPI module
 	0 SPI2CON !				\ reset all
-	SPI2CON 15	BIT_CLR		\ turn off SPI
+	SPI2CON f	BIT_CLR		\ turn off SPI
 	SPI2CON 5	BIT_SET		\ set to master mode
 	SPI2CON 6	BIT_SET		\ set CKP to clock idle high
 	SPI2CON 8	BIT_SET		\ set CKE to output data on active-to-idle clock
@@ -116,15 +117,15 @@ noecho
 	50 SPI2BRG !			\ use FBP/4 clock frequency
 	\ READ_SPI				\ clear buffer
 	SPI2BUF @
-	SPI2CON 16	BIT_CLR		\ Clear the ENHBUF bit
+	SPI2CON 10	BIT_CLR		\ Clear the ENHBUF bit
 	SPI2STAT 6	BIT_CLR		\ clear SPIROV flag
-	SPI2CON 15	BIT_SET		\ enable SPI
+	SPI2CON f	BIT_SET		\ enable SPI
 ;
 
 : READ_ID ( -- )
 	ENABLE_ID_CHIP
-	0x03 WRITE_DROP_SPI			\ read
-	0x0fa WRITE_DROP_SPI		\ serial number address
+	03 WRITE_DROP_SPI		\ read
+	fa WRITE_DROP_SPI		\ serial number address
 	READ_SPI .HEX
 	READ_SPI .HEX
 	READ_SPI .HEX
@@ -138,8 +139,8 @@ noecho
 
 : TEST_ID ( -- )
 	ENABLE_ID_CHIP
-	0x03 WRITE_DROP_SPI			\ read
-	0x0fa WRITE_DROP_SPI		\ serial number address
+	03 WRITE_DROP_SPI		\ read
+	fa WRITE_DROP_SPI		\ serial number address
 	READ_SPI
 	DISABLE_ID_CHIP
 
@@ -151,21 +152,21 @@ noecho
 : TEST_EEPROM ( -- )
 	WRITE_ENABLE_EEPROM_CHIP
 	ENABLE_EEPROM_CHIP
-	0x02 WRITE_DROP_SPI			\ write mode
-	0x00 WRITE_DROP_SPI			\ address high byte
-	0x00 WRITE_DROP_SPI			\ address low byte
+	02 WRITE_DROP_SPI			\ write mode
+	00 WRITE_DROP_SPI			\ address high byte
+	00 WRITE_DROP_SPI			\ address low byte
 
-	0x12 WRITE_DROP_SPI 			\ write 4 bytes
-	0x34 WRITE_DROP_SPI
-	0x56 WRITE_DROP_SPI
-	0x78 WRITE_DROP_SPI
+	0c WRITE_DROP_SPI 			\ write 4 bytes
+	34 WRITE_DROP_SPI
+	56 WRITE_DROP_SPI
+	78 WRITE_DROP_SPI
 	DISABLE_EEPROM_CHIP
 	WRITE_DISABLE_EEPROM_CHIP
 
 	ENABLE_EEPROM_CHIP
-	0x03 WRITE_DROP_SPI			\ read mode
-	0x00 WRITE_DROP_SPI			\ address high byte
-	0x00 WRITE_DROP_SPI			\ address low byte
+	03 WRITE_DROP_SPI			\ read mode
+	00 WRITE_DROP_SPI			\ address high byte
+	00 WRITE_DROP_SPI			\ address low byte
 
 	READ_SPI
 	READ_SPI
@@ -180,7 +181,7 @@ noecho
 
 : READ_FROM_ID ( a -- n )
 	ENABLE_ID_CHIP
-	0x03 WRITE_DROP_SPI			\ read
+	03 WRITE_DROP_SPI			\ read
 	WRITE_DROP_SPI				\ serial number address
 	READ_SPI
 	DISABLE_ID_CHIP
@@ -188,7 +189,7 @@ noecho
 
 : READ_FROM_EEPROM ( a -- n )
 	ENABLE_EEPROM_CHIP
-	0x03 WRITE_DROP_SPI			\ read
+	03 WRITE_DROP_SPI			\ read
 \ need to split address into two bytes
 	WRITE_DROP_SPI				\ serial number address
 	READ_SPI
@@ -209,4 +210,5 @@ noecho
 	SPI2BRG @ .HEX CR
 ;
 
+.( added SPI words)
 echo

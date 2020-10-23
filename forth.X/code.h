@@ -27,6 +27,12 @@ extern "C" {
     
 typedef uint32_t CELL;
 
+typedef int32_t SIGNED;
+typedef uint32_t UNSIGNED;
+    
+typedef int64_t SIGNED_DOUBLE;
+typedef uint64_t UNSIGNED_DOUBLE;
+
 typedef uint8_t* CODE_INDEX;
 
 struct Process {
@@ -44,6 +50,7 @@ struct Process {
     uint8_t priority;
     uint32_t next_time_to_run;
     bool log;
+    bool suspended;
 };
 
 void code_init();

@@ -39,7 +39,6 @@ void uart_init() {
 #ifdef MX130
     U2RXRbits.U2RXR = 1;    //SET U2RX to RB5
     // TX
-//    ANSELAbits.ANSA3 = 0;
     RPA3Rbits.RPA3R = 2;    //SET RA3 to U2TX    
 #elif MX270
     // RX
@@ -124,8 +123,28 @@ int uart_transmit_buffer(const char *buffer)
     return 0;
 }
 
+
+static int limit() {
+    return read_tail > receive_head ? receive_head + LENGTH : receive_head;
+}
+
+uint8_t uart_next_char()
+{
+    if (read_tail < limit()) 
+    {
+        char c = uart_buffer[read_tail++ % LENGTH];
+        read_tail %=  LENGTH;
+        return c;
+    }
+}
+
+bool uart_has_next_char()
+{
+    return read_tail >= limit();
+}
+
 bool uart_next_line(char *buffer) {
-    char *b = buffer;
+//    char *b = buffer;
     if (!line_available)
     {
         return false;
@@ -133,9 +152,9 @@ bool uart_next_line(char *buffer) {
     else 
     {
         line_available = false;
-        int limit = read_tail > receive_head ? receive_head + LENGTH : receive_head;
+        int max = limit();
 //        if (on_hold) printf("%i < %i\n", read_tail, limit) ;
-        while (read_tail < limit) 
+        while (read_tail < max) 
         {
             char c = uart_buffer[read_tail % LENGTH];
 //            if (on_hold) printf("%c", c) ;
@@ -144,7 +163,7 @@ bool uart_next_line(char *buffer) {
             {
                 *buffer++ = '\0';
                 int search = read_tail;  
-                while (search < limit) 
+                while (search < max) 
                 {
                     c = uart_buffer[search % LENGTH];
                     if (c == '\r' || c == '\n') 
@@ -191,19 +210,23 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
             char c = U2RXREG; 
 //            if (on_hold) printf("%02x ", c);
             uart_buffer[receive_head % LENGTH]  = c;
-            receive_head++;
-        
-            if (c == '\r' || c == '\n')
-            {
-                line_available = true;
-            }
-            else if (c == CTRL_C)
+            if (c == CTRL_C)
             {
                 process_interrupt(1);
             }
             else if (c == CTRL_D)
             {
+                printf("^D ", c);
                 process_interrupt(2);
+            }
+            else 
+            {
+                receive_head++;
+
+                if (c == '\r' || c == '\n')
+                {
+                    line_available = true;
+                }
             }
         }
         receive_head %= LENGTH;

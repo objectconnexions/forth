@@ -20,6 +20,7 @@ extern "C" {
 //extern struct Process* main_process;
     
 extern uint32_t timer;
+extern uint32_t base_no;
 
 extern uint8_t dictionary[];
 
@@ -35,7 +36,11 @@ void forth_run();
 
 void forth_tasks(CODE_INDEX);
 
-void push(uint32_t);
+void forth_abort(void);
+
+void push(UNSIGNED);
+
+void push_double(SIGNED_DOUBLE);
 
 uint32_t pop(void);
 
@@ -48,6 +53,8 @@ uint8_t find_process(char *);
 void nop(void);
 
 void push_literal(void);
+
+void push_double_literal(void);
 
 void memory_address(void);
 

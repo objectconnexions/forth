@@ -13,13 +13,18 @@
 
 #define LOG "compiler"
 
-static void add_literal(uint64_t);
+#define IN_COMPILATION 1
+
+static void add_literal(uint32_t);
+static void add_double_literal(uint64_t);
 static void complete_word(void);
 
 static CODE_INDEX jumps[6];
 static uint8_t jp = 0;
-static bool in_colon_definition;
 static bool has_error;
+
+// Comipile state: 1 = in compilation; 0 = not in compilation
+CELL state;
 
 void compiler_init()
 {
@@ -32,7 +37,7 @@ void compiler_compile_definition()
     bool read;
     
     has_error = false;
-    in_colon_definition = true;
+    state = IN_COMPILATION;
     log_trace(LOG, "new word");
     
     enum TYPE type = parser_next_token();
@@ -51,8 +56,12 @@ void compiler_compile_definition()
     {
         switch (parser_next_token())
         {
-            case NUMBER_AVAILABLE:
+            case SINGLE_NUMBER_AVAILABLE:
                 add_literal(parser_token_number());
+                break;
+                
+            case DOUBLE_NUMBER_AVAILABLE:
+                add_double_literal(parser_token_number());
                 break;
                 
             case WORD_AVAILABLE:
@@ -87,7 +96,9 @@ void compiler_compile_definition()
                 return;
                 
             case END_LINE:
-                if (in_colon_definition)
+            case BLANK_LINE:
+            case NONE:
+                if (state == IN_COMPILATION)
                 {
                     read = uart_next_line(buf);
                     if (read)
@@ -109,7 +120,7 @@ static bool add_named_entry() {
     char name[32];
     struct Dictionary_Entry entry;
     has_error = false;
-    in_colon_definition = true;
+    state = IN_COMPILATION;
 
     parser_next_text(name);
     to_upper(name);
@@ -126,6 +137,18 @@ static bool add_named_entry() {
     }
 }
 
+void compiler_suspend()
+{
+    state = 0;
+    log_debug(LOG, "suspend compiler");
+}
+
+void compiler_resume()
+{
+    state = IN_COMPILATION;
+    log_debug(LOG, "resume compiler");
+}
+    
 void compiler_constant()
 {
     if (add_named_entry())
@@ -142,11 +165,12 @@ void compiler_2constant()
 {
     if (add_named_entry())
     {
+        CELL value1 = pop_stack();
+        CELL value2 = pop_stack();
         dictionary_append_function(push_literal);
-        uint32_t value = pop_stack();
-        dictionary_append_value(value);
-        value = pop_stack();
-        dictionary_append_value(value);
+        dictionary_append_value(value2);
+        dictionary_append_function(push_literal);
+        dictionary_append_value(value1);
         
         complete_word();
     }
@@ -247,6 +271,9 @@ void compiler_inline_comment()
     } while(text[strlen(text) - 1] != ')');
 }
         
+/* 
+ * print all characters until the next closing bracket ()) so comment is displayed during compilation.
+ */
 void compiler_print_comment()
 {
     char text[80];
@@ -279,6 +306,10 @@ void compiler_char()
     dictionary_append_value(name[0]);
 }
 
+/*
+ * Lays down the characters from the input stream until-the next quote (") character-and places the 
+ * string length before the first character.
+ */
 void compiler_compile_string()
 {
     char text[80];
@@ -292,6 +323,7 @@ void compiler_compile_string()
             text[len++] = ' ';
         }
         if (parser_next_text(text + len) == END_LINE) 
+//        if (parser_next_text(text + len) == NONE) 
         {
             log_error(LOG, "no end quote %s", text);
             has_error = true;
@@ -302,8 +334,10 @@ void compiler_compile_string()
     } while(text[len - 1] != '"');
     len--;
     
-    dictionary_append_byte(len);
+    CODE_INDEX lengthAt = dictionary_here();
+    dictionary_append_byte(0);
     
+    int len2 = 0;
     int i;
     for (i = 0; i < len; i++) {
         char c = text[i];
@@ -332,7 +366,9 @@ void compiler_compile_string()
         {
            dictionary_append_byte(c);
         }
+        len2++;
     }
+    dictionary_write_byte(lengthAt, len2);
 }
 
 void compiler_print_string()
@@ -372,15 +408,20 @@ static void complete_word()
         dictionary_append_function(return_to);
         dictionary_end_entry();
     }
-    in_colon_definition = false;
+    state = 0;
 }
 
-static void add_literal(uint64_t value)
+static void add_literal(uint32_t value)
 {
     dictionary_append_function(push_literal);
     log_trace(LOG, "literal = 0x%09llx", value);
     dictionary_append_value(value);
 }
 
-
+static void add_double_literal(uint64_t value)
+{
+    dictionary_append_function(push_double_literal);
+    log_trace(LOG, "literal = 0x%09llx", value);
+    dictionary_append_value(value);
+}
 

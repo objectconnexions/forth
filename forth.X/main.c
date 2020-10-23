@@ -19,7 +19,7 @@
 
 #ifdef MX130
 //    #include <proc/p32mx130f064d.h>
-#define PWR_LED PORTBbits.RB4
+#define PWR_LED PORTBbits.RB14
 #elif MX270
 #include <proc/p32mx270f256d.h>
 #define PWR_LED PORTAbits.RA8
@@ -82,7 +82,8 @@ int32_t main(void) {
 
     // Power LED
 #ifdef MX130
-    TRISBbits.TRISB4 = 0;
+    ANSELBbits.ANSB14 = 0;
+    TRISBbits.TRISB14 = 0;
 #elif MX270
     TRISAbits.TRISA8 = 0;
 #elif MX570

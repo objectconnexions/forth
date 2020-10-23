@@ -1,53 +1,60 @@
 noecho
 
-0x0bf80f000 CONSTANT OSCCON
-0x0bf800200 CONSTANT RTCCON
-0x0bf800220 CONSTANT RTCTIME
-0x0bf800230 CONSTANT RTCDATE
+HEX
+0bf800200 CONSTANT RTCCON
+0bf800220 CONSTANT RTCTIME
+0bf800230 CONSTANT RTCDATE
 
 : rtcc_init ( -- ) 
 	OSCCON 1 BIT_SET		\ SOSCEN - turn secondary oscillator on
-\	OSCCON 22 BIT_SET		\ SOSCRDY - make secondary oscillator ready
+	OSCCON 16 BIT_SET		\ SOSCRDY - make secondary oscillator ready
 
 	5 ms
-	OSCCON @ 0x4000 and .hex cr \ is ready?	
+\	OSCCON @ 4000 and . cr 	\ is ready?
+	OSCCON 16 BIT_READ cr . \ is ready?		
 ;
 
 : rtcc_set ( time date -- )
-	0x0aa996655 SYSKEY !	\ write unlock sequence
-	0x0556699aa SYSKEY !
+	0aa996655 SYSKEY !		\ write unlock sequence
+	0556699aa SYSKEY !
 	RTCCON 3 BIT_SET		\ make write enable
 
-	RTCCON 15 BIT_CLR		\ turn RTCC off 
+	RTCCON f BIT_CLR		\ turn RTCC off 
 	
 	5 ms
 
-	RTCCON @ 0x4 and .HEX CR
+	\ RTCCON @ 4 and . CR
 	
+	8 LSHIFT
 	RTCDATE !				\ store date
+	8 LSHIFT
 	RTCTIME !				\ store time
-	RTCCON 15 BIT_SET		\ turn RTCC on
+	RTCCON f BIT_SET		\ turn RTCC on
 ;
 
 : rtcc_date ( -- n  get date as BCD yymmdd ) 
-	RTCDATE @ 8 rshift
+	RTCDATE @ 8 RSHIFT
 ;
 
 : rtcc_time ( -- n  get date as BCD yymmdd ) 
-	RTCTIME @ 8 rshift
+	RTCTIME @ 8 RSHIFT
 ;
 
 : rtcc_show ( -- )
-\	RTCDATE @ .HEX CR
-\	RTCTIME @ 0x100 / .HEX CR
-	." Date " rtcc_date .HEX CR
-	." Time " rtcc_time .HEX CR
+	DECIMAL
+	CR ." Date " rtcc_date .
+	CR ." Time " rtcc_time .
 ;
 
 : rtcc_test ( -- )
 	rtcc_init
-	0x09304500 0x20190308	rtcc_set
+	hex
+	093045 200308 rtcc_set
+	decimal
 	rtcc_show
 ;
 
+DECIMAL
+
+.( added RTTC words)
 echo

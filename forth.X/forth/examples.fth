@@ -28,7 +28,7 @@
 : test3 SWAP 3 DUP + * ;
 
 
-: loop
+: loop ( u - ) 
 	BEGIN
 		CR  DUP  .
 		1 - DUP
@@ -46,7 +46,7 @@
       
       
       
-: count
+: count ( u - )
 	BEGIN
 		1 - DUP
 		0=

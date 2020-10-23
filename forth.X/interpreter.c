@@ -12,7 +12,8 @@
 
 #define LOG "Interpreter"
 
-static void interpret_number(uint32_t);
+static void interpret_single_number(uint32_t);
+static void interpret_double_number(uint64_t);
 static void interpret_code(CODE_INDEX);
 
 static bool echo = true;
@@ -30,11 +31,14 @@ void interpreter_run() {
     struct Dictionary_Entry entry;
     bool read;
     
-    
     switch (parser_next_token())
     {
-        case NUMBER_AVAILABLE:
-            interpret_number(parser_token_number());
+        case SINGLE_NUMBER_AVAILABLE:
+            interpret_single_number(parser_token_number());
+            break;
+
+        case DOUBLE_NUMBER_AVAILABLE:
+            interpret_double_number(parser_token_number());
             break;
 
         case WORD_AVAILABLE:
@@ -43,19 +47,33 @@ void interpreter_run() {
             break;
 
         case PROCESS_AVAILABLE:
-            interpret_number(parser_token_number());
+            interpret_single_number(parser_token_number());
             break;
 
         case INVALID_INSTRUCTION:
             parser_token_text(instruction);
-            printf("%s!\n", instruction);
+            printf("%s!\n> ", instruction);
             parser_drop_line();
+            forth_abort();
             break;
 
         case END_LINE:
+            if (echo) printf(" ok\n> ");
+            parser_drop_line();
+            break;
+
+        case BLANK_LINE:
+            if (echo) printf("\n> ");
+            parser_drop_line();
+            break;
+            
+        case NONE:
+            
+            
             read = uart_next_line(buf);
             if (read)
             {
+                
                 log_debug(LOG, "input line: '%s'", buf);
 
                 if (strcmp(buf, "ddd") == 0)
@@ -93,7 +111,7 @@ void interpreter_run() {
                 }
                 else
                 {                
-                    if (echo) printf("> %s\n", buf);
+                    if (echo) printf("%s ", buf);
                     parser_input(buf);
                 }
             }
@@ -113,10 +131,16 @@ void interpreter_run() {
     }
 }
 
-static void interpret_number(uint32_t value)
+static void interpret_single_number(uint32_t value)
 {
     log_debug(LOG, "push 0x%04X", value);
     push(value);
+}
+
+static void interpret_double_number(uint64_t value)
+{
+    log_debug(LOG, "push 0x%08X", value);
+    push_double(value);
 }
 
 static void interpret_code(CODE_INDEX code)

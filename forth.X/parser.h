@@ -17,12 +17,15 @@ extern "C" {
 
 enum TYPE 
 {
+    NONE,
+    BLANK_LINE,
     END_LINE,
     INVALID_INSTRUCTION,
     START,
     TEXT_AVAILABLE,
     WORD_AVAILABLE,
-    NUMBER_AVAILABLE,
+    SINGLE_NUMBER_AVAILABLE,
+    DOUBLE_NUMBER_AVAILABLE,
     PROCESS_AVAILABLE,
 };
 
@@ -34,7 +37,7 @@ enum TYPE parser_next_text(char *);
     
 enum TYPE parser_next_token(void);
  
-uint32_t parser_token_number(void);
+uint64_t parser_token_number(void);
 
 void parser_token_entry(struct Dictionary_Entry *);
  

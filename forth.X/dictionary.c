@@ -20,7 +20,7 @@
 #else
     #define CODE_SIZE (1024 * 40)
 #endif
-#define CORE_WORDS 128
+#define CORE_WORDS 180
 
 //static CODE_INDEX memory;
 static uint8_t memory[CODE_SIZE];
@@ -35,7 +35,7 @@ static CODE_INDEX insertion_point;
 
 static uint16_t find_word(char *);
 static uint16_t find_dictionay_entry(char *);
-static CELL read(CODE_INDEX *);
+static uint64_t read(CODE_INDEX *);
 static CODE_INDEX read_address(CODE_INDEX *);
 static CODE_INDEX find_entry(CODE_INDEX, char *);
 static CODE_INDEX align(CODE_INDEX);
@@ -128,6 +128,11 @@ void dictionary_lock()
     locked_before = new_entry_offset;
 }
 
+void dictionary_restart(CODE_INDEX entry)
+{
+    locked_before = entry;
+}
+
 void dictionary_add_entry(char *name)
 {
     add_entry(name, 0);
@@ -169,7 +174,7 @@ void dictionary_append_byte(uint8_t value)
 
 
 // TODO rename to append_literal
-void dictionary_append_value(uint32_t value)
+void dictionary_append_value(uint64_t value)
 {
     uint8_t segment;
     while (true) {
@@ -195,6 +200,8 @@ void dictionary_append_function(CORE_FUNC function)
             return;
         }
     }
+    log_error(LOG, "failed to find function %x", function);
+    dictionary_append_instruction(0);
 }
 
 void dictionary_append_instruction(CODE_INDEX word)
@@ -227,27 +234,38 @@ void dictionary_insert_internal_instruction(uint8_t entry, CORE_FUNC function)
 
 void dictionary_add_core_word(char * name, CORE_FUNC function, bool immediate)
 {
-    uint8_t flags = 0;
-    
-    log_debug(LOG, "core word %s (func %02X)", name, last_function_index);
-    if (immediate)
+    if (last_function_index + 1 >= CORE_WORDS)
     {
-        flags = IMMEDIATE;
-//        add_entry(name, flags);
-//        dictionary_end_entry();
+        log_error(LOG, "too many core words");
     }
-  
-    core_functions[last_function_index] = function;
+    else
+    {
+        log_debug(LOG, "core word %s (func %02X)", name, last_function_index);
+        core_functions[last_function_index] = function;
 
-    if (name)
-    {
-        add_entry(name, flags);
-        dictionary_append_value(last_function_index);
-        dictionary_end_entry();
+        if (name)
+        {
+            add_entry(name, 0);
+            dictionary_append_value(last_function_index);
+            dictionary_end_entry();
+        }
+        if (immediate)
+        {
+            dictionary_mark_internal();
+        }
+
+        last_function_index++;
+        last_core_entry = new_entry_offset;
     }
-    
-    last_function_index++;
-    last_core_entry = new_entry_offset;
+}
+
+/*
+ Mark the most recent entry as IMMEDIATE
+ */
+void dictionary_mark_internal() {
+   CODE_INDEX current_index = search_from;
+   read_address(&current_index);    // move the pointer to right address
+   *current_index = *current_index | IMMEDIATE << 5;
 }
 
 /*
@@ -299,7 +317,7 @@ uint8_t dictionary_read_next_byte(struct Process *process)
     return *(process->ip)++;
 }
 
-static CELL read(CODE_INDEX *offset) 
+static uint64_t read(CODE_INDEX *offset) 
 {
     uint8_t segment;
     uint32_t value = 0;
@@ -325,7 +343,7 @@ static CODE_INDEX read_address(CODE_INDEX *offset)
     return (CODE_INDEX) value;
 }
 
-uint32_t dictionary_read(struct Process *process) 
+uint64_t dictionary_read(struct Process *process) 
 {
     return read(&(process->ip));
 }
@@ -515,12 +533,12 @@ void dictionary_debug_summary(CODE_INDEX instruction)
       
 static void debug_print(CODE_INDEX addr, uint8_t length)
 {
-    printf("  %04X ", addr);
+    printf("    %04X  ", addr);
     int i;
     for (i = 0; i < length; i++) {
         printf("%02X", *addr++);
     }
-    printf("  ");
+    printf("    ");
 }
 
 void dictionary_debug_entry(CODE_INDEX instruction)
@@ -555,7 +573,7 @@ void dictionary_debug_entry(CODE_INDEX instruction)
     printf("Word '%s' at %04X~%04X", name, start_at, end_at);
     entry = start_at;
     value = read_address(&entry);
-    printf(", next %04X\n", value);
+    printf(" (next %04X)\n", value);
     entry += strlen(name) + 1;
 
     while (entry < end_at) 
@@ -568,30 +586,50 @@ void dictionary_debug_entry(CODE_INDEX instruction)
             {
                 CELL value2 = read(&entry);
                 debug_print(addr, entry - addr);
-                printf("LIT %i", value2);
+                printf("LIT %X", value2);
             }
             else if (function == memory_address)
             {
                 value = align(entry);
                 debug_print(addr, entry - addr);
-                printf("ADDR %08x", value);
+                printf("ADDR %08X", value);
             }
             else if (function == return_to)
             {
                 debug_print(addr, entry - addr);
-                printf("RETURN");
+                printf("EXIT");
             }
             else if (function == branch)
             {
                 relative = *entry++;
                 debug_print(addr, entry - addr);
-                printf("BRANCH %i", relative);
+                printf("BRANCH (%i) %X", relative, addr + relative);
             }
             else if (function == zero_branch)
             {
                 relative = *entry++;
                 debug_print(addr, entry - addr);
-                printf("ZBRANCH %i", relative);
+                printf("ZBRANCH (%i) %X", relative, addr + relative);
+            }
+            else if (function == print_string || function == c_string || function == s_string)
+            {
+                relative = *entry++;
+                debug_print(addr, entry - addr);
+                printf("STRING (%i) '", relative);
+                int i;
+                for (i = 0; i < relative; i++) {
+                    char c = *entry++;
+                    if (c < 32)
+                    {
+                        printf("{%i}", c);
+                    }
+                    else 
+                    {
+                        printf("%c", c);
+                    }
+                }
+                printf("'");
+
             }
             else if (function == nop)
             {

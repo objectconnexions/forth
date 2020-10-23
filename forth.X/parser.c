@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include "forth.h"
 #include "debug.h"
 #include "code.h"
 #include "dictionary.h"
@@ -21,12 +22,12 @@ static char token[32];
 static enum TYPE type;
 static CODE_INDEX instruction;
 static uint8_t flags;
-static uint32_t number_value;
+static UNSIGNED_DOUBLE number_value;
 
 
 void parser_init()
 {
-    type = END_LINE;
+    type = NONE;
     ptr = source;
 }
 
@@ -38,18 +39,23 @@ void parser_input(char * line)
         type = START;
         ptr = source;
         log_info(LOG, "parse: '%s' (%i)", source, len);
+    } else {
+        log_info(LOG, "blank line");
+        type = BLANK_LINE;
     }
 }
 
-void parser_token_text(char * name) {
+void parser_token_text(char * name)
+{
     strcpy(name, token);
 }
 
 /*
  Get the next token in its original raw text form
  */
-enum TYPE parser_next_text(char * text) {
-    if (type != END_LINE) {
+enum TYPE parser_next_text(char * text)
+{
+    if (type != NONE) {
         parse_next();
         if (type != END_LINE) {
             strcpy(text, token);
@@ -60,7 +66,7 @@ enum TYPE parser_next_text(char * text) {
 
 enum TYPE parser_next_token()
 {
-    if (type != END_LINE) {
+    if (type != NONE && type != BLANK_LINE) {
         parse_next();
         if (type != END_LINE) {
             process();
@@ -71,11 +77,11 @@ enum TYPE parser_next_token()
 
 void parser_drop_line()
 {
-    type = END_LINE;
+    type = NONE;
     *ptr = 0;
 }
 
-uint32_t parser_token_number()
+uint64_t parser_token_number()
 {
     return number_value;
 }
@@ -98,6 +104,7 @@ static void parse_next()
     if (*ptr == 0) {
         log_debug(LOG, "line end %i", ptr - source);
         type = END_LINE;
+//        type = NONE;
         return;
     }
     while (*ptr != 0 && *ptr != ' ' && *ptr != '\t') {
@@ -135,54 +142,51 @@ static void process()
             return;
         }
 
-
-        bool is_number = true;
-        int radix = 10;
-        int i = 0;
-        // TODO determine based number by looking for 0, 0B or 0X first, then confirm every other char is a digit
-        if (token[i] == '-')
-        {
-            i++;
-        }
-        if (token[i] == '0')
-        {
-            i++;
-            if (token[i] == 'X')
+        number_value = 0;
+        uint64_t signed_number = 1;
+        type = SINGLE_NUMBER_AVAILABLE;
+        char * ptr = token;
+        int i;
+        for (i = 0; i < strlen(token); i++) {
+            char c = *ptr++;
+            
+            uint64_t digit = 0;
+            if (c >= '0' && c <= '9')
             {
-                radix = 16;
-                i++;
-            }   
-            else if (token[i] == 'B')
+                digit = c - '0';
+            } 
+            else if (c >= 'a' && c <= 'z')
             {
-                radix = 2;
-                i++;
-            }   
-            else if (isdigit(token[i]))
-            {
-                radix = 8;
-                i++;
-            }   
-            else if (strlen(token) > i)
-            {
-                is_number = false;
+                digit = c - 'a' + 10;
             }
-        }
-        for (; i < strlen(token); ++i) {
-            if (!isdigit(token[i]) && !(radix > 10 && token[i] < ('a' + radix - 10))) {
-                is_number = false;
-                break;
+            else if (c >= 'A' && c <= 'Z')
+            {
+                digit = c - 'A' + 10;
             }
+            else if (i == 0 && c == '-')
+            {
+                signed_number = -1;
+                continue;
+            }
+            else if (c == ',' || c == '.' || c == '+' || c == '-' || c == '/' || c == ':')
+            {
+                type = DOUBLE_NUMBER_AVAILABLE;
+                continue;
+            }
+            else
+            {
+                type = INVALID_INSTRUCTION;
+                return;
+            }
+        
+            if (digit >= base_no) {
+                type = INVALID_INSTRUCTION;
+                return;
+            }
+        
+            number_value = number_value * base_no + digit;
         }
-
-        if (is_number) {
-            int64_t value = strtoll(token, NULL, 0);
-            log_debug(LOG, "literal = 0x%09llX", value);
-            type = NUMBER_AVAILABLE;
-            number_value = value;
-            return;
-        } else {
-            type = INVALID_INSTRUCTION;
-            return;
-        }
+        number_value *= signed_number;
+        return;
     }
 }    

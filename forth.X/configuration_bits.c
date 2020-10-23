@@ -54,13 +54,14 @@
 // DEVCFG1
 #ifdef INT_OSC
     #pragma config FNOSC = FRCPLL       // Oscillator Selection Bits (Primary Osc w/PLL (XT+,HS+,EC+PLL))
-    #pragma config POSCMOD = OFF             // Primary Oscillator Configuration (Int osc mode)
+    #pragma config POSCMOD = OFF        // Primary Oscillator Configuration (Int osc mode)
+    #pragma config FSOSCEN = ON         // Secondary Oscillator Enable (Enabled)
 #else
     #pragma config FNOSC = PRIPLL       // Oscillator Selection Bits (Primary Osc w/PLL (XT+,HS+,EC+PLL))
-    #pragma config POSCMOD = XT             // Primary Oscillator Configuration (XT osc mode)
+    #pragma config POSCMOD = XT         // Primary Oscillator Configuration (XT osc mode)
+    #pragma config FSOSCEN = ON         // Secondary Oscillator Enable (Disabled)
 #endif
 
-#pragma config FSOSCEN = OFF            // Secondary Oscillator Enable (Disabled)
 #pragma config IESO = OFF               // Internal/External Switch Over (Disabled)
 #pragma config OSCIOFNC = OFF           // CLKO Output Signal Active on the OSCO Pin (Disabled)
 #pragma config FPBDIV = DIV_1           // Peripheral Clock Divisor (Pb_Clk is Sys_Clk/1)

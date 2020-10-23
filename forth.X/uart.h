@@ -12,6 +12,7 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
 
 void uart_init();
 
@@ -20,6 +21,10 @@ int uart_configure(int);
 int uart_transmit_buffer(const char *);
 
 int uart_transmit_char(const char);
+
+uint8_t uart_next_char(void);
+
+bool uart_has_next_char(void);
 
 bool uart_next_line(char *);
 

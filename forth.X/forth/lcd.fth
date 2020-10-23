@@ -2,10 +2,13 @@ noecho
 
 \ LCD display, 4-bit parallel
 
+HEX
+
 \ set the port to the LSB of the pattern, then right shift the pattern
 : write_lcd_port ( pattern address bit - pattern )
 	2 PICK				\ make copy of pattern at bottom of stack - pattern add bit pattern
 	1 AND				\ find set bit - add bit pattern flag
+	\ .S
 	IF
 		PORT_ON
 	ELSE
@@ -33,43 +36,44 @@ noecho
 	DUP						\ copy of value
 
 	4 RSHIFT				\ use high nibble first
-	0x0f AND
+	0f AND
 	write_lcd_nibble
 
-	0x0f AND				\ use low nibble next
+	0f AND				\ use low nibble next
 	write_lcd_nibble
 ;
 
 \ turn LCD to control mode
 : control_lcd ( )  
-	PORTB 12 port_off
+	PORTB 0c port_off
 ;
 
 \ turn LCD to data mode
 : data_lcd ( ) 
-	PORTB 12 port_on
+	PORTB 0c port_on
 ;
 
 \ clear the LCD display
 : clear_lcd ( - )
 	control_lcd
-	0x01 write_lcd_byte		\ write clear command
+	01 write_lcd_byte		\ write clear command
 	2 ms
 ;
 
 \ clear the LCD display
 : cursor_at_lcd ( position - )
 	control_lcd
-	0x80 + write_lcd_byte		\ write set data position command
+	80 + write_lcd_byte		\ write set data position command
 ;
 
-: write_lcd_string ( len string - )
+: write_lcd_string ( string len - )
+	swap
 	data_lcd
 	0						\ create counter
 	BEGIN
 		2DUP +				\ calc position
 		@C write_lcd_byte	\ display char
-		1 +					\ increment char count
+		1+					\ increment char count
 
 		DUP 3 PICK >= 		\ determine if all characters written
 	UNTIL
@@ -77,7 +81,7 @@ noecho
 ;
 
 : init_lcd ( - )
-	PORTB 12 DIGITAL_OUT		\ LCD RS
+	PORTB C DIGITAL_OUT		\ LCD RS
 	PORTB 3 DIGITAL_OUT			\ LCD E
 	PORTB 6 DIGITAL_OUT			\ LCD DB0
 	PORTB 7 DIGITAL_OUT			\ LCD DB1
@@ -85,13 +89,13 @@ noecho
 	PORTB 9 DIGITAL_OUT			\ LCD DB3
 
 	control_lcd
-	0x03 write_lcd_nibble		\ ensure in 8 bit mode
-	0x03 write_lcd_nibble
-	0x03 write_lcd_nibble
-	0x02 write_lcd_nibble		\ set to 4 bit interface
+	03 write_lcd_nibble		\ ensure in 8 bit mode
+	03 write_lcd_nibble
+	03 write_lcd_nibble
+	02 write_lcd_nibble		\ set to 4 bit interface
 	4 ms
 	
-	0x0f write_lcd_byte		\ turn on display with cursor
+	0f write_lcd_byte		\ turn on display with cursor
 	
 ;
 
@@ -103,14 +107,30 @@ noecho
 	[char] l write_lcd_byte
 	[char] l write_lcd_byte
 	[char] o write_lcd_byte
-	32 write_lcd_byte
+	20 write_lcd_byte
 ;
 
 : test_lcd_string
-	s" example" write_lcd_string
+	s" example" 
+	write_lcd_string
 ;
 
-init_lcd test_lcd
+: nnn ( n - c-addr u )
+	dup abs 0 	 			\ convert to double
+	<# # # [CHAR] . HOLD #S ROT SIGN #>
+;
+
+
+
+DECIMAL
+
+init_lcd
+
+test_lcd
+BL write_lcd_byte
+3039 nnn write_lcd_string
+
+DECIMAL
 
 .( added LCD words)
 echo

@@ -2,18 +2,28 @@ noecho
 .( Dictionary reset)
 _reset
 
-0x0bf80f230 CONSTANT SYSKEY
+HEX
+0bf80f230 CONSTANT SYSKEY
+0bf80f000 CONSTANT OSCCON
 
-0x0bf880000 CONSTANT IO
-0x0bf886000 CONSTANT PORTA
-0x0bf886100 CONSTANT PORTB
-0x0bf886200 CONSTANT PORTC
-0x0bf886300 CONSTANT PORTD
-0x0bf886400 CONSTANT PORTE
+0bf880000 CONSTANT IO
+0bf886000 CONSTANT PORTA
+0bf886100 CONSTANT PORTB
+0bf886200 CONSTANT PORTC
+0bf886300 CONSTANT PORTD
+0bf886400 CONSTANT PORTE
 
-0x00 CONSTANT ANSEL
-0x10 CONSTANT TRIS
-0x20 CONSTANT PORT
+00 CONSTANT ANSEL
+10 CONSTANT TRIS
+20 CONSTANT PORT
+30 CONSTANT LAT
+40 CONSTANT ODC
+50 CONSTANT CNPU
+60 CONSTANT CNPD
+70 CONSTANT CNCON
+80 CONSTANT CNEN
+90 CONSTANT CNSTAT
+
 
 
 : SET_BITS ( value value position -- value )
@@ -22,32 +32,29 @@ _reset
 
 \ clear bit at position in register
 : BIT_CLR ( addr pos -- ) 
-	1 swap lshift		\ determine mask
-	swap 
-	0x04 or				\ clear register is 4 registers on
+	1 swap lshift swap	\ determine mask
+	04 or				\ clear register is 4 registers on
 	!					\ write to register
 ;
 
 \ set bit at position in register
 : BIT_SET ( addr pos -- ) 
-	1 swap lshift		\ determine mask
-	swap 
-	0x08 or				\ set register is 8 registers on
+	1 swap lshift swap	\ determine mask
+	08 or				\ set register is 8 registers on
 	!					\ write to register
 ;
 
 \ set bit at position in register
 : BIT_INV ( addr pos -- ) 
-	1 swap lshift		\ determine mask
-	swap 
-	0x0c or				\ set register is 12 registers on
+	1 swap lshift swap	\ determine mask
+	0c or				\ set register is 12 registers on
 	!					\ write to register
 ;
 
 : BIT_READ ( addr pos -- val )
 	swap @
 	swap rshift
-	0x01 and
+	01 and
 ;
 
 : DIGITAL_IN ( port bit -- )
@@ -56,8 +63,26 @@ _reset
 	ANSEL +				\ determine ANSEL reg address
 	swap bit_clr		\ clear analogue flag
 	
-	2dup
+\	2dup
 	TRIS +				\ TRIS register
+	swap bit_set		\ set to input
+;
+
+: PULL_UP ( port bit -- )
+	swap
+	2dup
+	CNPD +				\ TRIS register
+	swap bit_clr		\ set to input
+	CNPU +				\ TRIS register
+	swap bit_set		\ set to input
+;
+
+: PULL_DOWN ( port bit -- )
+	swap
+	2dup
+	CNPU +				\ TRIS register
+	swap bit_clr		\ set to input
+	CNPD +				\ TRIS register
 	swap bit_set		\ set to input
 ;
 
@@ -82,21 +107,18 @@ _reset
 ;
 
 : PORT_OFF ( port bit -- )
-	swap
-	PORT +				\ PORT register
-	swap bit_clr		\ set to on
+	swap PORT + swap	\ PORT register
+	bit_clr				\ set to on
 ;
 
 : PORT_TOGGLE ( port bit -- )
-	swap
-	PORT +				\ PORT register
-	swap bit_inv		\ set to on
+	swap PORT + swap 	\ PORT register
+	bit_inv				\ set to on
 ;
  
 : PORT_STATE ( port bit -- flag )
-	swap
-	PORT +
-	swap bit_read
+	swap PORT + swap
+	bit_read
 ;
 
 \ TODO add port state to read bit
@@ -128,6 +150,8 @@ _reset
 		2SWAP	\ bring location back to top
 	again
 ;
+
+DECIMAL
 
 .( added basic common words)
 echo

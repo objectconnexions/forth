@@ -1,9 +1,14 @@
-0x0bf809000 CONSTANT ADC
-0x0bf886220 CONSTANT PORTE
-4 CONSTANT LED
+HEX
+
+0bf809000 CONSTANT ADC
+0 CONSTANT AD1CON1
+10 CONSTANT AD1CON2
+20 CONSTANT AD1CON3
+40 CONSTANT AD1CHS
+70 CONSTANT ADC1BUF0
 
 : ADC_INIT ( -- )
-	ADC 15 BIT_CLR		\ prepare to set up ADC - turn off 
+	ADC 0f BIT_CLR		\ prepare to set up ADC - turn off 
 
 	0
 	4 8 SET_BITS		\ at bit 8, data format: 32 bit integer
@@ -16,31 +21,33 @@
 						\ VREF from AVDD and AVSS,
 						\ Inputs are not scanned,
 						\ Interrupt every sample
-	ADC 0x10 OR !		\ set up AD1CON2
+	ADC AD1CON2 OR !	\ set up AD1CON2
 
 	0
-	0x01f 8 SET_BITS	\ slowest conversion speed
-	0x0ff 0 SET_BITS	
-	ADC 0x20 OR !		\ set up AD1CON2
+	01f 8 SET_BITS		\ slowest conversion speed
+	0ff 0 SET_BITS	
+	ADC AD1CON2 OR !	\ set up AD1CON2
 		
 	0					\ CHO- input is VREFL (AVss)
-	7 16 SET_BITS		\ CH0+ input is AN7 - battery
-	ADC 0x40 OR !		\ set up AD1CHS
+	1 10 SET_BITS		\ CH0+ input is AN7 - battery
+	ADC AD1CHS OR !		\ set up AD1CHS
 
-	ADC 15 BIT_SET		\ turn on ADC
+	ADC 0f BIT_SET		\ turn on ADC
 ;
 
 : ADC_SAMPLE ( -- value )
 	ADC 1 BIT_SET		\ set sampling flag
-	ADC 0x70 or @ 		\ read buffer
+	ADC ADC1BUF0 or @ 	\ read buffer
 	. CR				\ display
 
 \ TODO wait for DONE flag
 ;
 
 : ADC_DEBUG ( ) 
-	ADC @ .HEX CR
-	ADC 0x10 OR @ .HEX CR
-	ADC 0x20 OR @ .HEX CR
-	ADC 0x40 OR @ .HEX CR
+	HEX
+	CR ADC AD1CON1 OR @ .
+	CR ADC AD1CON2 OR @ . CR
+	CR ADC AD1CON3 OR @ . CR
+	CR ADC AD1CHS OR @ . CR
+	DECIMAL
 ;
