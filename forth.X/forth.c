@@ -1848,7 +1848,7 @@ static void load_words()
     dictionary_add_core_word("'", tick, false);
 
     dictionary_add_core_word("INITIATE", initiate, false);
-    dictionary_add_core_word("TERMINAT", terminate, false);
+    dictionary_add_core_word("TERMINATE", terminate, false);
     dictionary_add_core_word("SUSPEND", suspend, false);
     dictionary_add_core_word("RESUME", resume, false);
     dictionary_add_core_word("PAUSE", yield, false);
