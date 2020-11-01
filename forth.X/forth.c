@@ -18,12 +18,10 @@
 #include "dictionary.h"
 #include "uart.h"
 
-//#define NEXT_INSTRUCTION current_process->code[current_process->ip++]
 #define PEEK_DATA current_process->stack[current_process->sp]
-#define PUSH_DATA(value) (current_process->stack[++(current_process->sp)] = (value))
-#define POP_DATA current_process->stack[current_process->sp--]
+#define PUSH_DATA(value) push(value)
+#define POP_DATA pop_stack() 
 #define POP_2DATA pop_double()
-//(current_process->stack[current_process->sp--] * 0xffffffff) + current_process->stack[current_process->sp--]
 #define PUSH_RETURN(address) (current_process->return_stack[++(current_process->rsp)] =  (uint32_t) (address))
 
 #define LOG "Forth"
@@ -70,7 +68,7 @@ int forth_init()
     parser_init();
     compiler_init();
     
-    interpreter_process = new_task(5, "INTERPRETER");
+    interpreter_process = new_task(5, "INTERP");
     interpreter_process->suspended = false;
     current_process = interpreter_process;
     idle_process = new_task(1, "IDLE");
@@ -90,7 +88,7 @@ int forth_init()
 
 void process_interrupt(uint8_t level)
 {
-    log_info(LOG, "restarting interpreter %i", level);
+    log_info(LOG, "restarting interpreter %I", level);
     abort_task(interpreter_process);   
 //    interpreter_process->sp = -1;
 //    interpreter_process->rsp = -1;
@@ -125,7 +123,8 @@ static void push_blank()
 
 void push(CELL value)
 {
-    PUSH_DATA(value);
+    // PUSH_DATA(value);
+    (current_process->stack[++(current_process->sp)] = (value));
 }
 
 void push_double(SIGNED_DOUBLE value)
@@ -150,7 +149,7 @@ bool stack_underflow()
 {
     if (current_process->sp < -1)
     {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return true;
     }
     else
@@ -166,7 +165,7 @@ static bool isAccessibleMemory(uint32_t address)
     {
         if (address % 4 != 0)
         {
-            printf("NON-ALIGNED %X!", address); // reading from non-aligned address causes PIC exception
+            console_out("NON-ALIGNED %Z!", address); // reading from non-aligned address causes PIC exception
             return false;        
         }
         else 
@@ -176,7 +175,7 @@ static bool isAccessibleMemory(uint32_t address)
     } 
     else 
     {
-        printf("LIMIT %X!", address);
+        console_out("LIMIT %Z!", address);
         return false;
     }
 }
@@ -200,7 +199,7 @@ void forth_run()
             // TODO extract into abort_task() function
             in_error = false;
             forth_abort();
-            printf(" ABORTED\n");
+            console_out(" ABORTED\n");
         }
     }
 }
@@ -225,7 +224,7 @@ void forth_execute(CODE_INDEX instruction)
         {
             char word_name[64];
             dictionary_find_word_for(instruction, word_name);
-            log_trace(LOG, "run %s jump to ~%04x return to~%04x", word_name, instruction, current_process->ip);
+            log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction, current_process->ip);
         }
         current_process->ip = instruction;
     }
@@ -250,7 +249,7 @@ void execute_next_instruction()
     {   
         char word_name[64];
         dictionary_find_word_for(instruction, word_name);
-        log_trace(LOG, "execute #%i ~%04X: %0X: %s", current_process->id, location, instruction, word_name);
+        log_trace(LOG, "execute #%I ~%Z: %Z: %S", current_process->id, location, instruction, word_name);
     }
     forth_execute(instruction);
 
@@ -263,14 +262,14 @@ void execute_next_instruction()
         current_process->ip = LAST_ENTRY;
         current_process->next_time_to_run = 0;
         next_task();
-        printf(" ABORTED\n");
+        console_out(" ABORTED\n");
     }
 }
     
 void duplicate() 
 {
 //    if (current_process->sp < 0) {
-//        printf("stack underflow; aborting\n");
+//        console_out("stack underflow; aborting\n");
 //        return;	
 //    }
     CELL read = PEEK_DATA;
@@ -280,7 +279,7 @@ void duplicate()
 void over()
 {
 //    if (current_process->sp < 1) {
-//        printf("stack underflow; aborting\n");
+//        console_out("stack underflow; aborting\n");
 //        return;
 //    }
     CELL value = current_process->stack[current_process->sp - 1];
@@ -290,7 +289,7 @@ void over()
 void drop() 
 {
 //    if (current_process->sp < 0) {
-//        printf("stack underflow; aborting\n");
+//        console_out("stack underflow; aborting\n");
 //        return;
 //    }
     current_process->sp--;
@@ -299,7 +298,7 @@ void drop()
 void nip() 
 {
     if (current_process->sp < 0) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return;
     }
     CELL tos_value = current_process->stack[current_process->sp--];
@@ -309,7 +308,7 @@ void nip()
 void swap()
 {
     if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return;
     }
     CELL tos_value = PEEK_DATA;
@@ -320,7 +319,7 @@ void swap()
 void tuck() 
 {
     if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return;
     }
     CELL tos_value = current_process->stack[current_process->sp];
@@ -332,7 +331,7 @@ void tuck()
 void rot() 
 {
 //    if (current_process->sp < 1) {
-//        printf("stack underflow; aborting\n");
+//        console_out("stack underflow; aborting\n");
 //        return;
 //    }
     CELL value = current_process->stack[current_process->sp - 2];
@@ -668,7 +667,7 @@ void and()
 void or()
 {
     if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return;
     }
     CELL tos_value = POP_DATA;
@@ -680,7 +679,7 @@ void or()
 void xor()
 {
     if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return;
     }
     CELL tos_value = POP_DATA;
@@ -757,7 +756,7 @@ void branch()
 void zero_branch()
 {
     uint32_t offset = POP_DATA;
-    log_trace(LOG, "zbranch for %i -> %s", offset, (offset == 0 ? "zero" : "non-zero"));
+    log_trace(LOG, "zbranch for %I -> %S", offset, (offset == 0 ? "zero" : "non-zero"));
     if (offset == 0) {
         branch();
     } else {
@@ -771,7 +770,7 @@ void execute_word()
         return;
     }
     CODE_INDEX instruction = (CODE_INDEX) current_process->stack[current_process->sp--];
-    log_debug(LOG, "execute from %i", instruction);
+    log_debug(LOG, "execute from %Z", instruction);
     current_process->return_stack[++(current_process->rsp)] = (CELL) current_process->ip;
     current_process->ip = instruction;
 }
@@ -780,7 +779,7 @@ void execute_word()
 static struct Process* process()
 {
     if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return;
     }
     CELL id = current_process->stack[current_process->sp--];
@@ -792,7 +791,7 @@ static struct Process* process()
         process = process->next;
     } while (process != NULL);
     if (process == NULL) {
-        log_error(LOG, "no current_process with ID %i", id);                
+        log_error(LOG, "no current_process with ID %I", id);                
     }
     return NULL;
 }
@@ -805,7 +804,7 @@ static void initiate()
         run_process->suspended = false;
         run_process->ip = instruction;
         run_process->next_time_to_run = timer + 1;
-        log_info(LOG, "initiate from %04x with %s at %i", run_process->ip, run_process->name, run_process->next_time_to_run);
+        log_info(LOG, "initiate from %Y with %S at %I", run_process->ip, run_process->name, run_process->next_time_to_run);
     }
 }
 
@@ -835,9 +834,9 @@ void return_to()
         if (log_level <= TRACE) 
         {
             dump_return_stack(buf, current_process);
-            log_trace(LOG, "return %s", buf);
+            log_trace(LOG, "return %S", buf);
             dump_parameter_stack(buf, current_process);
-            log_trace(LOG, "  %s", buf);
+            log_trace(LOG, "  %S", buf);
         }
     }
     if (current_process->rsp < 0) {
@@ -845,12 +844,12 @@ void return_to()
         if (log_level <= TRACE) 
         {
             dump_parameter_stack(buf, current_process);
-            log_trace(LOG, "  %s", buf);
+            log_trace(LOG, "  %S", buf);
         }
         current_process->ip = LAST_ENTRY;
         current_process->next_time_to_run = 0;
         next_task();
-        log_trace(LOG, "end, go to %s", current_process->name);
+        log_trace(LOG, "end, go to %S", current_process->name);
     } else {
         current_process->ip = (CODE_INDEX) current_process->return_stack[current_process->rsp--];
     }
@@ -870,15 +869,11 @@ static void start_format_number()
 static bool add_digit()
 {
    UNSIGNED_DOUBLE value = POP_2DATA;
-//   printf("\nvalue = %X ", value);
    uint8_t digit = value % base_no;
-//   printf("digit = %X ", digit);
    number_format[--format_pos] = (digit <= 9) ? ('0' + digit) : ('A' + digit - 10);
-//   printf("next %X", value / base_no);
      
    value /= base_no;
    push_unsigned_double(value);
-
    return value > 0;
 }
 
@@ -889,10 +884,7 @@ static void add_format_digit()
 
 static void add_format_digits()
 {
-//    debug_print_stack();
-//    printf("base = %i", base_no);
     while (add_digit()) {}
-//    printf("\n"); 
 }
 
 static void add_format_sign()
@@ -934,7 +926,7 @@ static void print_number()
 
 static void print_space()
 {
-    printf(" "); 
+    console_put(SPACE); 
 }
 
 static void print_spaces()
@@ -942,7 +934,7 @@ static void print_spaces()
     CELL len = POP_DATA;
     int i;
     for (i = 0; i < len; i++) {
-        printf(" "); 
+        console_put(SPACE);
     }
 }
 
@@ -1000,7 +992,7 @@ static void print_content_of_address() {
 
 inline void print_cr() 
 {
-    printf("\n");
+    console_put(NL);
 }
 
 static void base_hex()
@@ -1021,28 +1013,28 @@ static void base_address()
 static void emit()
 {
     if (current_process->sp < 0) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return;
     }
     uint32_t ch = current_process->stack[current_process->sp--];
-    printf("%c", ch);
+    console_put(ch);
 }
 
 static void read_memory()
 {
     if (current_process->sp < 0) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         in_error = true;
         return;
     }
 
     uint32_t address = current_process->stack[current_process->sp--];
-    log_trace(LOG, "address 0x%x", address);
+    log_trace(LOG, "address %Z", address);
     if (isAccessibleMemory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
         uint32_t value = (uint32_t) *ptr;
-        log_debug(LOG, "value at %0X = 0x%x", address, value);
+        log_debug(LOG, "value at %Z = %Z", address, value);
         current_process->stack[++(current_process->sp)] = value;
     }
     else 
@@ -1054,16 +1046,16 @@ static void read_memory()
 static void two_read_memory()
 {
     uint32_t address = current_process->stack[current_process->sp--];
-    log_trace(LOG, "address 0x%x", address);
+    log_trace(LOG, "address %Z", address);
     if (isAccessibleMemory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
         uint32_t tos = (uint32_t) *ptr;
         uint32_t nos = (uint32_t) *(ptr + 1);
         
-        log_debug(LOG, "value at %0X = 0x%x", address, nos);
+        log_debug(LOG, "value at %Z = %Z", address, nos);
         current_process->stack[++(current_process->sp)] = nos;
-        log_debug(LOG, "value at %0X = 0x%x", address, tos);
+        log_debug(LOG, "value at %Z = %Z", address, tos);
         current_process->stack[++(current_process->sp)] = tos;
     }
     else 
@@ -1075,29 +1067,29 @@ static void two_read_memory()
 static void read_char()
 {
     if (current_process->sp < 0) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         in_error = true;
         return;
     }
 
     uint32_t address = current_process->stack[current_process->sp--];
-    log_trace(LOG, "address 0x%x", address);
+    log_trace(LOG, "address %Z", address);
     uint8_t value = dictionary_read_byte((CODE_INDEX) address) & 0xff;
-    log_debug(LOG, "char at %0X = 0x%x", address, value);
+    log_debug(LOG, "char at %Z = %X", address, value);
     current_process->stack[++(current_process->sp)] = value;
 }
 
 static void write_memory()
 {
     if (current_process->sp < 0) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         in_error = true;
         return;
     }
 
     uint32_t address = current_process->stack[current_process->sp--]; // address
     uint32_t value = current_process->stack[current_process->sp--]; // write value
-    log_debug(LOG, "set address %04X to %04X", address, value);
+    log_debug(LOG, "set address %Z to %Z", address, value);
     if (isAccessibleMemory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
@@ -1112,7 +1104,7 @@ static void write_memory()
 static void write_memory_add_1()
 {
     uint32_t address = current_process->stack[current_process->sp--]; // address
-    log_debug(LOG, "increment value at address %04X", address);
+    log_debug(LOG, "increment value at address %Z", address);
     if (isAccessibleMemory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
@@ -1130,13 +1122,13 @@ static void two_write_memory()
     if (isAccessibleMemory(address)) 
     {
         uint32_t value = current_process->stack[current_process->sp--]; // write value
-        log_debug(LOG, "set address %04X to %04X", address, value);
+        log_debug(LOG, "set address %Z to %Z", address, value);
         uint32_t *ptr = (uint32_t *) address;
         *ptr = value;
         
         ptr++;
         value = current_process->stack[current_process->sp--]; // write value
-        log_debug(LOG, "set address %04X to %04X", address + 4, value);
+        log_debug(LOG, "set address %Z to %Z", address + 4, value);
         *ptr = value;
 
     }
@@ -1150,7 +1142,7 @@ static void stack()
 {
     char buf[64];
     dump_parameter_stack(buf, current_process);
-    printf("%s", buf);
+    console_out(buf);
 }
 
 static void clear_stack()
@@ -1281,7 +1273,7 @@ static void type()
     int i;
     for (i = 0; i < len; i++) {
         char c = dictionary_read_byte((CODE_INDEX) address++);
-        printf("%c", c);
+        console_put(c);
     }
 }
 
@@ -1300,62 +1292,31 @@ void wait(uint32_t wait_time) {
 uint32_t pop_stack()
 {
 //    if (current_process->sp < 0) {
-//        printf("stack underflow; aborting\n");
+//        console_out("stack underflow; aborting\n");
 //        // TODO need to use exception or some other way of dropping out
 //        return;
 //    }
     return current_process->stack[current_process->sp--];
 }
 
-void dump_return_stack(char *buf, struct Process *p)
+static void dump_stack(char *buf, CELL * stack, int8_t top, char left, char right)
 {
-	if (p->rsp >= 0) {
-		uint8_t len = sprintf(buf, "[ ");
-        int i;
-		for (i = 0; i <= p->rsp; i++) {
-            // TODO use snprintf and check length written to avoid overflow
-			if (i == p->rsp) {
-				len += sprintf(buf + len, "| %x ]", p->return_stack[i]);
-			} else {
-				len += sprintf(buf + len, "%x ", p->return_stack[i]);
-			}
-		}
-	} else {
-		sprintf(buf, "[ ]");
-	}
-}
-
-void dump_parameter_stack(char *buf, struct Process *p)
-{
-    *buf++ = '<';
-    int8_t top = p->sp;
+    *buf++ = left;
     if (top >= 0) {
-//	if (p->sp >= 0) {
-//		uint8_t len = sprintf(buf, "< ");
         int i;
 		for (i = 0; i <= top; i++) {
-            // TODO use snprintf and check length written to avoid overflow
-            
-//            char str[100];
-//            ltoa(str, p->stack[i], base_no);
-            
-//			if (i == p->sp) {
-//				len += sprintf(buf + len, "| %s >", str);
-//			} else {
-//				len += sprintf(buf + len, "%s ", str);
-//			}
-
+            // TODO check length written to avoid overflow
             if ( i > 0)
             {
-                *buf++ = ' ';
+                *buf++ = SPACE;
             }
-            if (i == p->sp)
+            if (i == top)
             {
                 *buf++ = '|';
-                *buf++ = ' ';
+                *buf++ = SPACE;
             }
             
-            UNSIGNED number = p->stack[i];
+            UNSIGNED number = stack[i];
             
             PUSH_DATA(1);
             PUSH_DATA(number);
@@ -1369,10 +1330,23 @@ void dump_parameter_stack(char *buf, struct Process *p)
             buf += len;
 		}
 	} else {
-        *buf++ = ' ';
+        *buf++ = SPACE;
 	}
-    *buf++ = '>';
+    *buf++ = right;
     *buf = 0;
+}
+
+void dump_return_stack(char *buf, struct Process *p)
+{
+    uint32_t restore_to = base_no;
+    base_no = 16;
+    dump_stack(buf, p->return_stack, p->rsp, '{' , '}');
+    base_no = restore_to; 
+}
+
+void dump_parameter_stack(char *buf, struct Process *p)
+{
+    dump_stack(buf, p->stack, p->sp, '<' , '>');
 }
 
 // TODO move to  a util file
@@ -1419,7 +1393,7 @@ struct Process* new_task(uint8_t priority, char *name)
     
     if (current_process)
     {
-        log_info(LOG, "new task %s (P%i)", new_process->name, priority);
+        log_info(LOG, "new task %S (P%I)", new_process->name, priority);
     }
     
     return new_process;
@@ -1431,14 +1405,14 @@ static void add_task()
     parser_next_text(name); 
     to_upper(name);
     new_task(5, name);
-    log_info("add task %s", name);
+    log_info("add task %S", name);
 }
 
 static void task_priority()
 {
     CELL priority = current_process->stack[current_process->sp--];
     current_process->priority = priority;
-    log_info(LOG, "process priority %i now on %s", priority, current_process->name);
+    log_info(LOG, "process priority %I now on %S", priority, current_process->name);
 }
 /*
  * Find the next task to execute. This is the highest priority task that has a next run
@@ -1465,22 +1439,27 @@ void next_task()
     //if (!waiting) {
     if (change_to != NULL && change_to != current_process) {
         current_process = change_to;
-        // log_trace(LOG, "switch to current_process %s", current_process->name);
+        current_process->activations++;
+        // log_trace(LOG, "switch to current_process %S", current_process->name);
     }
 }
 
 void tasks()
 {
     struct Process* p = processes;
-    printf("\nTasks:\n  Time %i\n", timer);
+    console_out("\nTasks:\n  Time %I\n", timer);
     do {
         char buf[64];
-        dump_return_stack(buf, current_process);
-        printf("  Task #%i%s %s (P%i) %04X, next %i %s %s ", 
+        console_out("  Task #%I%S %S (P%I) %Z, *%I next %I %S ", 
                 p->id, p == current_process ? "*" : "", p->name, p->priority,  
-                p->ip, p->next_time_to_run, p->suspended ? "SUSP" : "", buf);
+                p->ip, p->activations, p->next_time_to_run, 
+                p->suspended ? "SUSP" : "");
+        dump_return_stack(buf, current_process);
+        console_out(buf);
+        console_put(SPACE);
         dump_parameter_stack(buf, p);
-        printf("%s\n", buf);
+        console_out(buf);
+        console_put(NL);
         p = p->next;
     } while (p != NULL);
 }
@@ -1488,7 +1467,7 @@ void tasks()
 void dump()
 {
     if (current_process->sp < 1) {
-        printf("stack underflow; aborting\n");
+        console_out("stack underflow; aborting\n");
         return;
     }
     CELL length = current_process->stack[current_process->sp--];
@@ -1504,9 +1483,9 @@ static void dump_base()
 static void abort_task(struct Process* process)
 {
     char buf[80];
-    log_debug(LOG, "abort task %s", process->name);
+    log_debug(LOG, "abort task %S", process->name);
     dump_parameter_stack(buf, process);
-    printf("%s\n", buf);
+    console_out("aborted %S\n", buf);
     process->sp = -1;
     process->rsp = -1;
     process->ip = 0;
@@ -1521,6 +1500,21 @@ void forth_abort()
     abort_task(current_process);
 }
 
+static bool get_name_and_find_entry(struct Dictionary_Entry * entry)
+{
+    char token[32];
+    parser_next_text(token);
+    to_upper(token);
+    
+    if (!dictionary_find_entry(token, entry))
+    {
+        console_out("No entry %S!\n", token);
+        return false;
+    }
+
+    return true;
+}
+
 /*
  * Push the address of the word in the dictionary (the execution token) that 
  * matched the next token on the input 
@@ -1528,15 +1522,8 @@ void forth_abort()
 static void tick()
 {
     struct Dictionary_Entry entry;
-    char name[32];
-    parser_next_text(name);
-    to_upper(name);
-    
-    dictionary_find_entry(name, &entry);
-    
-    if (entry.instruction == LAST_ENTRY) 
+    if (!get_name_and_find_entry(&entry)) 
     {
-        printf("No entry %s!\n", entry.name);
         forth_abort();
     }
     else
@@ -1547,8 +1534,16 @@ static void tick()
 
 static void debug_word()
 { 
-    tick(); 
-    dictionary_debug_entry((CODE_INDEX) pop_stack());
+    struct Dictionary_Entry entry;
+    if (!get_name_and_find_entry(&entry)) 
+    {
+        forth_abort();
+    }
+    else
+    {
+        console_put(NL);
+        dictionary_debug_entry(&entry);
+    }
 }
 
 
@@ -1672,7 +1667,7 @@ void print_string()
     int i;
     for (i = 0; i < len; i++) {
         char ch = dictionary_read_next_byte(current_process);
-        printf("%c", ch);
+        console_out("%c", ch);
     }
      */
 }
@@ -1716,14 +1711,24 @@ static void has_next_char()
 
 static void debug_print_stack() 
 {
-    printf("\n<");
+    console_put(NL);
+    console_put('<');
     int8_t top = current_process->sp;
     int i;
     for (i = 0; i <= top; i++)
     {
-        printf("%X ", current_process->stack[i]);
+        console_out("%Z ", current_process->stack[i]);
     }
-    printf(">\n");   
+    console_put('>');
+    console_put(NL);
+    
+    console_put('<');
+    for (i = 0; i <= top; i++)
+    {
+        console_out("%I ", current_process->stack[i]);
+    }
+    console_put('>');
+    console_put(NL);
 }
     
 static void load_words()
@@ -1934,8 +1939,6 @@ static void load_words()
     dictionary_add_entry("_IDLE");
     compiler_begin();
     struct Dictionary_Entry entry;
-//    dictionary_find_entry("PAUSE", &entry);
-//    dictionary_append_instruction(entry.instruction);
     dictionary_append_function(yield);
     compiler_again();
     dictionary_end_entry();

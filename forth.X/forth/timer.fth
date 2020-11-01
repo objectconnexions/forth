@@ -41,7 +41,7 @@ variable timer_elapsed
 	100 * +						\ combine into single number
 	100 * +
 	100 * +
-	0 .S <# # # [CHAR] : HOLD # # [CHAR] : HOLD # # BL HOLD #S #>
+	0 <# # # [CHAR] : HOLD # # [CHAR] : HOLD # # BL HOLD #S #>
  ;
 
 timer_reset

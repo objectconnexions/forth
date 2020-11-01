@@ -49,6 +49,7 @@ struct Process {
     char *name;
     uint8_t priority;
     uint32_t next_time_to_run;
+    uint32_t activations;
     bool log;
     bool suspended;
 };

@@ -9,6 +9,7 @@
 #include "parser.h"
 #include "interpreter.h"
 #include "compiler.h"
+#include "logger.h"
 
 #define LOG "Interpreter"
 
@@ -52,18 +53,18 @@ void interpreter_run() {
 
         case INVALID_INSTRUCTION:
             parser_token_text(instruction);
-            printf("%s!\n> ", instruction);
+            console_out("%S!\n> ", instruction);
             parser_drop_line();
             forth_abort();
             break;
 
         case END_LINE:
-            if (echo) printf(" ok\n> ");
+            if (echo) console_out(" ok\n> ");
             parser_drop_line();
             break;
 
         case BLANK_LINE:
-            if (echo) printf("\n> ");
+            if (echo) console_out("\n> ");
             parser_drop_line();
             break;
             
@@ -74,7 +75,7 @@ void interpreter_run() {
             if (read)
             {
                 
-                log_debug(LOG, "input line: '%s'", buf);
+                log_debug(LOG, "input line: '%S'", buf);
 
                 if (strcmp(buf, "ddd") == 0)
                 {
@@ -109,9 +110,24 @@ void interpreter_run() {
                 {
                     echo = false;
                 }
+                else if (strcmp(buf, "test") == 0)
+                {
+                    console_out("string %S\n", "test");
+                    console_out("2H %X\n", 0xab);
+                    console_out("4H %Y\n", 0xabcd);
+                    console_out("8H %Z\n", 0xabcd1234);
+                    console_out("string %S\n", "test two");
+                    console_out("Integer %I\n", 123);
+                    console_out("Integer %I\n", 1234567);
+                    console_out("Integer %I\n", 1234567890);
+                }
                 else
                 {                
-                    if (echo) printf("%s ", buf);
+                    if (echo)
+                    {
+                        console_out(buf);
+                        console_put(SPACE);
+                    }
                     parser_input(buf);
                 }
             }
@@ -120,7 +136,7 @@ void interpreter_run() {
 //                if (log_level <= DEBUG) 
 //                {
 //                    dump_parameter_stack(process);
-//                    printf("\n");
+//                    console_out("\n");
 //                }
                     
                     
@@ -133,18 +149,18 @@ void interpreter_run() {
 
 static void interpret_single_number(uint32_t value)
 {
-    log_debug(LOG, "push 0x%04X", value);
+    log_debug(LOG, "push %Z", value);
     push(value);
 }
 
 static void interpret_double_number(uint64_t value)
 {
-    log_debug(LOG, "push 0x%08X", value);
+    log_debug(LOG, "push %Z", value);
     push_double(value);
 }
 
 static void interpret_code(CODE_INDEX code)
 {
-    log_debug(LOG, "execute 0x%04X", code);
+    log_debug(LOG, "execute %Z", code);
     forth_execute(code);
 }

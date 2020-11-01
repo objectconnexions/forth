@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "forth.h"
+#include "uart.h"
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -15,14 +16,9 @@ void log_init()
 
 static void add_message(enum LEVEL log_level, char* context, char* message, va_list argptr)
 {
-    char msg[256];
-
-    memset(msg, 0, sizeof(msg));
-    vsprintf(msg, message, argptr);
-    
-    // TODO what happens if buffer is not long enough?
-    
-    printf("%s - %s [%s] %s\n", type[log_level], context, current_process->name, msg);
+    console_out("(logging) %S - %S [%S] ", type[log_level], context, current_process->name);
+    _console_out(message, argptr);
+    console_put(NL);
 }
 
 

@@ -38,7 +38,7 @@ void parser_input(char * line)
         strcpy(source, line);  
         type = START;
         ptr = source;
-        log_info(LOG, "parse: '%s' (%i)", source, len);
+        log_info(LOG, "parse: '%S' (%I)", source, len);
     } else {
         log_info(LOG, "blank line");
         type = BLANK_LINE;
@@ -102,7 +102,7 @@ static void parse_next()
     }
     start = ptr;
     if (*ptr == 0) {
-        log_debug(LOG, "line end %i", ptr - source);
+        log_debug(LOG, "line end %I", ptr - source);
         type = END_LINE;
 //        type = NONE;
         return;
@@ -114,7 +114,7 @@ static void parse_next()
     int len = ptr - start;
     strncpy(token, start, len);
     token[len] = 0;
-    log_debug(LOG, "token '%s' (%i)", token, len);
+    log_debug(LOG, "token '%S' (%I)", token, len);
     
     type = TEXT_AVAILABLE;
 }
@@ -129,11 +129,11 @@ static void process()
         instruction = entry.instruction;
         flags = entry.flags;
         type = WORD_AVAILABLE;
-        log_debug(LOG, "word 0x%0X %0X", entry.instruction, entry.flags);
+        log_debug(LOG, "word %Z %Z", entry.instruction, entry.flags);
         return;
 
     } else {
-        log_debug(LOG, "not a word %s", token);
+        log_debug(LOG, "not a word %S", token);
 
         uint8_t process = find_process(token);
         if (process != 0xff) {

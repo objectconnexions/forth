@@ -6,8 +6,8 @@ HEX
 
 \ set the port to the LSB of the pattern, then right shift the pattern
 : write_lcd_port ( pattern address bit - pattern )
-	2 PICK				\ make copy of pattern at bottom of stack - pattern add bit pattern
-	1 AND				\ find set bit - add bit pattern flag
+	2 PICK					\ make copy of pattern at bottom of stack - pattern add bit pattern
+	1 AND					\ find set bit - add bit pattern flag
 	\ .S
 	IF
 		PORT_ON
@@ -15,12 +15,12 @@ HEX
 		PORT_OFF
 	THEN	
 
-	1 RSHIFT			\ adjust pattern for next bit (on next call)
+	1 RSHIFT				\ adjust pattern for next bit (on next call)
 ;
 
 \ write nibble to LCD
 : write_lcd_nibble ( value - )
-	PORTB 3 PORT_ON		\ set clock line high
+	PORTB 3 PORT_ON			\ set clock line high
 	
 	PORTB 6 write_lcd_port
 	PORTB 7 write_lcd_port
@@ -39,8 +39,10 @@ HEX
 	0f AND
 	write_lcd_nibble
 
-	0f AND				\ use low nibble next
+	0f AND					\ use low nibble next
 	write_lcd_nibble
+	
+	1 ms					\ brief delay
 ;
 
 \ turn LCD to control mode

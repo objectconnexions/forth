@@ -126,7 +126,7 @@ void _general_exception_handler(void)
     while (1)
     {
         PORTBbits.RB1 = 1;
-        printf("Exception! (0x%X - 0x%X)\n\n", _excep_code, _excep_addr);
+        console_out("\nException! (%Y:%Z)\n\n", _excep_code, _excep_addr);
         SoftReset();
     }
 }

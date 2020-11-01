@@ -45,11 +45,11 @@ void compiler_compile_definition()
 //        parser_drop_line();
 //        has_error = false;
         parser_token_text(name);
-        log_error(LOG, "can't compile %s", name);
+        log_error(LOG, "can't compile %S", name);
         return;
     }
     parser_token_text(name);
-    log_info(LOG, "new word %s", name);
+    log_info(LOG, "new word %S", name);
     dictionary_add_entry(name);
     
     while (true) 
@@ -65,25 +65,26 @@ void compiler_compile_definition()
                 break;
                 
             case WORD_AVAILABLE:
-                parser_token_text(name);
+                ;
                 struct Dictionary_Entry entry;
+                parser_token_text(entry.name);
                 parser_token_entry(&entry);
                 if ((entry.flags & IMMEDIATE) == IMMEDIATE)
                 {
-                    log_debug(LOG, "run immediate %s", name);
+                    log_debug(LOG, "run immediate %S", entry.name);
                     forth_execute(entry.instruction);
                 }
                 else if ((entry.flags & SCRUB) == SCRUB)
                 {
                     // TODO will this even occur as the entry won't appear to exist until it is completed
-                    log_debug(LOG, "recursive call to %s", name);
+                    log_debug(LOG, "recursive call to %S", entry.name);
 //                    parser_drop_line();
                     has_error = true;
                     return;
                 }
                 else
                 {
-                    log_debug(LOG, "append entry %s", name);
+                    log_debug(LOG, "append entry %S", entry.name);
                     dictionary_append_instruction(entry.instruction);
                 }
                 break;
@@ -91,7 +92,7 @@ void compiler_compile_definition()
             case INVALID_INSTRUCTION:
 //                parser_drop_line();
                 parser_token_text(name);
-                log_error(LOG, "invalid instruction %s", name);
+                log_error(LOG, "invalid instruction %S", name);
                 has_error = true;
                 return;
                 
@@ -103,7 +104,7 @@ void compiler_compile_definition()
                     read = uart_next_line(buf);
                     if (read)
                     {
-                        log_debug(LOG, "input line: '%s'", buf);
+                        log_debug(LOG, "input line: '%S'", buf);
                         parser_input(buf);
                     }                
                     break;
@@ -117,22 +118,23 @@ void compiler_compile_definition()
 }
 
 static bool add_named_entry() {
-    char name[32];
+    char token[32];
     struct Dictionary_Entry entry;
     has_error = false;
     state = IN_COMPILATION;
 
-    parser_next_text(name);
-    to_upper(name);
-    if (dictionary_find_entry(name, &entry))
+    parser_next_text(token);
+    to_upper(token);
+    log_debug(LOG, "find named entry %S", token);
+    if (dictionary_find_entry(token, &entry))
     {
-        log_error(LOG, "non-unique name %s", name);
+        log_error(LOG, "non-unique name %S", token);
         has_error = true;
         return false;
     }
     else
     {
-        dictionary_add_entry(name);
+        dictionary_add_entry(entry.name);
         return true;
     }
 }
@@ -286,15 +288,15 @@ void compiler_print_comment()
         if (end)
         {
             text[strlen(text) - 1] = 0;
-            printf(text);            
+            console_out(text);            
         } 
         else
         {
-            printf(text);
-            printf(" ");
+            console_out(text);
+            console_put(SPACE);
         }
     } while(!end);
-    printf("\n");
+    console_put(NL);
 }
 
 void compiler_char()
@@ -325,12 +327,12 @@ void compiler_compile_string()
         if (parser_next_text(text + len) == END_LINE) 
 //        if (parser_next_text(text + len) == NONE) 
         {
-            log_error(LOG, "no end quote %s", text);
+            log_error(LOG, "no end quote %S", text);
             has_error = true;
             return;
         }
         len = strlen(text);
-        log_debug(LOG, "%i string %s", len, text);
+        log_debug(LOG, "%I string %S", len, text);
     } while(text[len - 1] != '"');
     len--;
     
@@ -401,7 +403,7 @@ void compiler_create_data()
 static void complete_word() 
 {
     if (has_error) {
-        printf("Compile failed!\n");
+        console_out("Compile failed!\n");
     }
     else
     {
@@ -414,14 +416,14 @@ static void complete_word()
 static void add_literal(uint32_t value)
 {
     dictionary_append_function(push_literal);
-    log_trace(LOG, "literal = 0x%09llx", value);
+    log_trace(LOG, "literal = %Z", value);
     dictionary_append_value(value);
 }
 
 static void add_double_literal(uint64_t value)
 {
     dictionary_append_function(push_double_literal);
-    log_trace(LOG, "literal = 0x%09llx", value);
+    log_trace(LOG, "literal = %W", value);
     dictionary_append_value(value);
 }
 

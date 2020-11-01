@@ -7,10 +7,12 @@
 #include <plib.h>           /* Include to use PIC32 peripheral libraries      */
 #include <string.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include "uart.h"
 
 #include <stdio.h>
 #include <proc/ppic32mx.h>
+#include "logger.h"
 
 #ifdef MX270
     #include <proc/p32mx270f256d.h>
@@ -123,6 +125,90 @@ int uart_transmit_buffer(const char *buffer)
     return 0;
 }
 
+void console_put(char c) 
+{
+    uart_transmit_char(c);
+}
+
+static int number_to_string(char * dest, uint32_t val, uint8_t radix, uint8_t len)
+{
+    int pos = len == 0 ? 16 : len;
+    memset(dest, '0', pos);
+    do {
+        int digit = val % radix;
+        *(dest + --pos) = digit > 9 ? 'A' + digit - 10 : '0' + digit;
+        val = val / radix;
+    } while (val > 0);
+    
+    if (len > 0) return len;
+    
+    // move number string back to beginning of assigned space
+    int i;
+    for (i = 0; i < 16 - pos; i++) {
+        *(dest + i) = *(dest + i + pos); 
+    }
+    return 16 - pos;
+}
+
+void _console_out(char* message, va_list argptr)
+{
+    // TODO what happens if buffer is not long enough?
+    char msg[256];
+
+    char * out = msg;
+    while(*message)
+    {
+        if (*message == '%')
+        {
+            message++;
+            if (*message == 'S')
+            {
+                char * val = va_arg(argptr, char*);
+                if (val != NULL)
+                {
+                    while (*val)
+                    {
+                        *out++ = *val++;
+                    }
+                }
+            } 
+            else if (*message >= 'X' && *message <= 'Z')
+            {
+                int len = *message == 'X' ? 2 : (*message == 'Y' ? 4 : 8);
+                uint32_t val = va_arg(argptr, uint32_t);                
+                out += number_to_string(out, val, 16, len);
+            } 
+            else if (*message == 'I')
+            {
+                uint32_t val = va_arg(argptr, uint32_t);
+                out += number_to_string(out, val, 10, 0);
+            }
+            else
+            {
+                *out++ = '?';
+                *out++ = *message;
+                *out++ = '?';
+            }
+        }
+        else
+        {
+            *out++ = *message;
+        }
+        message++;
+    }
+    *out = 0;
+ 
+
+    uart_transmit_buffer(msg);
+}
+
+void console_out(char* message, ...)
+{
+    va_list argptr;
+    va_start(argptr, message);
+    _console_out(message, argptr);
+    va_end(argptr);
+}
 
 static int limit() {
     return read_tail > receive_head ? receive_head + LENGTH : receive_head;
@@ -153,11 +239,11 @@ bool uart_next_line(char *buffer) {
     {
         line_available = false;
         int max = limit();
-//        if (on_hold) printf("%i < %i\n", read_tail, limit) ;
+//        if (on_hold) console_out("%I < %I\n", read_tail, limit) ;
         while (read_tail < max) 
         {
             char c = uart_buffer[read_tail % LENGTH];
-//            if (on_hold) printf("%c", c) ;
+//            if (on_hold) console_out("%c", c) ;
             read_tail++;
             if (c == '\r' || c == '\n')
             {
@@ -184,7 +270,7 @@ bool uart_next_line(char *buffer) {
 
         read_tail %=  LENGTH;
         if (on_hold && (read_tail + LENGTH - receive_head) % LENGTH  > 250) {
-//            printf("~RUN/n");
+//            console_out("~RUN/n");
             uart_transmit_char(XON);
             on_hold = false;
         }
@@ -201,14 +287,14 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
         if (!on_hold && (read_tail + LENGTH - receive_head - 1) % LENGTH < 50) {
             uart_transmit_char(XOFF);
             on_hold = true;
-//            printf("~HLD\n");
+//            console_out("~HLD\n");
 //            uart_debug();
         }
         
         while (U2STAbits.URXDA) 
         {
             char c = U2RXREG; 
-//            if (on_hold) printf("%02x ", c);
+//            if (on_hold) console_out("%02x ", c);
             uart_buffer[receive_head % LENGTH]  = c;
             if (c == CTRL_C)
             {
@@ -216,7 +302,7 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
             }
             else if (c == CTRL_D)
             {
-                printf("^D ", c);
+                console_out("^D ", c);
                 process_interrupt(2);
             }
             else 
@@ -244,16 +330,16 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
 
 void uart_debug() {
     int free_space =  (read_tail + LENGTH - receive_head - 1) % LENGTH;
-//    printf("%i? %04x/%04x (%i)\n", line_available, read_tail, receive_head, free_space);
+//    console_out("%I? %04x/%04x (%I)\n", line_available, read_tail, receive_head, free_space);
     if (free_space < 50)
     {
-        printf ("\n0000   ");
+        console_out ("\n0000   ");
         int i;
         for (i = 0; i < 16; i++) 
         {
-            printf("%X   ", i);
+            console_out("%Z   ", i);
         }
-        printf ("\n");
+        console_put(NL);
         for (i = 0; i < LENGTH; i++) 
         {
             if (i % 16 == 0)
@@ -263,12 +349,12 @@ void uart_debug() {
                 {
                     char c = uart_buffer[i - 16 + j];
                     if (c < 32) c = ' ';
-                    printf("%c", c);
+                    console_put(c);
                 }
-                printf("\n%04X  ", i);
+                console_out("\n%Y  ", i);
             }
-            printf("%02X ", uart_buffer[i]);
+            console_out("%X ", uart_buffer[i]);
         }
-        printf("\n");
+        console_put(NL);
     }
 }

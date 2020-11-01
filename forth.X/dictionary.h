@@ -27,9 +27,11 @@ typedef void (*CORE_FUNC)(void);
 #define OTHER 4
     
 struct Dictionary_Entry {
-    char *name;
+    CODE_INDEX starts;          // starting address of entry
+    CODE_INDEX ends;            // ending address of entry
+    char name[32];                 // entry's name
     uint8_t flags;
-    CODE_INDEX instruction;
+    CODE_INDEX instruction;     // address of entry's code
 };
 
 void dictionary_init(void);
@@ -60,11 +62,11 @@ CODE_INDEX dictionary_read_instruction(struct Process *);
 
 uint8_t dictionary_read_next_byte(struct Process *);
 
-void dictionary_find_word_for(CODE_INDEX, char*);
+CODE_INDEX dictionary_find_word_for(CODE_INDEX, char *);
 
 void dictionary_debug_summary(CODE_INDEX);
         
-void dictionary_debug_entry(CODE_INDEX);
+void dictionary_debug_entry(struct Dictionary_Entry * );
 
 CODE_INDEX dictionary_data_address(CODE_INDEX);
 
