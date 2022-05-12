@@ -1,0 +1,26 @@
+== Control structures
+
+=== BEGIN/AGAIN loop
+
+This loop repeats endlessly.
+
+IMPORTANT: Ensure it give up control regularly so it does not monoplise the CPU. Use the `MS` word to introduce a delay or `PAUSE` to yield to another process that is waiting.
+
+```
+BEGIN
+	1 INV_REG !
+	25 ms
+AGAIN
+```
+
+=== BEGIN/UNTIL loop
+
+
+```
+BEGIN
+	1 INV_REG !
+	25 ms
+	
+UNTIL
+
+```

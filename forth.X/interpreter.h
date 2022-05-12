@@ -12,7 +12,9 @@
 extern "C" {
 #endif
 
-void interpreter_run();
+void interpreter_run(void);
+
+void interpreter_echo(void);
     
 
 #ifdef	__cplusplus

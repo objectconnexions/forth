@@ -3,136 +3,215 @@ noecho
 _reset
 
 HEX
-0bf80f230 CONSTANT SYSKEY
+
+\ System Registers
 0bf80f000 CONSTANT OSCCON
+0bf80f200 CONSTANT CFGCON
+0bf80f230 CONSTANT SYSKEY
 
-0bf880000 CONSTANT IO
-0bf886000 CONSTANT PORTA
-0bf886100 CONSTANT PORTB
-0bf886200 CONSTANT PORTC
-0bf886300 CONSTANT PORTD
-0bf886400 CONSTANT PORTE
+\ Interupt Registers
+0bf881000 CONSTANT INTCON
+0bf881010 CONSTANT INTSTAT
+0bf881020 CONSTANT IPTMR
+0bf881030 CONSTANT IFS0
+0bf881040 CONSTANT IFS1
+0bf881060 CONSTANT IEC0
+0bf881070 CONSTANT IEC1
+0bf881090 CONSTANT IPC0
 
-00 CONSTANT ANSEL
-10 CONSTANT TRIS
-20 CONSTANT PORT
-30 CONSTANT LAT
-40 CONSTANT ODC
-50 CONSTANT CNPU
-60 CONSTANT CNPD
-70 CONSTANT CNCON
-80 CONSTANT CNEN
-90 CONSTANT CNSTAT
+\ Timer Registers
+0bf800a00 CONSTANT T3CON
+0bf800a10 CONSTANT TMR3
+0bf800a20 CONSTANT PR3
+
+\ IO Registers
+\ 0bf880000 CONSTANT IO
+\ 0bf886000 CONSTANT PORTA
+\ 0bf886100 CONSTANT PORTB
+\ 0bf886200 CONSTANT PORTC
+\ 0bf886300 CONSTANT PORTD
+\ 0bf886400 CONSTANT PORTE
+
+\ Port A registers
+0bf886000 CONSTANT ANSELA
+0bf886010 CONSTANT TRISA
+0bf886020 CONSTANT PORTA
+0bf886030 CONSTANT LATA
+0bf886040 CONSTANT ODCA
+0bf886050 CONSTANT CNPUA
+0bf886060 CONSTANT CNPDA
+0bf886070 CONSTANT CNCONA
+0bf886080 CONSTANT CNENA
+0bf886090 CONSTANT CNSTATA
 
 
+\ Port B registers
+0bf886100 CONSTANT ANSELB
+0bf886110 CONSTANT TRISB
+0bf886120 CONSTANT PORTB
+0bf886130 CONSTANT LATB
+0bf886140 CONSTANT ODCB
+0bf886150 CONSTANT CNPUB
+0bf886160 CONSTANT CNPDB
+0bf886170 CONSTANT CNCONB
+0bf886180 CONSTANT CNENB
+0bf886190 CONSTANT CNSTATB
 
-: SET_BITS ( value value position -- value )
-	lshift or
+\ Port C registers
+0bf886220 CONSTANT PORTC
+
+\ Port D registers
+0bf886320 CONSTANT PORTD
+
+\ Port E registers
+0bf886420 CONSTANT PORTE
+
+\ Port E registers
+0bf886520 CONSTANT PORTF
+
+04 CONSTANT REG_CLR
+08 CONSTANT REG_SET
+0c CONSTANT REG_INV
+
+: MASK ( size pos - mask )
+	swap
+	1 swap lshift 1 -	\ basic mask
+	swap lshift			\ move into position
+\	1 3 lshift 1 -   8 lshift .
+;
+
+: REG_BIT@ ( bit address -- val )
+	@					\ read register
+	swap rshift			\ align bit
+	01 and				\ exclude rest
+;
+
+\ : REG_BIT_READ_OFFSET ( bit base-address offset -- val )
+\ 	or			 		\ calculate address
+\ 	REG_BIT@
+\ ;
+
+
+\ write bit at position in register
+: REG_BIT! ( bit address -- ) 
+	1 rot				\ address 1 bit --
+	lshift				\ determine mask
+	swap !				\ write bit to register
+;
+
+\ display register bit
+: REG_BIT? ( bit address -- )
+	REG_BIT@ .
+;
+
+\ set bit at position in register
+: REG_BIT_SET ( bit address -- ) 
+	REG_SET or REG_BIT!
 ;
 
 \ clear bit at position in register
-: BIT_CLR ( addr pos -- ) 
-	1 swap lshift swap	\ determine mask
-	04 or				\ clear register is 4 registers on
-	!					\ write to register
+: REG_BIT_CLEAR ( bit address -- ) 
+	REG_CLR or REG_BIT!
 ;
 
-\ set bit at position in register
-: BIT_SET ( addr pos -- ) 
-	1 swap lshift swap	\ determine mask
-	08 or				\ set register is 8 registers on
-	!					\ write to register
+\ invert bit at position in register
+: REG_BIT_INVERT ( bit address -- ) 
+	REG_INV or REG_BIT!
 ;
 
-\ set bit at position in register
-: BIT_INV ( addr pos -- ) 
-	1 swap lshift swap	\ determine mask
-	0c or				\ set register is 12 registers on
-	!					\ write to register
+: REG_BY_OFFSET ( port register -- register )
+	PORTA -				\ offset to reister
+	+ 					\ adjust port address
 ;
 
-: BIT_READ ( addr pos -- val )
-	swap @
-	swap rshift
-	01 and
+\ read bits at position in register
+: REG_BITS@ ( pos len address -- value ) 
+	@ ROT RSHIFT						\ read register and align bits according to positon
+	SWAP								\ ( val len )
+	0 MASK AND							\ create mask and dipose of other bits
 ;
 
-: DIGITAL_IN ( port bit -- )
-	swap
-	2dup				\ copy params
-	ANSEL +				\ determine ANSEL reg address
-	swap bit_clr		\ clear analogue flag
+\ read bits at position in register
+: REG_BITS? ( pos len address -- ) 
+	REG_BITS@ .
+;
+
+\ write bits at position in register
+: REG_BITS! ( value pos len address -- ) 
+	SWAP 2SWAP						\ ( addr len val pos)
+	SWAP ROT						\ ( - pos val len )
+	0 MASK							\ ( - - - mask ) generate a mask for the bits within the register
 	
-\	2dup
-	TRIS +				\ TRIS register
-	swap bit_set		\ set to input
-;
+	DUP ROT 						\ ( - - mask mask val )
+	AND								\ ( - - mask masked-value )
+	ROT ROT							\ ( - masked-value pos mask )
+	OVER LSHIFT						\ ( - - - clear-out ) calculate the clear mask register change value 
 
-: PULL_UP ( port bit -- )
-	swap
-	2dup
-	CNPD +				\ TRIS register
-	swap bit_clr		\ set to input
-	CNPU +				\ TRIS register
-	swap bit_set		\ set to input
-;
-
-: PULL_DOWN ( port bit -- )
-	swap
-	2dup
-	CNPU +				\ TRIS register
-	swap bit_clr		\ set to input
-	CNPD +				\ TRIS register
-	swap bit_set		\ set to input
-;
-
-: DIGITAL_OUT ( port bit -- )
-	swap
-	2dup				\ copy params
-	ANSEL +				\ determine ANSEL reg address
-	swap bit_clr		\ clear analogue flag
+	ROT	ROT							\ ( - clear-out masked-value pos )
+	LSHIFT							\ ( - - value-out) calculate the register clear value 
 	
+	
+	ROT SWAP OVER					\ ( clear-out addr val-out addr )
+	2SWAP
+	.S CR
+	REG_CLR OR !					\ clear register section bits
+	REG_SET OR !					\ write register section
+;
+
+: DIGITAL_IN ( bit port -- )
+	2dup				\ copy params
+	ANSELA REG_BY_OFFSET \ offset to reister
+	REG_BIT_CLEAR		\ clear analogue flag
+	TRISA REG_BY_OFFSET	\ offset to reister
+	REG_BIT_SET   		\ set TRIS register to input
+;
+
+: PULL_UP ( bit port -- )
 	2dup
-	TRIS +				\ TRIS register
-	swap bit_clr		\ set to output
-
-	PORT +				\ PORT register
-	swap bit_clr		\ set to output
+	CNPDA REG_BY_OFFSET	\ offset to reister
+	REG_BIT_CLEAR  		\ PULL DOWN register cleared
+	CNPUA REG_BY_OFFSET	\ offset to reister
+	REG_BIT_SET   		\ PULL UP register set
 ;
 
-: PORT_ON ( port bit -- )
-	swap
-	PORT +				\ PORT register
-	swap bit_set		\ set to on
+: PULL_DOWN ( bit port -- )
+	2dup
+	CNPDA REG_BY_OFFSET	\ offset to reister
+	REG_BIT_SET   		\ PULL DOWN register set
+	CNPUA REG_BY_OFFSET	\ offset to reister
+	REG_BIT_CLEAR  		\ PULL UP register cleared
 ;
 
-: PORT_OFF ( port bit -- )
-	swap PORT + swap	\ PORT register
-	bit_clr				\ set to on
+: DIGITAL_OUT ( bit port -- )
+	2dup				\ copy params
+	ANSELA REG_BY_OFFSET \ offset to reister
+	REG_BIT_CLEAR		\ clear analogue flag
+	2dup
+	TRISA REG_BY_OFFSET	\ offset to reister
+	REG_BIT_CLEAR  		\ set TRIS register to input
+	REG_BIT_CLEAR  		\ set output off
 ;
 
-: PORT_TOGGLE ( port bit -- )
-	swap PORT + swap 	\ PORT register
-	bit_inv				\ set to on
-;
- 
-: PORT_STATE ( port bit -- flag )
-	swap PORT + swap
-	bit_read
+: SYS_UNLOCK ( -- )
+	0x0aa996655 SYSKEY !		\ write unlock sequence
+	0x0556699aa SYSKEY !
 ;
 
-\ TODO add port state to read bit
+: SYS_LOCK ( -- )
+	0x33333333 SYSKEY !			\ write lock sequence
+;
 
+: SYS_IOLOCK ( state -- ) 
 
+;
 
-
-: led_flash ( on off addr port - )
+: LED_FLASH ( on off addr port - )
 	\ on and off duration are one double (timing);
 	\ addr and port are another (location)
 
     2DUP DIGITAL_OUT
 	begin
-        2DUP port_on
+        2DUP REG_BIT_SET
 
 		2SWAP	\ bring timings to top
 		2DUP	
@@ -140,7 +219,7 @@ HEX
 		drop	\ drop the other half
 		
 		2SWAP 	\ return location to top
-        2DUP port_off
+        2DUP REG_BIT_CLEAR
 
 		2SWAP	\ bring timings to top
 		2DUP	
@@ -151,8 +230,26 @@ HEX
 	again
 ;
 
+: VAR_LED_FLASH ( variable addr port - )
+	\ on and off duration are one double (timing);
+	\ addr and port are another (location)
+
+    2DUP DIGITAL_OUT
+	begin
+        2DUP REG_BIT_SET	\ turn on
+
+		ROT DUP 2@		\ read variable to get both times (addr port var t1 t2)
+        ms				\ delay for first period (on) - in top of double
+
+		2OVER 			\ copy location to top
+        REG_BIT_CLEAR	\ turn off
+
+        ms				\ delay for second period
+
+		ROT ROT			\ return the variable to bottom
+	again
+ ;
 DECIMAL
 
-.( added basic common words)
+.( Added basic common words)
 echo
-

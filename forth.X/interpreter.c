@@ -15,7 +15,7 @@
 
 static void interpret_single_number(uint32_t);
 static void interpret_double_number(uint64_t);
-static void interpret_code(CODE_INDEX);
+static void interpret_instruction(CODE_INDEX);
 
 static bool echo = true;
 
@@ -26,7 +26,13 @@ static void test_compile(char *code)
     compiler_compile_definition();
 }
 
-void interpreter_run() {
+void interpreter_echo()
+{
+    echo = true;
+}
+
+void interpreter_run()
+{
     char buf[128]; 
     char instruction[32];
     struct Dictionary_Entry entry;
@@ -44,7 +50,7 @@ void interpreter_run() {
 
         case WORD_AVAILABLE:
             parser_token_entry(&entry);
-            interpret_code(entry.instruction);
+            interpret_instruction(entry.instruction);
             break;
 
         case PROCESS_AVAILABLE:
@@ -59,6 +65,7 @@ void interpreter_run() {
             break;
 
         case END_LINE:
+            forth_trace(false);
             if (echo) console_out(" ok\n> ");
             parser_drop_line();
             break;
@@ -98,10 +105,6 @@ void interpreter_run() {
                 {
                     uart_debug();            
                 }
-                else if (strcmp(buf, "ttt") == 0)
-                {
-                    tasks();            
-                }
                 else if (strcmp(buf, "echo") == 0)
                 {
                     echo = true;   
@@ -109,18 +112,7 @@ void interpreter_run() {
                 else if (strcmp(buf, "noecho") == 0)
                 {
                     echo = false;
-                }
-                else if (strcmp(buf, "test") == 0)
-                {
-                    console_out("string %S\n", "test");
-                    console_out("2H %X\n", 0xab);
-                    console_out("4H %Y\n", 0xabcd);
-                    console_out("8H %Z\n", 0xabcd1234);
-                    console_out("string %S\n", "test two");
-                    console_out("Integer %I\n", 123);
-                    console_out("Integer %I\n", 1234567);
-                    console_out("Integer %I\n", 1234567890);
-                }
+                }                
                 else
                 {                
                     if (echo)
@@ -150,17 +142,26 @@ void interpreter_run() {
 static void interpret_single_number(uint32_t value)
 {
     log_debug(LOG, "push %Z", value);
+    if (trace_code) {
+        console_out("LIT %Z", value);
+    }
     push(value);
 }
 
 static void interpret_double_number(uint64_t value)
 {
+    if (trace_code) {
+        console_out("LIT %Z", value);
+    }
     log_debug(LOG, "push %Z", value);
     push_double(value);
 }
 
-static void interpret_code(CODE_INDEX code)
+static void interpret_instruction(INSTRUCTION code)
 {
     log_debug(LOG, "execute %Z", code);
+    forth_trace(true);
+//    console_put('\n');
     forth_execute(code);
+//    console_put('\n');
 }

@@ -69,10 +69,15 @@ void _general_exception_handler(void)
 {
     unsigned long t0 = _CP0_GET_COUNT(); /* Used for NVMOP 6 us Delay */
 
+    uint32_t cause = _CP0_GET_CAUSE();
     /* Mask off Mask of the ExcCode Field from the Cause Register
     Refer to the MIPs M4K Software User's manual */
-    _excep_code=_CP0_GET_CAUSE() & 0x0000007C >> 2;
-    _excep_addr=_CP0_GET_EPC();
+    _excep_code = cause & 0x0000007C >> 2;
+  //  _excep_addr=_CP0_GET_EPC();
+    _excep_addr= __builtin_mfc0(_CP0_EPC, _CP0_EPC_SELECT); 
+    if ((cause & 0x80000000) != 0) {
+       _excep_addr += 4;  
+    }
 
     _CP0_SET_STATUS(_CP0_GET_STATUS()&0xFFFFFFE); /* Disable Interrupts */
 
@@ -126,7 +131,12 @@ void _general_exception_handler(void)
     while (1)
     {
         PORTBbits.RB1 = 1;
-        console_out("\nException! (%Y:%Z)\n\n", _excep_code, _excep_addr);
-        SoftReset();
+        console_out("\nEXCEPTION: %X @ %Z\n\n", _excep_code, _excep_addr);
+        if (_excep_code == 0x1c)
+        {
+            forth_abort();
+        } else {
+            SoftReset();
+        }
     }
 }

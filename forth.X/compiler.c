@@ -4,16 +4,16 @@
 #include <stdlib.h>
 
 #include "logger.h"
-#include "debug.h"
 #include "forth.h"
 #include "code.h"
 #include "parser.h"
 #include "dictionary.h"
 #include "compiler.h"
+#include "uart.h"
 
 #define LOG "compiler"
 
-#define IN_COMPILATION 1
+#define IN_COMPILATION (uint8_t) 1
 
 static void add_literal(uint32_t);
 static void add_double_literal(uint64_t);
@@ -23,8 +23,8 @@ static CODE_INDEX jumps[6];
 static uint8_t jp = 0;
 static bool has_error;
 
-// Comipile state: 1 = in compilation; 0 = not in compilation
-CELL state;
+// Compile state: 1 = in compilation; 0 = not in compilation
+uint8_t state;
 
 void compiler_init()
 {
@@ -35,6 +35,8 @@ void compiler_compile_definition()
     char buf[128]; 
     char name[32];
     bool read;
+    
+    // TODO what does this not use add_named_entry()?
     
     has_error = false;
     state = IN_COMPILATION;
@@ -80,7 +82,8 @@ void compiler_compile_definition()
                     log_debug(LOG, "recursive call to %S", entry.name);
 //                    parser_drop_line();
                     has_error = true;
-                    return;
+//                    uart_dispose();
+//                    return;
                 }
                 else
                 {
@@ -94,7 +97,8 @@ void compiler_compile_definition()
                 parser_token_text(name);
                 log_error(LOG, "invalid instruction %S", name);
                 has_error = true;
-                return;
+//                uart_dispose();
+//                return;
                 
             case END_LINE:
             case BLANK_LINE:
@@ -141,7 +145,7 @@ static bool add_named_entry() {
 
 void compiler_suspend()
 {
-    state = 0;
+    state = (uint8_t) 0;
     log_debug(LOG, "suspend compiler");
 }
 
@@ -183,9 +187,9 @@ static void add_variable(uint8_t size)
     dictionary_append_function(memory_address);
     dictionary_align();
     
-    int i;
+    uint8_t i;
     for (i = 0; i < size; i++) {
-        dictionary_append_byte(0); // space for value
+        dictionary_append_byte((uint8_t) 0); // space for value
     }
 
     complete_word();
@@ -270,7 +274,7 @@ void compiler_inline_comment()
     do
     {
         parser_next_text(text);
-    } while(text[strlen(text) - 1] != ')');
+    } while(text[strlen(text) - (size_t) 1] != ')');
 }
         
 /* 
@@ -403,14 +407,16 @@ void compiler_create_data()
 static void complete_word() 
 {
     if (has_error) {
-        console_out("Compile failed!\n");
+        dictionary_abort_entry();
+        // TODO store name when starting and use to add context to message
+        console_out("Compile failed, entry not added!\n");
     }
     else
     {
         dictionary_append_function(return_to);
         dictionary_end_entry();
     }
-    state = 0;
+    state = (uint8_t) 0;
 }
 
 static void add_literal(uint32_t value)

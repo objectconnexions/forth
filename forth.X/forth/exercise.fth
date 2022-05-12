@@ -1,6 +1,6 @@
 \ turn on LED
-PORTB 1 digital_out
-PORTB 1 port_on
+1 PORTB digital_out
+1 PORTB port_on
 
 
 \ read status reg

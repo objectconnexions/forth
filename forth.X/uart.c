@@ -10,16 +10,16 @@
 #include <stdarg.h>
 #include "uart.h"
 
-#include <stdio.h>
 #include <proc/ppic32mx.h>
 #include "logger.h"
+#include "timer.h"
 
 #ifdef MX270
     #include <proc/p32mx270f256d.h>
 #endif
 
 // Defines
-#define SYSCLK 48000000L
+#define LOG "UART"
 
 // Macros
 // Equation to set baud rate from UART reference manual equation 21-1
@@ -35,6 +35,7 @@ static volatile uint16_t receive_head;
 static volatile uint16_t read_tail;
 static volatile bool line_available;
 static volatile bool on_hold;
+static uint32_t dispose_until;
 
 void uart_init() {
 
@@ -60,24 +61,31 @@ void uart_init() {
     IFS1bits.U2RXIF = 0;
     
     U2MODESET = 0x8000;     // enable UART2
-       
+    
+    uart_reset();
+    
+       /*
     receive_head = 0;
     read_tail = 0;
     line_available = false;
     
+    dispose_until = timer;
     
+        */ 
     /* Add a small delay for the serial terminal
      *  Although the PIC sends out data fine, I've had some issues with serial terminals
      *  being garbled if receiving data too soon after bringing the DTR line low and
      *  starting the PIC's data transmission. This has ony been with higher baud rates ( > 9600) */
     int t;
     for( t=0 ; t < 100000 ; t++);
-        
+
+    /*
     memset(uart_buffer, 0, LENGTH);
 
     on_hold = false;
     uart_transmit_char(XON);
-   }
+     */
+}
 
 
 /* UART2Configure() sets up the UART2 for the most standard and minimal operation
@@ -93,6 +101,7 @@ int uart_configure(int desired_baud) {
     U2STAbits.URXISEL = 0b00; //! Rx. Interrupt flag bit is set when a char is received
     IPC9bits.U2IP = 7; //! Interrupt priority of 7
     IPC9bits.U2IS = 3; //! Interrupt sub-priority of 0
+//    IFS1bits.U2RXIF = 0;
     IEC1bits.U2RXIE = 1;
     
     // Calculate actual assigned baud rate
@@ -121,7 +130,7 @@ int uart_transmit_buffer(const char *buffer)
         size--;                     // loop until all characters sent (when size = 0)
     }
  
-    while( !U2STAbits.TRMT);        // wait for last transmission to finish
+    while(!U2STAbits.TRMT);        // wait for last transmission to finish
     return 0;
 }
 
@@ -214,6 +223,35 @@ static int limit() {
     return read_tail > receive_head ? receive_head + LENGTH : receive_head;
 }
 
+void uart_reset() {
+    receive_head = 0;
+    read_tail = 0;
+    line_available = false;
+    
+    uart_dispose();
+    memset(uart_buffer, 0, LENGTH);
+
+    uart_transmit_char(XON);
+    on_hold = false;
+    
+    console_out("[UART reset]\n");
+    
+    while (U2STAbits.URXDA) 
+    {
+        char c = U2RXREG; 
+        uart_transmit_char('!');      
+    }
+}
+/*
+ * set up UART dispose all incoming traffic for next second.
+ * 
+ */
+void uart_dispose() 
+{
+    console_out("[disposing input %I]\n", timer);
+    dispose_until = timer + 1000;
+}
+
 uint8_t uart_next_char()
 {
     if (read_tail < limit()) 
@@ -279,9 +317,19 @@ bool uart_next_line(char *buffer) {
 }
 
 
-void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
+void /*__ISR(_UART_2_VECTOR, IPL7SOFT)*/ Uart2Handler(void)
 {    
+    uint8_t interrupt = 0;
+
     IEC1bits.U2RXIE = 0;
+    
+    if (U2STAbits.OERR == 1) {
+                console_out("overflow");
+
+        // TODO do we need to do anything to deal with buffer overrun?
+        U2STAbits.OERR = 0;
+    }
+    
 	if(IFS1bits.U2RXIF)
 	{
         if (!on_hold && (read_tail + LENGTH - receive_head - 1) % LENGTH < 50) {
@@ -295,18 +343,27 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
         {
             char c = U2RXREG; 
 //            if (on_hold) console_out("%02x ", c);
-            uart_buffer[receive_head % LENGTH]  = c;
+            
+            if (timer < dispose_until)
+            {
+//                console_put('?');
+//                console_put(c);
+                continue;
+            } 
+            
             if (c == CTRL_C)
             {
-                process_interrupt(1);
+                interrupt = 1;
+                uart_dispose();
             }
             else if (c == CTRL_D)
             {
-                console_out("^D ", c);
-                process_interrupt(2);
+                interrupt = 2;
+                uart_dispose();
             }
             else 
             {
+                uart_buffer[receive_head % LENGTH]  = c;
                 receive_head++;
 
                 if (c == '\r' || c == '\n')
@@ -316,9 +373,23 @@ void __ISR(_UART_2_VECTOR, IPL7SOFT) Uart2Handler(void)
             }
         }
         receive_head %= LENGTH;
-        IFS1bits.U2RXIF = 0;
-        IEC1bits.U2RXIE = 1;
 	}
+
+    if (interrupt > 0) {
+        uart_reset();
+//        console_out(U2STAbits.OERR == 1 ? "overflow" : "");
+        console_out(interrupt == 2 ? "^D" : "^C");
+        process_abort(interrupt);
+    }
+
+    if (U2STAbits.OERR == 1) {
+        // TODO do we need to do anything to deal with buffer overrun?
+        U2STAbits.OERR = 0;
+//        console_out("\nCLR OVR\n");
+    }
+    
+    IFS1bits.U2RXIF = 0;
+    IEC1bits.U2RXIE = 1;
 
 	// We don't care about TX interrupt
 	if (INTGetFlag(INT_U2TX))

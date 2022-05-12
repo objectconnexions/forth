@@ -28,15 +28,15 @@ HEX
 
 : clock_display_time ( )
 	40 cursor_at_lcd
-	0 rtcc_date <# # # '/' # # #> write_lcd_string
-	S" --" write_lcd_string
-	0 rtcc_time <# # # ':' # # ':' # # #> write_lcd_string	
+	0 rtcc_date <# # # '/' # # #> lcd_string!
+	S" --" lcd_string!
+	0 rtcc_time <# # # ':' # # ':' # # #> lcd_string!	
 ;
 
 : clock_display ( )
 	0 cursor_at_lcd
-	S" Date: " write_lcd_string
-	S" Time: " write_lcd_string
+	S" Date: " lcd_string!
+	S" Time: " lcd_string!
 	clock_display_time 
 ;
 

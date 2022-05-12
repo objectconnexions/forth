@@ -13,7 +13,7 @@ HEX
 0bf805a40 CONSTANT SPI2CON2
 
 
-: WRITE_SPI ( send -- recv )
+: SPI! ( send -- recv )
 	SPI2BUF !
 	BEGIN
 		SPI2STAT 0 BIT_READ 	\ SPIRBF: RX Buffer Full bit
@@ -22,13 +22,13 @@ HEX
 	SPI2BUF @
 ;
 
-: WRITE_DROP_SPI ( send -- )
-	WRITE_SPI
+: DROP_SPI! ( send -- )
+	SPI!
 	DROP
 ;
 
-: READ_SPI ( -- value )
-	ff WRITE_SPI
+: SPI@ ( -- value )
+	ff SPI!
 \	1 SPI2BUF !
 \	SPI2BUF @
 ;
@@ -70,15 +70,15 @@ HEX
 
 \ ##
 
-: WRITE_ENABLE_EEPROM_CHIP ( -- )
+: ENABLE_EEPROM_CHIP! ( -- )
 	ENABLE_EEPROM_CHIP
-	0x06 WRITE_SPI	
+	0x06 SPI!	
 	DISABLE_EEPROM_CHIP
 ;
 
-: WRITE_DISABLE_EEPROM_CHIP ( -- )
+: DISABLE_EEPROM_CHIP! ( -- )
 	ENABLE_EEPROM_CHIP
-	04 WRITE_SPI	
+	04 SPI!	
 	DISABLE_EEPROM_CHIP
 ;
 
@@ -115,7 +115,7 @@ HEX
 	SPI2CON 8	BIT_SET		\ set CKE to output data on active-to-idle clock
 	SPI2CON 9	BIT_SET		\ set SMP to sample data at end?
 	50 SPI2BRG !			\ use FBP/4 clock frequency
-	\ READ_SPI				\ clear buffer
+	\ SPI@				\ clear buffer
 	SPI2BUF @
 	SPI2CON 10	BIT_CLR		\ Clear the ENHBUF bit
 	SPI2STAT 6	BIT_CLR		\ clear SPIROV flag
@@ -124,14 +124,14 @@ HEX
 
 : READ_ID ( -- )
 	ENABLE_ID_CHIP
-	03 WRITE_DROP_SPI		\ read
-	fa WRITE_DROP_SPI		\ serial number address
-	READ_SPI .HEX
-	READ_SPI .HEX
-	READ_SPI .HEX
-	READ_SPI .HEX
-	READ_SPI .HEX
-	READ_SPI .HEX
+	03 DROP_SPI!		\ read
+	fa DROP_SPI!		\ serial number address
+	SPI@ .HEX
+	SPI@ .HEX
+	SPI@ .HEX
+	SPI@ .HEX
+	SPI@ .HEX
+	SPI@ .HEX
 	DISABLE_ID_CHIP
 	CR
 ;
@@ -139,9 +139,9 @@ HEX
 
 : TEST_ID ( -- )
 	ENABLE_ID_CHIP
-	03 WRITE_DROP_SPI		\ read
-	fa WRITE_DROP_SPI		\ serial number address
-	READ_SPI
+	03 DROP_SPI!		\ read
+	fa DROP_SPI!		\ serial number address
+	SPI@
 	DISABLE_ID_CHIP
 
 	SPI2STAT @ .HEX CR
@@ -150,29 +150,29 @@ HEX
 ;
 
 : TEST_EEPROM ( -- )
-	WRITE_ENABLE_EEPROM_CHIP
+	ENABLE_EEPROM_CHIP!
 	ENABLE_EEPROM_CHIP
-	02 WRITE_DROP_SPI			\ write mode
-	00 WRITE_DROP_SPI			\ address high byte
-	00 WRITE_DROP_SPI			\ address low byte
+	02 DROP_SPI!			\ write mode
+	00 DROP_SPI!			\ address high byte
+	00 DROP_SPI!			\ address low byte
 
-	0c WRITE_DROP_SPI 			\ write 4 bytes
-	34 WRITE_DROP_SPI
-	56 WRITE_DROP_SPI
-	78 WRITE_DROP_SPI
+	0c DROP_SPI! 			\ write 4 bytes
+	34 DROP_SPI!
+	56 DROP_SPI!
+	78 DROP_SPI!
 	DISABLE_EEPROM_CHIP
-	WRITE_DISABLE_EEPROM_CHIP
+	DISABLE_EEPROM_CHIP!
 
 	ENABLE_EEPROM_CHIP
-	03 WRITE_DROP_SPI			\ read mode
-	00 WRITE_DROP_SPI			\ address high byte
-	00 WRITE_DROP_SPI			\ address low byte
+	03 DROP_SPI!			\ read mode
+	00 DROP_SPI!			\ address high byte
+	00 DROP_SPI!			\ address low byte
 
-	READ_SPI
-	READ_SPI
-	READ_SPI
-	READ_SPI
-	READ_SPI
+	SPI@
+	SPI@
+	SPI@
+	SPI@
+	SPI@
 	DISABLE_EEPROM_CHIP
 	. . . . . CR
 
@@ -181,18 +181,18 @@ HEX
 
 : READ_FROM_ID ( a -- n )
 	ENABLE_ID_CHIP
-	03 WRITE_DROP_SPI			\ read
-	WRITE_DROP_SPI				\ serial number address
-	READ_SPI
+	03 DROP_SPI!			\ read
+	DROP_SPI!				\ serial number address
+	SPI@
 	DISABLE_ID_CHIP
 ;
 
 : READ_FROM_EEPROM ( a -- n )
 	ENABLE_EEPROM_CHIP
-	03 WRITE_DROP_SPI			\ read
+	03 DROP_SPI!			\ read
 \ need to split address into two bytes
-	WRITE_DROP_SPI				\ serial number address
-	READ_SPI
+	DROP_SPI!				\ serial number address
+	SPI@
 	DISABLE_EEPROM_CHIP
 ;
 

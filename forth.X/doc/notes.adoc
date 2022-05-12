@@ -1,0 +1,34 @@
+== FORTH on PICs
+
+=== Terminal settings
+
+Configure with 
+
+	57600 8-N-1 using XON/XOFF (software flow control)
+
+
+
+=== Logging
+
+To change the logging level
+
+	> 3 LOG
+	
+.Logging levels
+
+0 - TRACE
+1 - DEBUG
+2 - INFO
+3- ERROR
+4 - OFF
+
+
+=== Timimg
+
+`tick` pushes the number of milliseconds onto the stack
+
+`time` pushes the number of microseconds
+
+`n ms` waits for _n_ milliseconds
+
+

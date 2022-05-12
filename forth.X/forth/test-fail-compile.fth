@@ -1,4 +1,7 @@
 
+\ test for how compile and interpreter failures are handled 
+\ when loading a file
+
 : INIT_SPI ( -- )
 	\ set up chip enable (CE) ports
 \	IO PORTA ANSEL RegAddr
@@ -33,6 +36,7 @@
 	SPI1CON 15	BIT_SET		\ enable SPI
 ;
 
+.s testnot cr .S words
 
 : DOUBLE ( n n -- 2n ) DUP + ;
 

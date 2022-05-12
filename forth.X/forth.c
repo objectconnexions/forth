@@ -1,3 +1,7 @@
+#ifdef __XC32
+#include <xc.h>          /* Defines special funciton registers, CP0 regs  */
+#endif
+
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
@@ -5,10 +9,10 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <GenericTypeDefs.h>
-#include <proc/p32mx270f256d.h>
+//#include <proc/p32mx270f256d.h>
+#include <cp0defs.h>
 
 #include "logger.h"
-#include "debug.h"
 #include "parser.h"
 #include "interpreter.h"
 #include "forth.h"
@@ -17,6 +21,7 @@
 #include "compiler.h"
 #include "dictionary.h"
 #include "uart.h"
+#include "timer.h"
 
 #define PEEK_DATA current_process->stack[current_process->sp]
 #define PUSH_DATA(value) push(value)
@@ -28,14 +33,12 @@
 
 void dump_parameter_stack(char *, struct Process*);
 void dump_return_stack(char *, struct Process*);
-void execute_next_instruction(void);
+//void execute_next_instruction(void);
 void display_code(uint8_t*);
-void tasks(void);
 uint32_t pop_stack(void);
 void wait(uint32_t);
 void next_task();
-struct Process* new_task(uint8_t, char*);
-void tasks(void);
+static struct Process* new_task(uint8_t, char*);
 static void load_words(void);
 void reset(void);
 static void print_top_of_stack(void);
@@ -44,38 +47,55 @@ void lit(void);
 
 static void dump_base(void);
 static void read_memory(void);
+static void read_char(void);
 static void two_drop(void);
 static void type(void);
-    static void debug_print_stack(void);
+static void debug_print_stack(void);
+static void print_task(struct Process*);
+static void tasks(void);
     
-uint32_t timer = 0;
+volatile uint32_t timer = 0;
 uint32_t base_no = 10;
 static bool waiting = true;
 static bool in_error;
+bool trace_code = false;
 
 struct Process* current_process;
+struct Process* return_to_process;
 static struct Process* processes;
 static struct Process* idle_process;
 static struct Process* power_process;
 static struct Process* interpreter_process;
+static struct Process* interrupt_process;
 static uint8_t next_process_id = 0;
 
 static CODE_INDEX interpreter_code;  // start of interpreter code
 static CODE_INDEX idle_code;
+static CODE_INDEX int_return_code;
+static CODE_INDEX interrupts[43];
+
+
+static bool debug = false;
+
 
 int forth_init()
 {   
     parser_init();
     compiler_init();
     
+    interrupt_process = new_task(10, "IRQ");
+    interrupt_process->log = true;
     interpreter_process = new_task(5, "INTERP");
+    interpreter_process->log = true;
     interpreter_process->suspended = false;
     current_process = interpreter_process;
+    current_process->log = true;
     idle_process = new_task(1, "IDLE");
     idle_process->suspended = false;
+    idle_process->log = false;
     power_process = new_task(5, "POWER");
     power_process->log = false;
-	
+
     uart_transmit_buffer("FORTH v0.4\n\n");        
     
     dictionary_init();
@@ -86,21 +106,20 @@ int forth_init()
 //    tasks();
 }
 
-void process_interrupt(uint8_t level)
+void forth_trace(bool trace) {
+    trace_code = debug && trace;
+}
+
+void process_abort(uint8_t level)
 {
     log_info(LOG, "restarting interpreter %I", level);
     abort_task(interpreter_process);   
-//    interpreter_process->sp = -1;
-//    interpreter_process->rsp = -1;
-//    interpreter_process->ip = interpreter_code;
-//    interpreter_process->next_time_to_run = 0;
-//    next_task();
 }
 
 uint8_t find_process(char *name) {
     struct Process* next = processes;
     do {
-        if (strcmp(name, next->name) == 0) {
+        if (strcicmp(name, next->name) == 0) {
             return next->id;
         }
         next = next->next;
@@ -123,7 +142,7 @@ static void push_blank()
 
 void push(CELL value)
 {
-    // PUSH_DATA(value);
+     // PUSH_DATA(value);
     (current_process->stack[++(current_process->sp)] = (value));
 }
 
@@ -158,10 +177,12 @@ bool stack_underflow()
     }
 }
 
+/**
+ * Check for valid addresses in REGISTERs or RAM
+ */
 static bool isAccessibleMemory(uint32_t address)
 {
-    if ((address >= 0xBF800000 && address <= 0xBF8FFFFF) ||
-            (address >= 0xA0000000 && address <= 0xA000FFFF)) 
+    if (address >= 0xBF800000 && address <= 0xBF8FFFFF) 
     {
         if (address % 4 != 0)
         {
@@ -173,9 +194,14 @@ static bool isAccessibleMemory(uint32_t address)
             return true;
         }
     } 
-    else 
+    else if ((address >= 0xA0000000 && address <= 0xA000FFFF) ||
+            (address >= 0x80000000 && address <= 0x8000FFFF)) 
+    {    
+        return true;
+    }
+    else
     {
-        console_out("LIMIT %Z!", address);
+        console_out("MEMORY LIMIT %Z!", address);
         return false;
     }
 }
@@ -190,9 +216,48 @@ void forth_run()
     in_error = false;
     while (true)
     {
+            
+//    processes = NULL;
+
+    /*    
+//        if (trace_code) {
+//    //        char word_name[64];
+//    //        dictionary_find_word_for(instruction, word_name);
+//    //        log_trace(LOG, "execute #%I %Z: %S", current_process->id, instruction, word_name);
+//            
+//            char buf[100];
+//            dump_parameter_stack(buf, current_process);
+//            console_out("%S  %Z ", buf, current_process->ip);
+//
+//            dictionary_print_instruction(current_process->ip);
+//            
+//            console_put(NL);
+//        }
+        */
+        
+    
+         if (trace_code) {
+    //        char word_name[64];
+    //        dictionary_find_word_for(instruction, word_name);
+    //        log_trace(LOG, "execute #%I %Z: %S", current_process->id, instruction, word_name);
+            if (current_process->ip == interpreter_code + 1) {
+                trace_code = false;
+            } else {
+                char buf[100];
+                dump_parameter_stack(buf, current_process);
+                console_out("%S  %Z ", buf, current_process->ip);
+
+                CODE_INDEX test = current_process->ip;
+                dictionary_print_instruction(test);
+            }
+            console_put(NL);
+        }
+    
+
         CODE_INDEX instruction = dictionary_read_instruction(current_process);
         forth_execute(instruction);
 
+        // TOD check this is how is still works. Think not!
         // TODO how do we set up the errors? needs to be part of the current_process struct
         if (in_error)
         {
@@ -203,19 +268,71 @@ void forth_run()
         }
     }
 }
+//
+//void start_code(CODE_INDEX at_address)
+//{
+//    PUSH_RETURN(current_process->ip);
+//    // TODO this should be the main current_process only
+//    interpreter_process->ip = at_address;
+//}
 
-void start_code(CODE_INDEX at_address)
+void forth_execute(CODE_INDEX instruction_pointer)
 {
-    PUSH_RETURN(current_process->ip);
-    // TODO this should be the main current_process only
-    interpreter_process->ip = at_address;
-}
-
-void forth_execute(CODE_INDEX instruction)
-{
-    if (dictionary_shortcode(instruction))
+    /*
+//    if (trace_code && current_process == interpreter_process) {
+//        
+//        
+//        0bf80f230 CONSTANT SYSKEYtask
+//        
+////        char word_name[64];
+////        CODE_INDEX entry = dictionary_find_word_for(instruction_pointer, word_name);
+//
+//        
+////        char buf[100];
+//       // dump_parameter_stack(buf, current_process);
+////        char *buf = "< ?? >";
+//        
+//        log_info(LOG, "instruction pointer #%I: %Z:", current_process->id, instruction_pointer);
+//
+////        
+//////        CODE_INDEX location = current_process->ip;
+//        dictionary_print_instruction(instruction_pointer); 
+//        //2 logconsole_put(NL);
+//
+//        
+//        
+//        
+//    }
+    
+//    CODE_INDEX instruction_pointer = dictionary_read_instruction(current_process);
+//    if (log_level == INFO && current_process == interpreter_process)
+//    { 
+//        dictionary_print_instruction(current_process->ip); 
+//    }
+    
+    
+//    
+//    
+//         if (trace_code) {
+//    //        char word_name[64];
+//    //        dictionary_find_word_for(instruction, word_name);
+//    //        log_trace(LOG, "execute #%I %Z: %S", current_process->id, instruction, word_name);
+//            
+//            char buf[100];
+//            dump_parameter_stack(buf, current_process);
+//            console_out("%S  %Z ", buf, instruction_pointer);
+//
+//            CODE_INDEX test = instruction_pointer;
+//            dictionary_print_instruction(test);
+//            
+//            console_put(NL);
+//        }
+//    
+    */
+    
+    if (dictionary_shortcode(instruction_pointer))
     {
-        dictionary_execute_function(instruction);
+        dictionary_execute_function(instruction_pointer);
     }
     else
     {
@@ -223,65 +340,183 @@ void forth_execute(CODE_INDEX instruction)
         if (log_level <= TRACE) 
         {
             char word_name[64];
-            dictionary_find_word_for(instruction, word_name);
-            log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction, current_process->ip);
+            dictionary_find_word_for(instruction_pointer, word_name);
+            log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction_pointer, current_process->ip);
         }
-        current_process->ip = instruction;
+        current_process->ip = instruction_pointer;
     }
     if (stack_underflow()) {
         forth_abort();
     }
 }
 
-void execute_next_instruction()
-{
-    in_error = false;
-    
-    // TODO move location into trace block
-    CODE_INDEX location = current_process->ip; // capture first as can't infer how many bytes it was later on
-    
-    if (location == LAST_ENTRY) {
-        return;
-    }
-    
-    CODE_INDEX instruction = dictionary_read_instruction(current_process);
-    if (log_level <= TRACE)
-    {   
-        char word_name[64];
-        dictionary_find_word_for(instruction, word_name);
-        log_trace(LOG, "execute #%I ~%Z: %Z: %S", current_process->id, location, instruction, word_name);
-    }
-    forth_execute(instruction);
+//void execute_next_instruction()
+//{
+////    in_error = false;
+////    
+////    // TODO move location into trace block
+////    CODE_INDEX location = current_process->ip; // capture first as can't infer how many bytes it was later on
+////    
+////    if (location == LAST_ENTRY) {
+////        return;
+////    }
+////    
+////    CODE_INDEX instruction = dictionary_read_instruction(current_process);
+////    if (log_level == INFO && current_process == interpreter_process)
+////    { 
+////        dictionary_print_instruction(current_process->ip); 
+////    }
+////    
+//////    if (log_level <= TRACE)
+//////    {   
+////        char word_name[64];
+////        dictionary_find_word_for(instruction, word_name);
+////        log_trace(LOG, "execute #%I ~%Z: %Z: %S", current_process->id, location, instruction, word_name);
+//////    }
+////        console_out("execute!\n");
+////    forth_execute(instruction);
+////
+////    // TODO how do we set up the errors? needs to be part of the current_process struct
+////    if (in_error)
+////    {
+////        in_error = false;
+////        current_process->sp = -1;
+////        current_process->rsp = -1;
+////        current_process->ip = LAST_ENTRY;
+////        current_process->next_time_to_run = 0;
+////        next_task();
+////        console_out(" ABORTED\n");
+////    }
+//}
+//   
 
-    // TODO how do we set up the errors? needs to be part of the current_process struct
-    if (in_error)
-    {
-        in_error = false;
-        current_process->sp = -1;
-        current_process->rsp = -1;
-        current_process->ip = LAST_ENTRY;
-        current_process->next_time_to_run = 0;
-        next_task();
-        console_out(" ABORTED\n");
+
+void forth_interrupt(uint8_t vector)
+{
+    CODE_INDEX ip = interrupts[vector]; // code to run TODO set up new process
+    
+    if (ip != NULL) {
+        //log_info(LOG, "INT processing %I -> %Z", vector, ip);
+
+        // TODO create 1 process for each interrupt level and use according to priority
+        interrupt_process->sp = -1;
+        interrupt_process->rsp = -1;
+        interrupt_process->ip = ip; 
+        interrupt_process->suspended = false;
+        interrupt_process->activations++;
+        interrupt_process->next_time_to_run = timer; // + 1000;
+
+        return_to_process = current_process;
+        current_process = interrupt_process;
+        
+        
+        while (true)
+        {
+            CODE_INDEX instruction = dictionary_read_instruction(current_process);
+            if (instruction == int_return_code && current_process->rsp == -1) {
+                current_process->suspended = true;
+//                current_process->ip = LAST_ENTRY;
+                tasks();
+                current_process = return_to_process;
+                break;
+            }
+            forth_execute(instruction);
+            
+//            // TOD check this is how is still works. Think not!
+//            // TODO how do we set up the errors? needs to be part of the current_process struct
+//            if (in_error)
+//            {
+//                // TODO extract into abort_task() function
+//                in_error = false;
+//                forth_abort();
+//                console_out(" ABORTED\n");
+//            }
+//            
+        }
     }
 }
-    
-void duplicate() 
+//    
+//    processes = NULL;
+
+//static void interrupt_return() {
+//   log_info(LOG, "INT RET!");
+//}
+
+static void write_mask(uint32_t address, CELL mask, bool set)
 {
-//    if (current_process->sp < 0) {
-//        console_out("stack underflow; aborting\n");
-//        return;	
-//    }
+    *((uint32_t *) (address | (set ? 0x08 : 0x04))) = mask;
+}
+
+static void interrupt_register()     
+//    processes = NULL;
+
+{
+    CELL code = POP_DATA;
+    CELL vector = POP_DATA;
+    interrupts[vector] = (CODE_INDEX)code;
+}
+
+static void interrupt_priority() 
+{
+    CELL vector = POP_DATA;
+    CELL priority = (POP_DATA << 2) | POP_DATA;
+    CELL offset = vector / 0x04 * 0x10;
+    CELL addr = ((CELL) &IPC0) + offset;
+    CELL mask = priority << (vector % 4 * 8);
+    write_mask(addr, mask, true);
+}
+
+static CELL bit_mask(CELL position) {
+    return 1 << (position % 0x20);
+}
+
+static CELL reg_addr(CELL addr, CELL position) {
+    CELL offset = position / 0x20 * 0x10;
+    return addr + offset;
+}
+
+static void interrupt_disable() 
+{
+    CELL source = POP_DATA;
+    CELL addr = reg_addr(((CELL) &IEC0), source);
+    CELL mask = bit_mask(source);
+    write_mask(addr, mask, false);
+}
+
+static void interrupt_enable() 
+{
+    CELL source = POP_DATA;
+    CELL addr = reg_addr(((CELL) &IEC0), source);
+    CELL mask = bit_mask(source);
+    write_mask(addr, mask, true);
+}
+
+static void interrupt_status() 
+{
+    CELL source = POP_DATA;
+    CELL addr = reg_addr(((CELL) &IFS0), source);
+    CELL mask = bit_mask(source);
+    log_info(LOG, "int status %Z mask %Y", addr, mask);
+    CELL read = *((uint32_t *) addr) & mask;
+    PUSH_DATA(read == mask);
+}
+
+static void interrupt_clear() 
+{
+    CELL source = POP_DATA;
+    CELL addr = reg_addr(((CELL) &IFS0), source);
+    CELL mask = bit_mask(source);
+    write_mask(addr, mask, false);
+}
+
+static void duplicate() 
+{
     CELL read = PEEK_DATA;
     PUSH_DATA(read);
 }
 
-void over()
+static void over()
 {
-//    if (current_process->sp < 1) {
-//        console_out("stack underflow; aborting\n");
-//        return;
-//    }
     CELL value = current_process->stack[current_process->sp - 1];
     PUSH_DATA(value);
 }
@@ -330,14 +565,18 @@ void tuck()
 
 void rot() 
 {
-//    if (current_process->sp < 1) {
-//        console_out("stack underflow; aborting\n");
-//        return;
-//    }
     CELL value = current_process->stack[current_process->sp - 2];
     current_process->stack[current_process->sp - 2] = current_process->stack[current_process->sp - 1];
     current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp];
     current_process->stack[current_process->sp] = value;
+}
+
+void lrot() 
+{
+    CELL value = current_process->stack[current_process->sp];
+    current_process->stack[current_process->sp] = current_process->stack[current_process->sp - 1];
+    current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 2];
+    current_process->stack[current_process->sp - 2] = value;
 }
 
 /*
@@ -732,7 +971,10 @@ static void ticks()
 
 static void time()
 {
-    PUSH_DATA(timer * 1000 + (TMR2 / 48));
+    uint32_t count = _CP0_GET_COUNT();
+//    uint32_t compare = _CP0_GET_COMPARE();
+//    log_info(LOG, "core timer count %I =? %I", count, compare);
+    PUSH_DATA(count / (CORE_TIMER_INTERVAL / 1000));
 }
 
 void yield()
@@ -776,11 +1018,11 @@ void execute_word()
 }
 
 
-static struct Process* process()
+static struct Process* get_process()
 {
-    if (current_process->sp < 1) {
+    if (current_process->sp < 0) {
         console_out("stack underflow; aborting\n");
-        return;
+        return NULL;
     }
     CELL id = current_process->stack[current_process->sp--];
     struct Process *process = processes;
@@ -798,7 +1040,7 @@ static struct Process* process()
 
 static void initiate()
 {
-    struct Process *run_process = process();
+    struct Process *run_process = get_process();
     if (run_process != NULL) {
         CODE_INDEX instruction = (CODE_INDEX) current_process->stack[current_process->sp--];
         run_process->suspended = false;
@@ -810,20 +1052,33 @@ static void initiate()
 
 static void terminate()
 {
-    struct Process *terminate_process = process();
-    terminate_process->suspended = true;
-    terminate_process->ip = LAST_ENTRY;
-    terminate_process->next_time_to_run = 0;
+    struct Process *terminate_process = get_process();
+    if (terminate_process)
+    {
+        terminate_process->suspended = true;
+        terminate_process->next_time_to_run = 0;
+        terminate_process->ip = LAST_ENTRY;
+        terminate_process->sp = -1;
+        terminate_process->rsp = -1;
+    }
 }
 
 static void suspend()
 {
-    process()->suspended = true;
+    struct Process *suspend_process = get_process();
+    if (suspend_process)
+    {
+        suspend_process->suspended = true;
+    }
 }
 
 static void resume()
 {
-    process()->suspended = false;    
+    struct Process *resume_process = get_process();
+    if (resume_process)
+    {
+        resume_process->suspended = false;    
+    }
 }
 
 void return_to()
@@ -938,7 +1193,8 @@ static void print_spaces()
     }
 }
 
-static void print_top_of_stack()
+
+static void print_n_top_of_stack(uint32_t radix)
 {
     if (current_process->sp < 0)
     {
@@ -946,12 +1202,39 @@ static void print_top_of_stack()
     } 
     else 
     {
-        print_space();
         duplicate();
         absolute();
         PUSH_DATA(0);
+        uint32_t base_restore = base_no;
+        base_no = radix;
         print_number();
+        base_no = base_restore;
+        print_space();
     }
+}
+static void print_top_of_stack()
+{
+    print_n_top_of_stack(base_no);
+}
+
+static void print_hex_top_of_stack()
+{
+    print_n_top_of_stack(16);
+}
+
+static void print_decimal_top_of_stack()
+{
+    print_n_top_of_stack(10);
+}
+
+static void print_octal_top_of_stack()
+{
+    print_n_top_of_stack(8);
+}
+
+static void print_binary_top_of_stack()
+{
+    print_n_top_of_stack(2);
 }
 
 static void print_unsigned_top_of_stack()
@@ -962,11 +1245,11 @@ static void print_unsigned_top_of_stack()
     } 
     else 
     {
-        print_space();
         PUSH_DATA(1); // not negative
         swap();
         PUSH_DATA(0);
         print_number();
+        print_space();
     }
 }
 
@@ -977,16 +1260,21 @@ static void print_double_top_of_stack() {
     } 
     else 
     {
-        print_space();
         swap();
         over();
         double_absolute();
         print_number();
+        print_space();
     }
 }
 
-static void print_content_of_address() {
+static void print_cell_of_address() {
     read_memory();
+    print_unsigned_top_of_stack();
+}
+
+static void print_char_of_address() {
+    read_char();
     print_unsigned_top_of_stack();
 }
 
@@ -1022,12 +1310,6 @@ static void emit()
 
 static void read_memory()
 {
-    if (current_process->sp < 0) {
-        console_out("stack underflow; aborting\n");
-        in_error = true;
-        return;
-    }
-
     uint32_t address = current_process->stack[current_process->sp--];
     log_trace(LOG, "address %Z", address);
     if (isAccessibleMemory(address)) 
@@ -1066,12 +1348,6 @@ static void two_read_memory()
 
 static void read_char()
 {
-    if (current_process->sp < 0) {
-        console_out("stack underflow; aborting\n");
-        in_error = true;
-        return;
-    }
-
     uint32_t address = current_process->stack[current_process->sp--];
     log_trace(LOG, "address %Z", address);
     uint8_t value = dictionary_read_byte((CODE_INDEX) address) & 0xff;
@@ -1081,12 +1357,6 @@ static void read_char()
 
 static void write_memory()
 {
-    if (current_process->sp < 0) {
-        console_out("stack underflow; aborting\n");
-        in_error = true;
-        return;
-    }
-
     uint32_t address = current_process->stack[current_process->sp--]; // address
     uint32_t value = current_process->stack[current_process->sp--]; // write value
     log_debug(LOG, "set address %Z to %Z", address, value);
@@ -1131,6 +1401,22 @@ static void two_write_memory()
         log_debug(LOG, "set address %Z to %Z", address + 4, value);
         *ptr = value;
 
+    }
+    else 
+    {
+        in_error = true;
+    }
+}
+
+static void write_char()
+{
+    uint32_t address = POP_DATA; // address
+    uint32_t value = POP_DATA % 0xFF; // write value
+    log_debug(LOG, "set address %Z to %X", address, value);
+    if (isAccessibleMemory(address)) 
+    {
+        uint8_t *ptr = (uint8_t *) address;
+        *ptr = value;
     }
     else 
     {
@@ -1362,10 +1648,14 @@ void to_upper(char *string)
     }
 }
 
-struct Process* new_task(uint8_t priority, char *name)
+static struct Process* new_task(uint8_t priority, char *name)
 {
     struct Process* new_process;
     new_process = malloc(sizeof(struct Process));
+    if (new_process == NULL) {
+        log_error(LOG, "failed to create task %S", name);
+        return NULL;
+    }
 
     if (processes == NULL) 
     {
@@ -1373,6 +1663,7 @@ struct Process* new_task(uint8_t priority, char *name)
     }
     else
     {
+        // TODO check for existing name
         struct Process* last_process = processes;
         while (last_process->next != NULL) {
             last_process = last_process->next;
@@ -1380,20 +1671,21 @@ struct Process* new_task(uint8_t priority, char *name)
         last_process->next = new_process;
     }
     
-    new_process->suspended = true;
     new_process->id = next_process_id++;
+    new_process->priority = priority;
+    new_process->suspended = true;
+    new_process->log = true;
     new_process->sp = -1;
     new_process->rsp = -1;
-    new_process->ip = LAST_ENTRY;
-    new_process->priority = priority;
+    new_process->next = NULL;
     new_process->next_time_to_run = 0;
     new_process->name = malloc(sizeof(strlen(name) + 1));
-    new_process->log = true;
     strcpy(new_process->name, name);
+    new_process->ip = LAST_ENTRY;
     
     if (current_process)
     {
-        log_info(LOG, "new task %S (P%I)", new_process->name, priority);
+        log_debug(LOG, "new task %S (P%I)", new_process->name, priority);
     }
     
     return new_process;
@@ -1404,13 +1696,13 @@ static void add_task()
     char name[32];
     parser_next_text(name); 
     to_upper(name);
+    log_info(LOG, "add task %S", name);
     new_task(5, name);
-    log_info("add task %S", name);
 }
 
 static void task_priority()
 {
-    CELL priority = current_process->stack[current_process->sp--];
+    CELL priority = POP_DATA;
     current_process->priority = priority;
     log_info(LOG, "process priority %I now on %S", priority, current_process->name);
 }
@@ -1423,75 +1715,77 @@ void next_task()
 {
     uint8_t highest_priority = 0;
     
-    //waiting = true;
-    
-    struct Process* change_to = NULL;
-    struct Process* next = processes;
+    struct Process* p = processes;
+    struct Process* next = NULL;
     do {
-        if (!current_process->suspended && next->ip != LAST_ENTRY && timer >= next->next_time_to_run && next->priority >= highest_priority) {
-            highest_priority = next->priority;
-            change_to = next;
-            //current_process = next;
-            //waiting = false;
+        if (!p->suspended 
+                && p->ip != LAST_ENTRY 
+                && timer >= p->next_time_to_run 
+                && p->priority >= highest_priority) {
+            highest_priority = p->priority;
+            next = p;
         }
-        next = next->next;
-    } while (next != NULL);
-    //if (!waiting) {
-    if (change_to != NULL && change_to != current_process) {
-        current_process = change_to;
+        p = p->next;
+    } while (p != NULL);
+    if (next != NULL && next != current_process) {
+        current_process = next;
         current_process->activations++;
         // log_trace(LOG, "switch to current_process %S", current_process->name);
     }
 }
-
-void tasks()
+static void print_task(struct Process* p) 
 {
-    struct Process* p = processes;
+    char buf[64];
+    console_out("  Task #%I%S %S (P%I) %Z, %I next %I %S ", 
+            p->id, p == current_process ? "*" : "", p->name, p->priority,  
+            p->ip, p->activations, p->next_time_to_run, 
+            p->suspended ? "SUSP" : "");
+    dump_return_stack(buf, current_process);
+    console_out(buf);
+    console_put(SPACE);
+    dump_parameter_stack(buf, p);
+    console_out(buf);
+    console_put(NL);
+}
+
+static void tasks()
+{
     console_out("\nTasks:\n  Time %I\n", timer);
+    struct Process* p = processes;
     do {
-        char buf[64];
-        console_out("  Task #%I%S %S (P%I) %Z, *%I next %I %S ", 
-                p->id, p == current_process ? "*" : "", p->name, p->priority,  
-                p->ip, p->activations, p->next_time_to_run, 
-                p->suspended ? "SUSP" : "");
-        dump_return_stack(buf, current_process);
-        console_out(buf);
-        console_put(SPACE);
-        dump_parameter_stack(buf, p);
-        console_out(buf);
-        console_put(NL);
+        print_task(p);
         p = p->next;
     } while (p != NULL);
 }
 
 void dump()
 {
-    if (current_process->sp < 1) {
-        console_out("stack underflow; aborting\n");
-        return;
-    }
-    CELL length = current_process->stack[current_process->sp--];
-    CODE_INDEX code_index = (CODE_INDEX) current_process->stack[current_process->sp--];
+    CELL length = POP_DATA;
+    CODE_INDEX code_index = (CODE_INDEX) POP_DATA;
     dictionary_memory_dump(code_index, length);
 }
 
 static void dump_base()
 {
-    dictionary_memory_dump(0, 0x200);
+    dictionary_memory_dump(0, 0x100);
 }
 
 static void abort_task(struct Process* process)
 {
+    forth_trace(false);
     char buf[80];
     log_debug(LOG, "abort task %S", process->name);
     dump_parameter_stack(buf, process);
-    console_out("aborted %S\n", buf);
+    console_out("%S aborted %S\n", process->name, buf);
     process->sp = -1;
     process->rsp = -1;
     process->ip = 0;
-    process->ip = (current_process == interpreter_process) ? interpreter_code : (CODE_INDEX) LAST_ENTRY;
+    process->ip = (process == interpreter_process) ? interpreter_code : (CODE_INDEX) LAST_ENTRY;
     process->next_time_to_run = 0;
     next_task();
+    interpreter_echo();
+    uart_dispose();
+    INTEnableInterrupts();  // re-enable interrupts
 
 }
 
@@ -1741,7 +2035,7 @@ static void load_words()
     dictionary_add_core_word(NULL, branch, false);
     dictionary_add_core_word(NULL, zero_branch, false);
     // TODO replace with EXIT word
-    dictionary_add_core_word(NULL, return_to, false);
+    int_return_code = dictionary_add_core_word(NULL, return_to, false);
     dictionary_add_core_word(NULL, interpreter_run, false);
     dictionary_add_core_word(NULL, print_string, false);
     dictionary_add_core_word(NULL, s_string, false);
@@ -1757,6 +2051,7 @@ static void load_words()
     dictionary_add_core_word("OVER", over, false);
     dictionary_add_core_word("PICK", pick, false);
     dictionary_add_core_word("ROT", rot, false);
+    dictionary_add_core_word("LROT", lrot, false);
     dictionary_add_core_word("SWAP", swap, false);
     dictionary_add_core_word("TUCK", tuck, false);
 
@@ -1816,10 +2111,15 @@ static void load_words()
     dictionary_add_core_word("NOT", not, false);
     dictionary_add_core_word("LSHIFT", left_shift, false);
     dictionary_add_core_word("RSHIFT", right_shift, false);
-    dictionary_add_core_word("?", print_content_of_address, false);
-    dictionary_add_core_word("D.", print_double_top_of_stack, false);
     dictionary_add_core_word(".", print_top_of_stack, false);
+    dictionary_add_core_word("HEX.", print_hex_top_of_stack, false);
+    dictionary_add_core_word("DEC.", print_decimal_top_of_stack, false);
+    dictionary_add_core_word("OCT.", print_octal_top_of_stack, false);
+    dictionary_add_core_word("BIN.", print_binary_top_of_stack, false);
     dictionary_add_core_word("U.", print_unsigned_top_of_stack, false);
+    dictionary_add_core_word("D.", print_double_top_of_stack, false);
+    dictionary_add_core_word("?", print_cell_of_address, false);
+    dictionary_add_core_word("C?", print_char_of_address, false);
     dictionary_add_core_word("SPACE", print_space, false);
     dictionary_add_core_word("SPACES", print_spaces, false);
     
@@ -1837,11 +2137,11 @@ static void load_words()
     dictionary_add_core_word("EMIT", emit, false);
     dictionary_add_core_word("@", read_memory, false);
     dictionary_add_core_word("2@", two_read_memory, false);
-    dictionary_add_core_word("@C", read_char, false);
+    dictionary_add_core_word("C@", read_char, false);
     dictionary_add_core_word("!", write_memory, false);
     dictionary_add_core_word("!+", write_memory_add_1, false);
     dictionary_add_core_word("2!", two_write_memory, false);
-    dictionary_add_core_word("!C", write_memory, false);
+    dictionary_add_core_word("C!", write_char, false);
     dictionary_add_core_word("EXECUTE", execute_word, false);
     dictionary_add_core_word(".S", stack, false);
     dictionary_add_core_word("CLEAR", clear_stack, false);
@@ -1858,7 +2158,6 @@ static void load_words()
     dictionary_add_core_word("RESUME", resume, false);
     dictionary_add_core_word("PAUSE", yield, false);
     dictionary_add_core_word("MS", wait_for, false);
-
     
     dictionary_add_core_word("CHAR", push_char, false);
     dictionary_add_core_word("BL", push_blank, false);
@@ -1913,6 +2212,15 @@ static void load_words()
     dictionary_add_core_word("KEY?", has_next_char, false);
     dictionary_add_core_word("ABORT", forth_abort, false);
 
+    // interrupts
+    dictionary_add_core_word("IREG", interrupt_register, false);
+    dictionary_add_core_word("IPRI", interrupt_priority, false);
+    dictionary_add_core_word("IEN", interrupt_enable, false);
+    dictionary_add_core_word("IDIS", interrupt_disable, false);
+    dictionary_add_core_word("ICLR", interrupt_clear, false);
+    dictionary_add_core_word("ISTS", interrupt_status, false);
+//    dictionary_add_core_word("IRET", interrupt_return, false);
+
     // other, non-forth standard, words
     dictionary_add_core_word("DICT", dictionary_debug, false);
     dictionary_add_core_word("DRESET", dictionary_reset, false);
@@ -1928,7 +2236,7 @@ static void load_words()
 
     // create loop with process instruction
     // =>  : _INTERACTIVE BEGIN {run code} AGAIN ;
-    dictionary_add_entry("_INTERACTIVE");
+    interpreter_code = dictionary_add_entry("_INTERACTIVE");
     compiler_begin();
     dictionary_append_function(interpreter_run);
     compiler_again();
@@ -1936,20 +2244,25 @@ static void load_words()
     
     // create loop with pause instruction  
     // =>  : _IDLE BEGIN PAUSE AGAIN ;
-    dictionary_add_entry("_IDLE");
+    idle_code = dictionary_add_entry("_IDLE");
     compiler_begin();
     struct Dictionary_Entry entry;
     dictionary_append_function(yield);
     compiler_again();
     dictionary_end_entry();
 
-    dictionary_find_entry("_INTERACTIVE", &entry);
-    interpreter_code = entry.instruction;
+  //  dictionary_find_entry("_INTERACTIVE", &entry);
+  //  interpreter_code = entry.instruction;
     interpreter_process->ip = interpreter_code;
 
-    dictionary_find_entry("_IDLE", &entry);
-    idle_code = entry.instruction;
+ //   log_error(LOG, "%Z == %Z", cdix, interpreter_code);
+    
+//    dictionary_find_entry("_IDLE", &entry);
+//    idle_code = entry.instruction;
     idle_process->ip = idle_code;
 
+//    dictionary_find_entry("IRET", &entry);
+//    int_return_code = entry.instruction;
+    
     dictionary_lock();
 }

@@ -22,17 +22,19 @@ extern "C" {
 typedef void (*CORE_FUNC)(void);
 
 
-#define SCRUB 1
-#define IMMEDIATE 2
-#define OTHER 4
+#define SCRUB (uint8_t) 1
+#define IMMEDIATE (uint8_t) 2
+#define OTHER (uint8_t) 4
     
 struct Dictionary_Entry {
     CODE_INDEX starts;          // starting address of entry
     CODE_INDEX ends;            // ending address of entry
     char name[32];                 // entry's name
     uint8_t flags;
-    CODE_INDEX instruction;     // address of entry's code
+    INSTRUCTION instruction;     // address of entry's code
 };
+
+void dictionary_print_instruction(CODE_INDEX);
 
 void dictionary_init(void);
 
@@ -44,13 +46,15 @@ void dictionary_allot(int32_t);
 
 bool dictionary_is_core_word(CODE_INDEX);
 
-void dictionary_add_entry(char *);
+void dictionary_abort_entry(void);
+
+CODE_INDEX dictionary_add_entry(char *);
 
 void dictionary_end_entry(void);
 
 void dictionary_insert_internal_instruction(uint8_t, CORE_FUNC);
 
-void dictionary_add_core_word(char *, CORE_FUNC, bool);
+CODE_INDEX dictionary_add_core_word(char *, CORE_FUNC, bool);
 
 CORE_FUNC dictionary_find_core_function(uint16_t);
 
@@ -107,6 +111,8 @@ void compiler_suspend(void);
 void compiler_resume(void);
 
 CODE_INDEX dictionary_pad(void);
+
+int strcicmp(char const *, char const *);
 
 void dictionary_restart(CODE_INDEX);
 

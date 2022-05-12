@@ -7,7 +7,6 @@
 #include <GenericTypeDefs.h>
 #include <machine/types.h>
 
-#include "debug.h"
 #include "logger.h"
 #include "dictionary.h"
 #include "forth.h"
@@ -97,10 +96,8 @@ CODE_INDEX dictionary_pad()
     return new_entry_offset;
 }
 
-static void add_entry(char *name, uint8_t flags)
+static CODE_INDEX add_entry(char *name, uint8_t flags)
 {
-    //log_trace(LOG, "   previous word ends at %04X", dictionary_offset() - 1);
-
     int len = strlen(name);
     insertion_point = new_entry_offset;              
     log_debug(LOG, "   new entry for '%S' (%I chars) at %Z", name, len & 0x1f, insertion_point);
@@ -122,6 +119,7 @@ static void add_entry(char *name, uint8_t flags)
     strcpy(insertion_point, name);
     insertion_point += len;
     log_debug(LOG, "   code start %Z", insertion_point);
+    return insertion_point;
 }
 
 void dictionary_lock()
@@ -134,9 +132,9 @@ void dictionary_restart(CODE_INDEX entry)
     locked_before = entry;
 }
 
-void dictionary_add_entry(char *name)
+CODE_INDEX dictionary_add_entry(char *name)
 {
-    add_entry(name, 0);
+    return add_entry(name, 0);
 }
 
 static CODE_INDEX align(CODE_INDEX address)
@@ -152,7 +150,7 @@ static CODE_INDEX align(CODE_INDEX address)
  * Align data in memory so it is on a four-byte boundary as accessing memory at other 
  * positions fails with an exception.
  */
-void dictionary_align(void)
+void dictionary_align()
 {
     log_debug(LOG, "alignment offset %I", ((uint32_t) insertion_point) % 4);
     while (((uint32_t) insertion_point) % 4 != 0) {
@@ -219,6 +217,22 @@ void dictionary_write_byte(CODE_INDEX index, uint8_t value)
 {
     *index = value;
 }
+/*
+ * Abort the current entry (or last) entry by reseting the dictionary start location to
+ * the previous entry. Needed because the entry is create before it contents are 
+ * added, and adding those content could fail (for example if the compile is invalid).
+ */
+void dictionary_abort_entry() {
+//    if (new_entry_offset > 0) {
+//        new_entry_offset = ???
+//        insertion_point = read_address(&search_from);
+//    }
+    if (search_from > 0) {
+        search_from = read_address(&search_from);
+    }
+        
+    log_info(LOG, "abort, stick at %Z, reset top to %Z", new_entry_offset, search_from);
+}
 
 void dictionary_end_entry() 
 {
@@ -233,7 +247,7 @@ void dictionary_insert_internal_instruction(uint8_t entry, CORE_FUNC function)
     last_function_index = entry >= last_function_index ? entry + 1: last_function_index;
 }
 
-void dictionary_add_core_word(char * name, CORE_FUNC function, bool immediate)
+CODE_INDEX dictionary_add_core_word(char * name, CORE_FUNC function, bool immediate)
 {
     if (last_function_index + 1 >= CORE_WORDS)
     {
@@ -257,6 +271,8 @@ void dictionary_add_core_word(char * name, CORE_FUNC function, bool immediate)
 
         last_function_index++;
         last_core_entry = new_entry_offset;
+        
+        return (CODE_INDEX) (last_function_index - 1);
     }
 }
 
@@ -267,6 +283,15 @@ void dictionary_mark_internal() {
    CODE_INDEX current_index = search_from;
    read_address(&current_index);    // move the pointer to right address
    *current_index = *current_index | IMMEDIATE << 5;
+}
+
+int strcicmp(char const *a, char const *b)
+{
+    for (;; a++, b++) {
+        int d = tolower((unsigned char)*a) - tolower((unsigned char)*b);
+        if (d != 0 || !*a)
+            return d;
+    }
 }
 
 /*
@@ -291,7 +316,7 @@ bool dictionary_find_entry(char * name, struct Dictionary_Entry *entry)
         e.name[len] = 0;
 
         // log_trace(LOG, "   checking '%S' at %08x (%08x)", entry_name, entry_index, current_index + len);
-        if (strcmp(e.name, name) == 0) {
+        if (strcicmp(e.name, name) == 0) {
             current_index += len;
             log_debug(LOG, " code found for '%S' at %Z (%Z~%Z)", e.name, current_index, e.starts, e.ends);
             // the next byte is the start of the memory
@@ -332,17 +357,27 @@ static uint64_t read(CODE_INDEX *offset)
     uint32_t value = 0;
     uint8_t i = 0;
     
-    while (true)
+    uint32_t address = (uint32_t) *offset;
+    if ((address >= 0xA0000000 && address <= 0xA000FFFF) ||
+            (address >= 0x80000000 && address <= 0x8000FFFF)) 
     {
-        // log_trace(LOG, "read %08x", *offset);
-        
-        segment = *(*offset);
-        (*offset)++;
-        value =  (segment & 0x7F) << (i * 7)  | value ; // (value * 0x80) | (segment & 0x7F);
-        if (segment < 0x80) {
-            return value;
-        }
-        i++;
+        while (true)
+        {
+            // log_trace(LOG, "read %08x", *offset);
+
+            segment = *(*offset);
+            (*offset)++;
+            value =  (segment & 0x7F) << (i * 7)  | value ; // (value * 0x80) | (segment & 0x7F);
+            if (segment < 0x80) {
+                return value;
+            }
+            i++;
+        }   
+    }
+    else
+    {
+        console_out("RAM LIMIT %Z!", *offset); 
+        forth_abort();
     }
 }
 
@@ -362,14 +397,14 @@ CODE_INDEX dictionary_read_instruction(struct Process *process)
     return read_address(&(process->ip));
 }
 
-bool dictionary_shortcode(CODE_INDEX instruction)
+bool dictionary_shortcode(CODE_INDEX code_pointer)
 {
-    return ((uint32_t) instruction) < CORE_WORDS;
+    return ((uint32_t) code_pointer) < CORE_WORDS;
 }
 
-void dictionary_execute_function(CODE_INDEX instruction)
+void dictionary_execute_function(CODE_INDEX instruction_pointer)
 {
-    core_functions[(uint32_t) instruction]();
+    core_functions[(uint32_t) instruction_pointer]();
 }
 
 CODE_INDEX dictionary_offset() 
@@ -386,12 +421,12 @@ CODE_INDEX dictionary_data_address(CODE_INDEX offset)
 /*
  Return the address of the dictionary entry for the memory at the specified address
  */
-CODE_INDEX dictionary_find_word_for(CODE_INDEX instruction, char *name) {
+CODE_INDEX dictionary_find_word_for(CODE_INDEX code_pointer, char *name) {
     CODE_INDEX entry;
     CODE_INDEX next_entry;
     bool short_memory;
 
-    log_debug(LOG, "seeking name for instruction %Z (%X)", instruction, last_function_index);
+    log_debug(LOG, "seeking name for instruction %Z (%X)", code_pointer, last_function_index);
 
     entry = search_from;
     strcpy(name, "Unknown!");        
@@ -401,7 +436,7 @@ CODE_INDEX dictionary_find_word_for(CODE_INDEX instruction, char *name) {
         CODE_INDEX memory_at = entry + len;
         short_memory = entry <= last_core_entry;
 //        log_trace(LOG, " checking %Sentry %08x (%02x)", short_memory ? "short " : "", memory_at, *memory_at);
-        if ((short_memory && ((uint32_t) instruction) == *memory_at) || (!short_memory && instruction == memory_at)) {
+        if ((short_memory && ((uint32_t) code_pointer) == *memory_at) || (!short_memory && code_pointer == memory_at)) {
             strncpy(name, entry,len);
             name[len] = 0;
             log_debug(LOG, " found %S %Z", name, memory_at);
@@ -524,17 +559,17 @@ static CODE_INDEX find_entry(CODE_INDEX offset, char * name)
 }
        
 // TODO removed as not in use
-void dictionary_debug_summary(CODE_INDEX instruction)
+void dictionary_debug_summary(CODE_INDEX code_pointer)
 {
-     if (instruction > (CODE_INDEX) 0x90000000) 
+     if (code_pointer > (CODE_INDEX) 0x90000000) 
      {
          // TODO lookup word that matches function address
-         console_out("func<%Z>", instruction);
+         console_out("func<%Z>", code_pointer);
      }
      else
      {
         char name[32];
-        CODE_INDEX location = find_entry(instruction, name);
+        CODE_INDEX location = find_entry(code_pointer, name);
         console_out("%S @%Y", name, location);
      }
 }
@@ -557,7 +592,7 @@ void dictionary_debug_entry(struct Dictionary_Entry * entry_data)
     CODE_INDEX addr;
     CODE_INDEX value;
     int8_t relative;
-    
+
     start_at = entry_data->starts;
     log_debug(LOG, " debug entry for %Z", start_at);
     end_at = entry_data->ends;
@@ -573,90 +608,174 @@ void dictionary_debug_entry(struct Dictionary_Entry * entry_data)
         addr = entry;
         value = read_address(&entry);
         if (value <= (CODE_INDEX) ((uint32_t) last_function_index)) {
-            CORE_FUNC function = core_functions[(uint32_t) value];
-            if (function == push_literal)
-            {
-                CELL value2 = read(&entry);
-                debug_print(addr, entry - addr);
-                console_out("LIT %Z", value2);
-            }
-            else if (function == memory_address)
-            {
-                value = align(entry);
-                debug_print(addr, entry - addr);
-                console_out("ADDR %Z", value);
-            }
-            else if (function == data_address)
-            {
-                value = align(entry);
-                debug_print(addr, entry - addr);
-                console_out("DATA %Z", value);
-            }
-            else if (function == return_to)
-            {
-                debug_print(addr, entry - addr);
-                console_out("EXIT");
-            }
-            else if (function == interpreter_run)
-            {
-                debug_print(addr, entry - addr);
-                console_out("INTERPRET");
-            }
-            else if (function == branch)
-            {
-                relative = *entry++;
-                debug_print(addr, entry - addr);
-                console_out("BRANCH (%I) %Z", relative, addr + relative);
-            }
-            else if (function == zero_branch)
-            {
-                relative = *entry++;
-                debug_print(addr, entry - addr);
-                console_out("ZBRANCH (%I) %Z", relative, addr + relative);
-            }
-            else if (function == print_string || function == c_string || function == s_string)
-            {
-                relative = *entry++;
-                debug_print(addr, entry - addr);
-                console_out("STRING (%I) '", relative);
-                int i;
-                for (i = 0; i < relative; i++) {
-                    char c = *entry++;
-                    if (c < 32)
-                    {
-                        console_out("{%I}", c);
-                    }
-                    else 
-                    {
-                        console_put(c);
-                    }
-                }
-                console_put('\'');
+             CORE_FUNC function = core_functions[(uint32_t) value];
+             if (function == push_literal)
+             {
+                 CELL value2 = read(&entry);
+                 debug_print(addr, entry - addr);
+                 console_out("LIT %Z", value2);
+             }
+             else if (function == memory_address)
+             {
+                 value = align(entry);
+                 debug_print(addr, entry - addr);
+                 console_out("ADDR %Z", value);
+             }
+             else if (function == data_address)
+             {
+                 value = align(entry);
+                 debug_print(addr, entry - addr);
+                 console_out("DATA %Z", value);
+             }
+             else if (function == return_to)
+             {
+                 debug_print(addr, entry - addr);
+                 console_out("EXIT");
+             }
+             else if (function == interpreter_run)
+             {
+                 debug_print(addr, entry - addr);
+                 console_out("INTERPRET");
+             }
+             else if (function == branch)
+             {
+                 relative = *entry++;
+                 debug_print(addr, entry - addr);
+                 console_out("BRANCH (%I) %Z", relative, addr + relative);
+             }
+             else if (function == zero_branch)
+             {
+                 relative = *entry++;
+                 debug_print(addr, entry - addr);
+                 console_out("ZBRANCH (%I) %Z", relative, addr + relative);
+             }
+             else if (function == print_string || function == c_string || function == s_string)
+             {
+                 relative = *entry++;
+                 debug_print(addr, entry - addr);
+                 console_out("STRING (%I) '", relative);
+                 int i;
+                 for (i = 0; i < relative; i++) {
+                     char c = *entry++;
+                     if (c < 32)
+                     {
+                         console_out("{%I}", c);
+                     }
+                     else 
+                     {
+                         console_put(c);
+                     }
+                 }
+                 console_put('\'');
 
-            }
-            else if (function == nop)
-            {
-                debug_print(addr, entry - addr);
-                console_out("NOP");
-            }
-            else
-            {
-                dictionary_find_word_for(value, entry_data->name);
-                CORE_FUNC function = core_functions[(uint32_t) value];
-                debug_print(addr, entry - addr);
-                console_out("%S  func(%Y)<%Z>", entry_data->name, value, function);
-            }
-        }
-        else 
-        {
-            dictionary_find_word_for(value, entry_data->name);
-            debug_print(addr, entry - addr);
-            console_out("%S (%Z)", entry_data->name, value);
-        }
+             }
+             else if (function == nop)
+             {
+                 debug_print(addr, entry - addr);
+                 console_out("NOP");
+             }
+             else
+             {
+                 dictionary_find_word_for(value, entry_data->name);
+                 CORE_FUNC function = core_functions[(uint32_t) value];
+                 debug_print(addr, entry - addr);
+                 console_out("%S  func(%Y)<%Z>", entry_data->name, value, function);
+             }
+         }
+         else 
+         {
+             dictionary_find_word_for(value, entry_data->name);
+             debug_print(addr, entry - addr);
+             console_out("%S (%Z)", entry_data->name, value);
+         }        
         console_put(NL);
     }
 }
 
+
+void dictionary_print_instruction(CODE_INDEX code_pointer)
+{
+    CODE_INDEX addr = code_pointer;
+    CODE_INDEX value = read_address(&code_pointer);
+    int8_t relative;
+    char name[32]; 
+
+    log_trace(LOG, "instruction @ %Z : %Z", code_pointer, value);
+    
+    if (value <= (CODE_INDEX) ((uint32_t) last_function_index)) {
+        CORE_FUNC function = core_functions[(uint32_t) value];
+        if (function == push_literal)
+        {
+            CELL value2 = read(&code_pointer);
+            console_out("LIT %Z", value2);
+        }
+        else if (function == memory_address)
+        {
+            value = align(code_pointer);
+            console_out("ADDR %Z", value);
+        }
+        else if (function == data_address)
+        {
+            value = align(code_pointer);
+           console_out("DATA %Z", value);
+        }
+        else if (function == return_to)
+        {
+            console_out("EXIT");
+        }
+//            else if (function == interpreter_run)
+//            {
+//                console_out("INTERPRET");
+//            }
+        else if (function == branch)
+        {
+            relative = *code_pointer++;
+            console_out("BRANCH (%I) %Z", relative, addr + relative);
+        }
+        else if (function == zero_branch)
+        {
+            relative = *code_pointer++;
+            console_out("ZBRANCH (%I) %Z", relative, addr + relative);
+        }
+        else if (function == print_string || function == c_string || function == s_string)
+        {
+            relative = *code_pointer++;
+            console_out("STRING (%I) '", relative);
+            int i;
+            for (i = 0; i < relative; i++) {
+                char c = *code_pointer++;
+                if (c < 32)
+                {
+                    console_out("{%I}", c);
+                }
+                else 
+                {
+                    console_put(c);
+                }
+            }
+            console_put('\'');
+
+        }
+        else if (function == nop)
+        {
+            console_out("NOP");
+        }
+        else
+        {
+            dictionary_find_word_for(value, name);
+            CORE_FUNC function = core_functions[(uint32_t) value];
+//            console_out("%S  func(%Y)<%Z>", name, value, function);
+            console_out("%S", name);
+        }
+    }
+    else 
+    {
+        dictionary_find_word_for(value, name);
+        console_out("%S (%Z)", name, value);
+    }
+
+
+}
 void dictionary_debug()
 {
     console_out("last: %Z\n", search_from);
@@ -664,37 +783,35 @@ void dictionary_debug()
     console_out("locked at: %Z\n", locked_before);
     console_out("memory at: %Z\n\n", memory);
     
-    CODE_INDEX entry;
-    CODE_INDEX next_entry;
+    CODE_INDEX code_pointer;
+    CODE_INDEX next_code_pointer;
     char name[32];
 
 	if (search_from == LAST_ENTRY) {
 		console_out("No entries\n");
 	}
     
-    entry = search_from;
-    while (entry != LAST_ENTRY)
+    code_pointer = search_from;
+    while (code_pointer != LAST_ENTRY)
     {
-        console_out("%Z ", entry);
-        next_entry = read_address(&entry);
-        uint8_t byte = *entry++;
+        console_out("%Z ", code_pointer);
+        next_code_pointer = read_address(&code_pointer);
+        uint8_t byte = *code_pointer++;
         uint8_t len = byte & 0x1f;
-        strncpy(name, entry, len);
+        strncpy(name, code_pointer, len);
         name[len] = 0;
         console_out("%S  [%X] ", name, byte >> 5);
-        console_out("%S  [%I] ", name, byte >> 5);
-        if (log_level <= DEBUG) console_out("[%Z + %I]  ", entry, len);
-        if (entry <= last_core_entry)
+        if (code_pointer <= last_core_entry)
         {
             // C function address
-            uint8_t short_memory = *(entry + len);
+            uint8_t short_memory = *(code_pointer + len);
             console_out(" func(%I)<%Z>\n", short_memory, core_functions[short_memory]);            
         }
         else
         {
             // position of the memory
-            console_out(" -> %Z\n", entry + len);
+            console_out(" -> %Z\n", code_pointer + len);
         }
-        entry = next_entry;
+        code_pointer = next_code_pointer;
     }
 }

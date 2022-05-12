@@ -25,7 +25,7 @@ extern "C" {
 #include <stdint.h> 
 #include "dictionary.h"
 
-extern CELL state;
+extern uint8_t state;
 
 void compiler_compile_definition(void);
 

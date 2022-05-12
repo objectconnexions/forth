@@ -1,53 +1,54 @@
-HEX
+DECIMAL
 
-0bf809000 CONSTANT ADC
-0 CONSTANT AD1CON1
-10 CONSTANT AD1CON2
-20 CONSTANT AD1CON3
-40 CONSTANT AD1CHS
-70 CONSTANT ADC1BUF0
+$0bf809000 CONSTANT ADC
+
+$0bf809000 CONSTANT AD1CON1
+$0bf809010 CONSTANT AD1CON2
+$0bf809020 CONSTANT AD1CON3
+$0bf809040 CONSTANT AD1CHS
+$0bf809050 CONSTANT AD1CSSL
+
+$0bf809070 CONSTANT ADC1BUF0
+\  +10 for BUF1, +20 for BUF2 etc
+
+
+: ADC_SELECT ( input -- ) 
+	16 4 AD1CHS REG_BITS!				\ Positive input select, CH0SB (27:24) 
+;
 
 : ADC_INIT ( -- )
-	ADC 0f BIT_CLR		\ prepare to set up ADC - turn off 
+	15 AD1CON1 REG_BIT_CLEAR			\ prepare to set up ADC, ON (15:15) to 0 - turn off 
+	4 8 3 AD1CON1 REG_BITS!				\ set data format, FORM (10:8) to 4 - 32 bit integer
+	7 5 3 AD1CON1 REG_BITS!				\ set conversion trigger, SSRC (7:5) to 7, internal counter - auto convert
+	2 AD1CON1 REG_BIT_CLEAR				\ reset ASAM (2:2), manual sampling
 
-	0
-	4 8 SET_BITS		\ at bit 8, data format: 32 bit integer
-	7 5	SET_BITS		\ at bit 5, conversion trigger source: auto
-						\ bit 2, manual sampling
-	ADC !				\ set up AD1CON1
+	0 AD1CON2 !							\ set voltage references, VCFG (7:5) to 0, AVDD~AVSS
+										\ and buffer fill modes.
+										\ reset CSCNA (10:10), Inputs are not scanned,
+										\ SMPI (5:2) to 0, Interrupt every sample
+	
+	$01f 8 5 AD1CON3 REG_BITS!			\ Auto sample time, SAMC (12:8) to 31 TAD
+	$0ff 0 8 AD1CON3 REG_BITS!			\ Conversion clock, ADCS (7:0) to 255, the slowest conversion speed
 
-	0					\ Configure ADC voltage reference
-						\ and buffer fill modes.
-						\ VREF from AVDD and AVSS,
-						\ Inputs are not scanned,
-						\ Interrupt every sample
-	ADC AD1CON2 OR !	\ set up AD1CON2
+	23 AD1CHS REG_BIT_CLEAR				\ Negative input select, CHONA (23:23) to 0, input is VREFL (AVss)	
 
-	0
-	01f 8 SET_BITS		\ slowest conversion speed
-	0ff 0 SET_BITS	
-	ADC AD1CON2 OR !	\ set up AD1CON2
-		
-	0					\ CHO- input is VREFL (AVss)
-	1 10 SET_BITS		\ CH0+ input is AN7 - battery
-	ADC AD1CHS OR !		\ set up AD1CHS
-
-	ADC 0f BIT_SET		\ turn on ADC
+	15 AD1CON1 REG_BIT_SET				\ turn on ADC
+	
+	6 ADC_SELECT						\ input is AN6 (A1)
 ;
 
 : ADC_SAMPLE ( -- value )
-	ADC 1 BIT_SET		\ set sampling flag
-	ADC ADC1BUF0 or @ 	\ read buffer
-	. CR				\ display
-
+	1 AD1CON1 REG_BIT_SET				\ set sampling flag, SAMP (1:1)
 \ TODO wait for DONE flag
+	3 MS
+	ADC1BUF0 @							\ read and display value
 ;
 
 : ADC_DEBUG ( ) 
 	HEX
-	CR ADC AD1CON1 OR @ .
-	CR ADC AD1CON2 OR @ . CR
-	CR ADC AD1CON3 OR @ . CR
-	CR ADC AD1CHS OR @ . CR
+	CR ." CON1 " AD1CON1 ?
+	CR ." CON2 " AD1CON2 ?
+	CR ." CON3 " AD1CON3 ?
+	CR ." CHS " AD1CHS ?
 	DECIMAL
 ;

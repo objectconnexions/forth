@@ -1,0 +1,66 @@
+noecho
+
+
+\ for MX570 prototype PCB
+
+DECIMAL
+
+\ LEDs
+1 PORTE 2CONSTANT PWR_LED			\ GREEN -- Power
+8 PORTB 2CONSTANT ACT_LED			\ RED -- Error
+0 PORTE 2CONSTANT COMMS_LED			\ GREEN -- Comms
+7 PORTB 2CONSTANT STATUS_LED		\ GREEN - Status
+9 PORTB 2CONSTANT MNT_LED			\ GREEN - Monitor
+
+\ Digital IO
+0 PORTB 2CONSTANT PB1			\ PUSH BUTTON -- test/wake
+3 PORTE 2CONSTANT DIO1			\ RE3 -- pin 5 on M1
+3 PORTB 2CONSTANT DIO2			\ RB3/CN5/AN3 -- pin 6 on M1
+2 PORTB 2CONSTANT DIO3			\ RB2/CN4/AN2 -- pin 10 on M1
+8 PORTD 2CONSTANT DIO4			\ RD8/INT1/RTCC -- pin 12 on M1
+
+4 PORTD 2CONSTANT DIO5			\ RD4/CN13 -- pin 5 on M21
+1 PORTD 2CONSTANT DIO6			\ RD1/SCK3/U4TX -- pin 6 on M2
+6 PORTB 2CONSTANT DIO7			\ RB6/AN6 -- pin 10 on M2
+0 PORTD 2CONSTANT DIO8			\ RD0/INT0 -- pin 12 on M2
+
+7 PORTD 2CONSTANT DIO9			\ RD7/CN16 -- pin 5 on M1
+4 PORTB 2CONSTANT DIO10			\ RB4/CN6/AN4 -- pin 6 on M1
+4 PORTE 2CONSTANT DIO11			\ RE4 -- pin 10 on M1
+11 PORTD 2CONSTANT DIO12		\ RD11/INT4 -- pin 12 on M1
+
+
+\ UART 1 -- RS485
+\ p50 RX
+\ p51 TX
+\ TXEN - RB14, p29
+\ RXEN - RG9, p8
+
+\ SPI 2 -- flash and EEPROM
+\ SCK2 - RG6, p4
+\ SDI2 - RG7, p5
+\ SDO2 - RG8, p6
+
+\ SPI ID -- 25AA02UID
+\ CS RE5, p1
+
+\ SPI EEPROM -- 25LC256
+\ RE7, p3
+
+\ SPI Flash -- N25Q032
+\ RE6, p2
+
+\ CAN
+\ C1TX - RF1
+\ C1RX - RF0
+\ CEN -  RE2, p62
+
+\ I2C - no pull ups!
+\ SCL1 - RD10, p44
+\ SDA2 - RD9, p43
+
+\ ADC
+10 PORTA 2CONSTANT PWR_LEVEL			\ external voltage
+
+.( Set up pcb ports)
+echo

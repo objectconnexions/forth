@@ -1,0 +1,329 @@
+== Words
+
+---
+   dictionary_add_core_word(NULL, nop, false);
+    dictionary_add_core_word(NULL, push_literal, false);
+    dictionary_add_core_word(NULL, memory_address, false);
+    dictionary_add_core_word(NULL, branch, false);
+    dictionary_add_core_word(NULL, zero_branch, false);
+    // TODO replace with EXIT word
+    dictionary_add_core_word(NULL, return_to, false);
+    dictionary_add_core_word(NULL, interpreter_run, false);
+    dictionary_add_core_word(NULL, print_string, false);
+    dictionary_add_core_word(NULL, s_string, false);
+    dictionary_add_core_word(NULL, c_string, false);
+    dictionary_add_core_word(NULL, data_address, false);
+    
+    // words with short codes
+    dictionary_add_core_word("?DUP", question_dup, false);
+    dictionary_add_core_word("DEPTH", depth, false);
+    dictionary_add_core_word("DROP", drop, false);
+    dictionary_add_core_word("DUP", duplicate, false);
+    dictionary_add_core_word("NIP", nip, false);
+    dictionary_add_core_word("OVER", over, false);
+    dictionary_add_core_word("PICK", pick, false);
+    dictionary_add_core_word("ROT", rot, false);
+    dictionary_add_core_word("SWAP", swap, false);
+    dictionary_add_core_word("TUCK", tuck, false);
+
+    dictionary_add_core_word("2DROP", two_drop, false);
+    dictionary_add_core_word("2DUP", two_dup, false);
+    dictionary_add_core_word("2OVER", two_over, false);
+    dictionary_add_core_word("2ROT", two_rot, false);
+    dictionary_add_core_word("2SWAP", two_swap, false);
+
+    dictionary_add_core_word("+", add, false);
+    dictionary_add_core_word("D+", double_add, false);
+    dictionary_add_core_word("M+", mixed_add, false);
+    dictionary_add_core_word("-", subtract, false);
+    dictionary_add_core_word("D-", double_subtract, false);
+    dictionary_add_core_word("NEGATE", negate, false);
+    dictionary_add_core_word("DNEGATE", double_negate, false);
+    dictionary_add_core_word("*", multiply, false);
+    dictionary_add_core_word("M*", mixed_multiply, false);
+    dictionary_add_core_word("MU*", unsigned_multiply, false);
+    dictionary_add_core_word("/", divide, false);
+    dictionary_add_core_word("M/", mixed_divide, false);
+    dictionary_add_core_word("MOD", mod, false);
+    dictionary_add_core_word("/MOD", divide_mod, false);
+    dictionary_add_core_word("UM/MOD", unsigned_divide_mod, false);
+    dictionary_add_core_word("*/", multiply_divide, false);
+    dictionary_add_core_word("M*/", mixed_multiply_divide, false);
+    dictionary_add_core_word("1+", add_1, false);
+    dictionary_add_core_word("2+", add_2, false);
+    dictionary_add_core_word("1-", subtract_1, false);
+    dictionary_add_core_word("2-", subtract_2, false);
+    dictionary_add_core_word("2*", left_shift_1, false);
+    dictionary_add_core_word("2/", right_shift_1, false);
+    dictionary_add_core_word(">", greater_than, false);
+    dictionary_add_core_word(">=", greater_than_equal, false);
+    dictionary_add_core_word("<", less_than, false);
+    dictionary_add_core_word("<=", less_than_equal, false);
+    dictionary_add_core_word("=", equal_to, false);
+    dictionary_add_core_word("<>", not_equal_to, false);
+    dictionary_add_core_word("0=", equal_to_zero, false);
+    dictionary_add_core_word("0>", greater_than_zero, false);
+    dictionary_add_core_word("0<", less_than_zero, false);
+    dictionary_add_core_word("0<>", not_equal_to_zero, false);
+    dictionary_add_core_word("ABS", absolute, false);
+    dictionary_add_core_word("DABS", double_absolute, false);
+    dictionary_add_core_word("MAX", single_max, false);
+    dictionary_add_core_word("DMAX", double_max, false);
+    dictionary_add_core_word("MIN", single_min, false);
+    dictionary_add_core_word("DMIN", double_min, false);
+
+    dictionary_add_core_word("AND", and, false);
+    dictionary_add_core_word("OR", or, false);
+    dictionary_add_core_word("XOR", xor, false);
+    dictionary_add_core_word("NOT", not, false);
+    dictionary_add_core_word("LSHIFT", left_shift, false);
+    dictionary_add_core_word("RSHIFT", right_shift, false);
+    dictionary_add_core_word("?", print_content_of_address, false);
+    dictionary_add_core_word("D.", print_double_top_of_stack, false);
+    dictionary_add_core_word(".", print_top_of_stack, false);
+    dictionary_add_core_word("U.", print_unsigned_top_of_stack, false);
+    dictionary_add_core_word("SPACE", print_space, false);
+    dictionary_add_core_word("SPACES", print_spaces, false);
+    
+    dictionary_add_core_word("<#", start_format_number, false);
+    dictionary_add_core_word("#", add_format_digit, false);
+    dictionary_add_core_word("#S", add_format_digits, false);
+    dictionary_add_core_word("SIGN", add_format_sign, false);
+    dictionary_add_core_word("HOLD", add_format_hold, false);
+    dictionary_add_core_word("#>", end_format_number, false);
+    
+    dictionary_add_core_word("BASE", base_address, false);
+    dictionary_add_core_word("HEX", base_hex, false);
+    dictionary_add_core_word("DECIMAL", base_decimal, false);
+    dictionary_add_core_word("CR", print_cr, false);
+    dictionary_add_core_word("EMIT", emit, false);
+    dictionary_add_core_word("@", read_memory, false);
+    dictionary_add_core_word("2@", two_read_memory, false);
+    dictionary_add_core_word("@C", read_char, false);
+    dictionary_add_core_word("!", write_memory, false);
+    dictionary_add_core_word("!+", write_memory_add_1, false);
+    dictionary_add_core_word("2!", two_write_memory, false);
+    dictionary_add_core_word("!C", write_memory, false);
+    dictionary_add_core_word("EXECUTE", execute_word, false);
+    dictionary_add_core_word(".S", stack, false);
+    dictionary_add_core_word("CLEAR", clear_stack, false);
+    dictionary_add_core_word("TICKS", ticks, false);
+    dictionary_add_core_word("TIME", time, false);
+    dictionary_add_core_word("TASK", add_task, false);
+    dictionary_add_core_word("PRIORITY", task_priority, false);
+
+    dictionary_add_core_word("'", tick, false);
+
+    dictionary_add_core_word("INITIATE", initiate, false);
+    dictionary_add_core_word("TERMINATE", terminate, false);
+    dictionary_add_core_word("SUSPEND", suspend, false);
+    dictionary_add_core_word("RESUME", resume, false);
+    dictionary_add_core_word("PAUSE", yield, false);
+    dictionary_add_core_word("MS", wait_for, false);
+
+    
+    dictionary_add_core_word("CHAR", push_char, false);
+    dictionary_add_core_word("BL", push_blank, false);
+
+    dictionary_add_core_word("VARIABLE", compiler_variable, false);
+    dictionary_add_core_word("2VARIABLE", compiler_2variable, false);
+    dictionary_add_core_word("CONSTANT", compiler_constant, false);
+    dictionary_add_core_word("2CONSTANT", compiler_2constant, false);
+
+    dictionary_add_core_word("SEE", debug_word, false);
+    dictionary_add_core_word("TASKS", tasks, false);
+
+    
+    // Immediate words
+    dictionary_add_core_word("\\", compiler_eol_comment, true);
+    dictionary_add_core_word("(", compiler_inline_comment, true);
+    dictionary_add_core_word(".(", compiler_print_comment, true);
+    dictionary_add_core_word("IF", compiler_if, true);
+    dictionary_add_core_word("THEN", compiler_then, true);
+    dictionary_add_core_word("ELSE", compiler_else, true);
+    dictionary_add_core_word("BEGIN", compiler_begin, true);
+    dictionary_add_core_word("AGAIN", compiler_again, true);
+    dictionary_add_core_word("UNTIL", compiler_until, true);
+    dictionary_add_core_word(":", compiler_compile_definition, false);
+    dictionary_add_core_word(";", compiler_end, true);
+    dictionary_add_core_word(",\"", compiler_compile_string, true);
+    dictionary_add_core_word(".\"", compiler_print_string, true);
+    dictionary_add_core_word("S\"", new_s_string, true);
+    dictionary_add_core_word("C\"", compiler_c_string, true);
+    dictionary_add_core_word("[CHAR]", compiler_char, true);
+    dictionary_add_core_word("IMMEDIATE", dictionary_mark_internal, true); 
+    
+    dictionary_add_core_word("LOG", set_log_level, false);
+    dictionary_add_core_word("ALLOT", allot, false);
+    dictionary_add_core_word("CREATE", compiler_create_data, false);
+    dictionary_add_core_word("ALIGN", dictionary_align, false);
+    dictionary_add_core_word("UNUSED", unused, false);
+    dictionary_add_core_word(",", append_cell, false);
+    dictionary_add_core_word("C,", append_char, false);
+    dictionary_add_core_word("CELL+", add_cell, false);
+    dictionary_add_core_word("ERASE", erase, false);
+    dictionary_add_core_word("FILL", fill, false);
+    dictionary_add_core_word("HERE", here, false);
+    dictionary_add_core_word("STATE", state_address, false);
+    dictionary_add_core_word("[", compiler_suspend, true);
+    dictionary_add_core_word("]", compiler_resume, true);
+    dictionary_add_core_word("PAD", pad, false);
+    dictionary_add_core_word("COUNT", count, false);
+    dictionary_add_core_word("TYPE", type, false);
+    
+    dictionary_add_core_word("KEY", next_char, false);
+    dictionary_add_core_word("KEY?", has_next_char, false);
+    dictionary_add_core_word("ABORT", forth_abort, false);
+
+    // other, non-forth standard, words
+    dictionary_add_core_word("
+
+    dictionary_add_core_word("DRESET", dictionary_reset, false);
+    dictionary_add_core_word("LOCK", dictionary_lock, false);
+    dictionary_add_core_word("
+---
+
+    
+=== DICT ( -- )
+
+List all the words in the ditionary, showing the entry's memory address, name, flags (a five bit number) and with the internal function's address or the memory location of the excutable code for the word.
+
+! TODO list the flags
+
+The following shows the start of the output:-
+
+---
+A0000A05 _IDLE  [00] _IDLE  [0]  -> A0000A10␊
+A00009F0 _INTERACTIVE  [00] _INTERACTIVE  [0]  -> A0000A02␊
+A00009E6 ..  [00] ..  [0]  func(165)<9D0003A4>␊
+A00009D8 _CLEAR  [00] _CLEAR  [0]  func(164)<9D0000D8>␊
+A00009CA _SHORT  [00] _SHORT  [0]  func(163)<9D002288>␊
+---
+
+
+	dictionary_debug()
+
+    
+=== _DUMP ( -- )
+
+Display a memory dump of the base memory--the first 256 bytes.
+
+	dump_base()
+
+===  DUMP ( addr len -- )
+
+
+Display a memory dump of the memory at the specifed address, show at least the number of bytes specified. 
+
+For non-system word (those not defined in C) Use the tick (') to get the address. For example `' trace 30 dump` will display
+
+---
+A0000A1E  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F ␊
+␊
+A0000A10  6D 03 FE 85 94 80 80 0A 05 54 52 41 43 45[01 01   m....... .TRACE..␊
+A0000A20  01 03 1C 01 05 23 4B 58 05 00 00 00 00 00 00 00   .....#KX ........␊
+A0000A30  00 00 00 00 00 00 00 00 00 00 00 00]00 00 00 00   ........ ........␊
+---
+
+	dump()
+	
+	
+=== WORDS ( -- )
+
+List all the words from the dictionary by name. They are listed in the reverse order they were added, with latest shown first.
+
+    dictionary_words()
+    
+    
+ 
+
+	
+    dictionary_add_core_word("_DEBUG", debug_on, false);
+    dictionary_add_core_word("_NODEBUG", debug_off, false);
+    dictionary_add_core_word("_RESET", reset, false);
+    dictionary_add_core_word("_SHORT", shorten, false);
+    dictionary_add_core_word("_CLEAR", clear_registers, false);
+
+    dictionary_add_core_word("..", debug_print_stack, false);
+
+    // create loop with process instruction
+    // =>  : _INTERACTIVE BEGIN {run code} AGAIN ;
+    dictionary_add_entry("_INTERACTIVE");
+    compiler_begin();
+    dictionary_append_function(interpreter_run);
+    compiler_again();
+    dictionary_end_entry();
+    
+    // create loop with pause instruction  
+    // =>  : _IDLE BEGIN PAUSE AGAIN ;
+    dictionary_add_entry("_IDLE");
+    
+    
+
+=== ROT ( x1 x2 x3 -- x2 x3 x1 )
+ 
+Rotate the top three items downward on the stack, bringing the bottom item to the top. So the sequence 10 20 30 becomes 20 30 10.
+ 
+
+=== OVER ( x1 x2 -- x1 x2 x1 )
+
+Places a copy of the next-on-stack item a the top of the stack.
+
+ 
+=== TUCK ( x1 x2 -- x2 x1 x2 )
+ 
+Place the top item on the stack underneath the next-on-stack item. The sequence 10 20 will become 20 10 20.
+ 
+ 
+== Input/output
+
+== ? ( a-addr -- )
+
+Display the contents of memory at the address.
+
+== @ ( a-addr -- n )
+
+Retrieve the value from memory at the address.
+
+== ! ( x a-addr -- )
+
+Save the NOS to the address in TOS.
+
+
+
+== Maths
+
+=== + ( n1 n2 -- n3 )
+
+Sum the two values. Result is `n1 + n2`.
+
+=== - ( n1 n2 -- n3 )
+
+Subtract the top of stack from the next on stack. Result is `n1 - n2`.
+
+=== * ( n1 n2 -- n3 )
+
+Multiple the two values. Result is `n1 * n2`.
+
+=== / ( n1 n2 -- n3 )
+
+Divide the NOS by TOS. Result is `n1 / n2`.
+
+=== MOD ( n1 n2 -- n3 )
+
+Divide the NOS by TOS giving the remainder. Result is `n1 % n2`.
+
+
+== Process control
+
+=== PAUSE
+
+Yield control to other waiting process of the current priority or higher. If nothing is waiting then the current process will continue immediately. Note that processes of lower priority will not be serviced.
+
+=== MS ( n - )
+
+Delay the current process for at least _n_ milliseconds. If other processes are waiting then the one with (or one of) the highest priority will be resumed. Due to the way that the processes are sheduled the delay will likely longer than the time specified as the current process only become eligable to run after this period. The newly running process needs to actively give up the processor before this one will resume and it also has to have the highest priority.
+
+
+
+

@@ -1,0 +1,11 @@
+
+
+== Inspecting memory
+
+Use `_DUMP` and `DUMP` to display memory.
+
+Memory is displayed in 16 columns, one per byte. Each row displays the base address the byte value and ASCII representation where appropriate.
+
+`<addr> <length> DUMP` will dump the memory at the location of the _address_ and will include at least _length_ bytes.
+
+`_DUMP` simply dumps the first 256 bytes of memory.

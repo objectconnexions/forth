@@ -16,15 +16,15 @@ extern "C" {
 
 #include "dictionary.h"
 
-//extern struct Process* process;
-//extern struct Process* main_process;
+extern bool trace_code;
     
-extern uint32_t timer;
 extern uint32_t base_no;
 
 extern uint8_t dictionary[];
 
 extern struct Process* current_process;
+
+void forth_trace(bool);
 
 void start_code(CODE_INDEX);
 
@@ -33,6 +33,8 @@ int forth_init();
 void forth_execute(CODE_INDEX);
 
 void forth_run();
+
+void forth_interrupt(uint8_t);
 
 void forth_tasks(CODE_INDEX);
 
@@ -44,7 +46,7 @@ void push_double(SIGNED_DOUBLE);
 
 uint32_t pop(void);
 
-void process_interrupt(uint8_t);
+void process_abort(uint8_t);
 
 uint8_t find_process(char *);
 

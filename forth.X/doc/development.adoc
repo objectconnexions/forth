@@ -1,0 +1,16 @@
+== System Development
+
+=== Logging
+
+`log_warn("LOG NAME", "log message at %Z", );`
+
+.Flags
+
+* `%S` - String
+* `%I` - Unsigned 32 bit integer in decimal format
+* `%X` - 2 digit hexadecimal number
+* `%Y` - 4 digit hexadecimal number
+* `%Z` - 8 digit hexadecimal number
+
+
+

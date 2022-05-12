@@ -14,7 +14,9 @@ extern "C" {
 
 #include <stdint.h>
 
-void uart_init();
+void uart_init(void);
+
+void uart_reset(void);
 
 int uart_configure(int); 
 
@@ -27,6 +29,8 @@ uint8_t uart_next_char(void);
 bool uart_has_next_char(void);
 
 bool uart_next_line(char *);
+
+void uart_dispose(void);
 
 void uart_debug(void);
 

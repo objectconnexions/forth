@@ -1,0 +1,31 @@
+noecho
+
+
+\ for MX270 PCB
+
+DECIMAL
+
+\ LEDs
+8 PORTA 2CONSTANT PWR_LED			\ GREEN -- Power
+4 PORTC 2CONSTANT ACT_LED			\ GREEN -- Comms
+1 PORTB 2CONSTANT ERROR_LED			\ RED -- Error
+
+
+\ Digital IO
+0 PORTB 2CONSTANT PB_1			\ PUSH BUTTON - shared with programmer!
+
+5 PORTC 2CONSTANT DIO_1			\ D1
+6 PORTC 2CONSTANT DIO_2			\ D2
+7 PORTC 2CONSTANT DIO_3			\ D3
+9 PORTC 2CONSTANT DIO_4			\ D4
+
+
+\ ADC
+0 PORTC 2CONSTANT ADC_1				\ AN6 -- A1
+3 PORTC 2CONSTANT ADC_2				\ AN12 -- A2
+3 PORTB 2CONSTANT ADC_3				\ AN5 -- A3
+1 PORTA 2CONSTANT ADC_4				\ AN1 - shared with debug serial! -- A4
+
+
+.( added pcb ports)
+echo

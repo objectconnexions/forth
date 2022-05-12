@@ -6,30 +6,27 @@ HEX
 0bf800230 CONSTANT RTCDATE
 
 : rtcc_init ( -- ) 
-	OSCCON 1 BIT_SET		\ SOSCEN - turn secondary oscillator on
-	OSCCON 16 BIT_SET		\ SOSCRDY - make secondary oscillator ready
+	1 OSCCON REG_BIT_SET		\ SOSCEN - turn secondary oscillator on
+	16 OSCCON  REG_BIT_SET		\ SOSCRDY - make secondary oscillator ready
 
 	5 ms
 \	OSCCON @ 4000 and . cr 	\ is ready?
-	OSCCON 16 BIT_READ cr . \ is ready?		
+	16 OSCCON REG_BIT@ cr . 	\ is ready?		
 ;
 
 : rtcc_set ( time date -- )
-	0aa996655 SYSKEY !		\ write unlock sequence
-	0556699aa SYSKEY !
-	RTCCON 3 BIT_SET		\ make write enable
-
-	RTCCON f BIT_CLR		\ turn RTCC off 
+	SYS_UNLOCK
+	3 RTCCON REG_BIT_SET		\ make write enable
+	f RTCCON REG_BIT_CLEAR		\ turn RTCC off 
+	SYS_LOCK
 	
 	5 ms
 
-	\ RTCCON @ 4 and . CR
-	
 	8 LSHIFT
 	RTCDATE !				\ store date
 	8 LSHIFT
 	RTCTIME !				\ store time
-	RTCCON f BIT_SET		\ turn RTCC on
+	f RTCCON REG_BIT_SET		\ turn RTCC on
 ;
 
 : rtcc_date ( -- n  get date as BCD yymmdd ) 
@@ -41,7 +38,7 @@ HEX
 ;
 
 : rtcc_show ( -- )
-	DECIMAL
+	HEX
 	CR ." Date " rtcc_date .
 	CR ." Time " rtcc_time .
 ;
@@ -50,8 +47,8 @@ HEX
 	rtcc_init
 	hex
 	093045 200308 rtcc_set
-	decimal
 	rtcc_show
+	decimal
 ;
 
 DECIMAL

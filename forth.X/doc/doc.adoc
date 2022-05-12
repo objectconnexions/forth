@@ -1,0 +1,19 @@
+= FORTH on Microchip PIC 32MX
+:toc:
+Doc Writer <doc.writer@asciidoc.org>
+2022-01-01
+:appversion: 1.0.0
+
+The current version of the system is {appversion}.
+
+include::control.adoc[]
+
+include::words.adoc[]
+
+include::pic dev.adoc[]
+
+include::development.adoc[]
+
+include::notes.adoc[]
+
+

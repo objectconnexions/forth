@@ -5,7 +5,6 @@
 #include <stdint.h>
 
 #include "forth.h"
-#include "debug.h"
 #include "code.h"
 #include "dictionary.h"
 #include "parser.h"
@@ -123,7 +122,7 @@ static void process()
 {
     struct Dictionary_Entry entry;
 
-    to_upper(token, strlen(token));
+    // to_upper(token, strlen(token));
 
     if (dictionary_find_entry(token, &entry)) {
         instruction = entry.instruction;
@@ -133,7 +132,7 @@ static void process()
         return;
 
     } else {
-        log_debug(LOG, "not a word %S", token);
+        log_debug(LOG, "parse as number %S", token);
 
         uint8_t process = find_process(token);
         if (process != 0xff) {
@@ -146,8 +145,61 @@ static void process()
         uint64_t signed_number = 1;
         type = SINGLE_NUMBER_AVAILABLE;
         char * ptr = token;
+        uint32_t entry_base;
+        uint8_t len = strlen(token);
+        switch (*ptr) {
+            case '&':
+            case '#':
+                entry_base = 10;
+                ptr++;
+                len--;
+                break;
+            case '%':
+                entry_base = 2;
+                ptr++;
+                len--;
+                break;
+            case '$':
+                entry_base = 16;
+                ptr++;
+                len--;
+                break;
+            case '0':
+                if (*(ptr + 1) == 'x' && base_no < 33)
+                {
+                    ptr += 2;
+                    len -= 2;
+                    entry_base = 16;
+                }
+                else 
+                {
+                    entry_base = base_no;                
+                }
+                break;
+            case '\'':
+                number_value = *(ptr + 1);
+                return;
+            default:
+                entry_base = base_no;
+                break;
+           
+     /*       
+            
+    & ? decimal
+    # ? decimal
+    % ? binary
+    $ ? hexadecimal
+    0x ? hexadecimal, if base<33.
+    ' ? numeric value (e.g., ASCII code) of next character; an optional ' may be present after the character. 
+
+Here are some examples, with the equivalent decimal number shown after in braces:
+
+-$41 (-65), %1001101 (205), %1001.0001 (145 - a double-precision number), 'A (65), -'a' (-97), &905 (905), $abc (2478), $ABC (2478).
+
+*/
+        }
         int i;
-        for (i = 0; i < strlen(token); i++) {
+        for (i = 0; i < len; i++) {
             char c = *ptr++;
             
             uint64_t digit = 0;
@@ -179,12 +231,12 @@ static void process()
                 return;
             }
         
-            if (digit >= base_no) {
+            if (digit >= entry_base) {
                 type = INVALID_INSTRUCTION;
                 return;
             }
         
-            number_value = number_value * base_no + digit;
+            number_value = number_value * entry_base + digit;
         }
         number_value *= signed_number;
         return;

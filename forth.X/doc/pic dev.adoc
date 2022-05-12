@@ -1,0 +1,135 @@
+== PIC Development
+
+=== Digital IO
+
+.Output
+
+Set up a port as output using the `DIGITAL_OUT` word and change its state using the `REG_BIT_*` words.
+
+	<bit> <port> DIGITAL_OUT
+	<bit> <port> REG_BIT_SET
+	<bit> <port> REG_BIT_CLEAR
+	<bit> <port> REG_BIT_INVERT
+
+??? The state can also be written directly using the write word `REG_BIT!`
+	
+
+.Input
+
+Set up a port as input using the `DIGITAL_IN` word and read its state using the `REG_BIT@` word, which places the state (0 or 1) on the stack.
+
+	<bit> <port> DIGITAL_IN
+	<bit> <port> REG_BIT@
+	
+The state of all the bit can be read using the normal read (`@`), where the state of all bits is contained in the stack (as binary encoded value 0-0xFFFFFFFF)
+
+	<port> @
+	
+=== Interrupts
+
+File `interupts.fth`
+
+Requires Register constants.
+
+Interupts are determined by IRQ and Vector numbers, defined in the device manuals.
+
+.Interrupt priority
+
+	<vector> <priority> <subpriority> PRIORITY_IN
+
+Where `priority` is 0--7 and `subpriority` is 0--3.
+
+.Enable
+
+	<irq> ENABLE_INT
+	
+.Disable
+
+	<irq> DISABLE_INT
+	
+.Is Enabled
+
+Determines if the interrupt is enabled
+
+	<irq> IS_ENABLED_INT
+	
+return `1` if enabled, `0` when disabled.
+
+	
+.Status
+
+Determines if a specific interrupt has occured since last cleared
+
+	<irq> STATUS_INT
+	
+return `1` if interruped, `0` otherwise.
+
+
+.Clear
+
+After checking an interrupt it must be cleared so it can wait for another.
+
+	<irq> CLEAR_INT
+
+
+
+
+=== Change notification
+
+
+	
+
+	DIO_1 DIGITAL_IN		\ PB on pin 11 as input
+	DIO_1 PULL_UP
+	DIO_1 CN_ENABLE
+	DIO_1 CN_CLEAR
+
+
+Enable the change notification for a port. Write 8000h to the CNCON register or use the REG_BIT_SET to set bit 15. For example to set up port B use one the following:-
+
+	8000 CNCONB !
+	
+	f CNCONB REG_BIT_SET	
+	
+	
+Set up the interrupts. The vector for CN on port b is 34 and the IRQ is 46, so the following sets the priority, clears the interrupt and enables it.
+
+	2e 1 2 PRIORITY_INT
+	22 CLEAR_INT
+	22 ENABLE_INT
+	
+Check the status
+
+
+	22 STATUS_INT
+
+	DIO_1 CN_STATUS .	
+
+
+
+=== Using tasks to process interrupts
+
+A task can periodically check for an interrupt flag being set (since it last check). 
+
+If set then respond to the interrupt and clear the interrupt flag.
+
+Repeat the loop after a delay.
+
+```
+: button_task
+
+	begin
+		DIO_1 CN_STATUS
+		IF
+			DIO_1 REG_BIT_READ
+			." CHANGED to " . CR	
+			DIO_1 CN_CLEAR
+		THEN
+		300 ms
+	again
+;
+
+task check_button
+' button_task check_button initiate
+```
+	
