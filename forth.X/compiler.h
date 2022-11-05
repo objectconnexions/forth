@@ -27,6 +27,11 @@ extern "C" {
 
 extern uint8_t state;
 
+/*
+ * Prepare the compiler before first use.
+ */
+void compiler_init(void);
+
 void compiler_compile_definition(void);
 
 void compiler_end(void);

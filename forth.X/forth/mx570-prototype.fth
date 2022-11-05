@@ -1,5 +1,6 @@
 noecho
 
+lock
 
 \ for MX570 prototype PCB
 
@@ -62,5 +63,5 @@ DECIMAL
 \ ADC
 10 PORTA 2CONSTANT PWR_LEVEL			\ external voltage
 
-.( Set up pcb ports)
+.( Ports set up for PIC32MX570 based PCB) CR
 echo

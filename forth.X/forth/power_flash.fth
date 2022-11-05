@@ -1,5 +1,7 @@
 noecho
 
+LOCK
+
 \ double constants PWR_LED and ACT_LED must be declared before running this
 
 2variable flash_rate
@@ -9,7 +11,7 @@ pwr_led DIGITAL_OUT				\ enable LEDs
 act_led DIGITAL_OUT
 
 : pwr_flash ( - )
-	50 300 pwr_led led_flash
+	300 120 pwr_led led_flash
 ;
 
 ' pwr_flash power initiate		\ run flasher on power task
@@ -24,5 +26,5 @@ task test_flashing				\ run flasher on another task
 \ list new tasks with:
 \ tasks
 
-.( Added power flash)
+.( Added power flash) CR
 echo

@@ -9,10 +9,12 @@ Makefile*.mk
 Makefile*.properties
 Package*.bash
 private
+.generated_files
 
 disassembly
 read-spe.fth
 test2.fth
 
 forth.X/test
+
 

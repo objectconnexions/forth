@@ -1,0 +1,26 @@
+\ Testing memory
+
+HEX
+
+create DATA 4 CELLS ALLOT
+create DATA2 3 ALLOT ALIGN
+\ create DATA3 ALIGN 10 ,
+create DATA3 10 , 20 , 40 , 80 ,
+
+.S
+
+DATA U.
+DATA2 U.
+
+DATA3 U.
+DATA3 CELL+ U.
+DATA3 CELL+ CELL+ U.
+
+DATA U.
+
+\ DATA3 ?
+\ CELL+ ?
+\ CELL+ ?
+.
+
+' DATA 50 DUMP

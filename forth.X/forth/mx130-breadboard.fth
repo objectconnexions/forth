@@ -1,5 +1,6 @@
 noecho
 
+LOCK
 
 \ for MX130 breadboard
 
@@ -21,7 +22,8 @@ DECIMAL
 11 PORTB 2CONSTANT DIO_1			\ PUSH BUTTON
 
 \ ADC
-4 PORTA 2CONSTANT ADC_1				\ VR
+0 PORTA 2CONSTANT ADC_1				\ TEMP
+4 PORTA 2CONSTANT ADC_2				\ VR
 
 .( added breadboard ports)
 echo

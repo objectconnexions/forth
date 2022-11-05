@@ -1,4 +1,8 @@
+noecho
+lock
+
 \ Temperature logger
+
 
 : read-temp ( -- temp ) 
 		ADC_SAMPLE				\ take 5 samples over a quarter of a second
@@ -21,7 +25,7 @@
 
 : log-temp ( ) 
 	ADC_INIT
-  	6 ADC_SELECT				\ sensor on AN6
+  	4 ADC_SELECT				\ sensor on AN6
   	
 \	BEGIN
 		read-temp		

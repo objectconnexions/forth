@@ -59,29 +59,26 @@ void interpreter_run()
 
         case INVALID_INSTRUCTION:
             parser_token_text(instruction);
-            console_out("%S!\n> ", instruction);
+            console_out("%S?\n# ", instruction);
             parser_drop_line();
             forth_abort();
             break;
 
         case END_LINE:
             forth_trace(false);
-            if (echo) console_out(" ok\n> ");
+            if (echo) console_out(" ok\n# ");
             parser_drop_line();
             break;
 
         case BLANK_LINE:
-            if (echo) console_out("\n> ");
+            if (echo) console_out("\n# ");
             parser_drop_line();
             break;
             
         case NONE:
-            
-            
             read = uart_next_line(buf);
             if (read)
             {
-                
                 log_debug(LOG, "input line: '%S'", buf);
 
                 if (strcmp(buf, "ddd") == 0)
@@ -117,8 +114,11 @@ void interpreter_run()
                 {                
                     if (echo)
                     {
-                        console_out(buf);
-                        console_put(SPACE);
+                        if (strlen(buf) > 0) {
+                            console_out(buf);
+                            console_put(NL);
+                            //console_put(SPACE);
+                        }
                     }
                     parser_input(buf);
                 }
@@ -161,7 +161,5 @@ static void interpret_instruction(INSTRUCTION code)
 {
     log_debug(LOG, "execute %Z", code);
     forth_trace(true);
-//    console_put('\n');
     forth_execute(code);
-//    console_put('\n');
 }

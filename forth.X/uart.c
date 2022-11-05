@@ -13,6 +13,7 @@
 #include <proc/ppic32mx.h>
 #include "logger.h"
 #include "timer.h"
+#include "forth.h"
 
 #ifdef MX270
     #include <proc/p32mx270f256d.h>
@@ -218,6 +219,15 @@ void console_out(char* message, ...)
     _console_out(message, argptr);
     va_end(argptr);
 }
+
+void console_pad(uint8_t length)
+{
+    uint8_t i;
+    for (i = 0; i < length; i++) {
+        console_put(' ');
+    }    
+}
+
 
 static int limit() {
     return read_tail > receive_head ? receive_head + LENGTH : receive_head;

@@ -42,6 +42,14 @@
                     <name>XC32_PIC32MX150</name>
                     <type>2</type>
                 </confElem>
+                <confElem>
+                    <name>NewConfiguration</name>
+                    <type>2</type>
+                </confElem>
+                <confElem>
+                    <name>Copy_of_NewConfiguration</name>
+                    <type>2</type>
+                </confElem>
             </confList>
             <formatting>
                 <project-formatting-style>false</project-formatting-style>

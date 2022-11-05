@@ -10,6 +10,7 @@
 #include "dictionary.h"
 #include "compiler.h"
 #include "uart.h"
+#include "util.h"
 
 #define LOG "compiler"
 
@@ -130,7 +131,7 @@ static bool add_named_entry() {
     parser_next_text(token);
     to_upper(token);
     log_debug(LOG, "find named entry %S", token);
-    if (dictionary_find_entry(token, &entry))
+    if (dictionary_find_entry_for(token, &entry))
     {
         log_error(LOG, "non-unique name %S", token);
         has_error = true;
@@ -138,7 +139,7 @@ static bool add_named_entry() {
     }
     else
     {
-        dictionary_add_entry(entry.name);
+        dictionary_add_entry(token);
         return true;
     }
 }
@@ -161,7 +162,7 @@ void compiler_constant()
     {
         dictionary_append_function(push_literal);
         uint32_t value = pop_stack();
-        dictionary_append_value(value);
+        dictionary_append_literal(value);
 
         complete_word();
     }
@@ -174,9 +175,9 @@ void compiler_2constant()
         CELL value1 = pop_stack();
         CELL value2 = pop_stack();
         dictionary_append_function(push_literal);
-        dictionary_append_value(value2);
+        dictionary_append_literal(value2);
         dictionary_append_function(push_literal);
-        dictionary_append_value(value1);
+        dictionary_append_literal(value1);
         
         complete_word();
     }
@@ -300,7 +301,7 @@ void compiler_print_comment()
             console_put(SPACE);
         }
     } while(!end);
-    console_put(NL);
+//    console_put(NL);
 }
 
 void compiler_char()
@@ -309,7 +310,7 @@ void compiler_char()
     parser_next_text(name);    
     
     dictionary_append_function(push_literal);
-    dictionary_append_value(name[0]);
+    dictionary_append_literal(name[0]);
 }
 
 /*
@@ -402,6 +403,7 @@ void compiler_create_data()
     to_upper(name);
     dictionary_add_entry(name);
     dictionary_append_function(data_address);
+    dictionary_align();
 }
 
 static void complete_word() 
@@ -423,13 +425,13 @@ static void add_literal(uint32_t value)
 {
     dictionary_append_function(push_literal);
     log_trace(LOG, "literal = %Z", value);
-    dictionary_append_value(value);
+    dictionary_append_literal(value);
 }
 
 static void add_double_literal(uint64_t value)
 {
     dictionary_append_function(push_double_literal);
     log_trace(LOG, "literal = %W", value);
-    dictionary_append_value(value);
+    dictionary_append_literal(value);
 }
 

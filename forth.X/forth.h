@@ -44,13 +44,13 @@ void push(UNSIGNED);
 
 void push_double(SIGNED_DOUBLE);
 
-uint32_t pop(void);
+uint32_t pop_stack(void);
 
 void process_abort(uint8_t);
 
 uint8_t find_process(char *);
 
-
+void wait(uint32_t);
 
 void nop(void);
 

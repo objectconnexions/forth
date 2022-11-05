@@ -76,7 +76,7 @@ HEX
 	0						\ create counter
 	BEGIN
 		2DUP +				\ calc position
-		@C lcd_byte!	\ display char
+		@C lcd_byte!	        \ display char
 		1+					\ increment char count
 
 		DUP 3 PICK >= 		\ determine if all characters written

@@ -11,6 +11,7 @@
 #include <GenericTypeDefs.h>
 //#include <proc/p32mx270f256d.h>
 #include <cp0defs.h>
+#include <plib.h>
 
 #include "logger.h"
 #include "parser.h"
@@ -29,14 +30,18 @@
 #define POP_2DATA pop_double()
 #define PUSH_RETURN(address) (current_process->return_stack[++(current_process->rsp)] =  (uint32_t) (address))
 
+#define BASE_HEX 16
+#define BASE_DEC 10
+#define BASE_OCT 8
+#define BASE_BIN 2
+
 #define LOG "Forth"
 
 void dump_parameter_stack(char *, struct Process*);
 void dump_return_stack(char *, struct Process*);
 //void execute_next_instruction(void);
 void display_code(uint8_t*);
-uint32_t pop_stack(void);
-void wait(uint32_t);
+CELL pop_stack(void);
 void next_task();
 static struct Process* new_task(uint8_t, char*);
 static void load_words(void);
@@ -55,7 +60,7 @@ static void print_task(struct Process*);
 static void tasks(void);
     
 volatile uint32_t timer = 0;
-uint32_t base_no = 10;
+uint32_t base_no = BASE_DEC;
 static bool waiting = true;
 static bool in_error;
 bool trace_code = false;
@@ -75,7 +80,7 @@ static CODE_INDEX int_return_code;
 static CODE_INDEX interrupts[43];
 
 
-static bool debug = false;
+bool debug = false;
 
 
 int forth_init()
@@ -100,6 +105,7 @@ int forth_init()
     
     dictionary_init();
     load_words();
+    dictionary_init_done();
     
     log_info(LOG, "loaded initial words");
     
@@ -180,9 +186,11 @@ bool stack_underflow()
 /**
  * Check for valid addresses in REGISTERs or RAM
  */
-static bool isAccessibleMemory(uint32_t address)
+static bool is_accessible_memory(uint32_t address)
 {
-    if (address >= 0xBF800000 && address <= 0xBF8FFFFF) 
+    if ((address >= 0xBF800000 && address <= 0xBF8FFFFF) ||
+            (address >= 0xA0000000 && address <= 0xA000FFFF) ||
+            (address >= 0x80000000 && address <= 0x8000FFFF)) 
     {
         if (address % 4 != 0)
         {
@@ -194,11 +202,6 @@ static bool isAccessibleMemory(uint32_t address)
             return true;
         }
     } 
-    else if ((address >= 0xA0000000 && address <= 0xA000FFFF) ||
-            (address >= 0x80000000 && address <= 0x8000FFFF)) 
-    {    
-        return true;
-    }
     else
     {
         console_out("MEMORY LIMIT %Z!", address);
@@ -213,6 +216,8 @@ static void test_compile(char * input) {
 
 void forth_run()
 {
+    uint8_t level = 0;
+    
     in_error = false;
     while (true)
     {
@@ -244,11 +249,33 @@ void forth_run()
                 trace_code = false;
             } else {
                 char buf[100];
+                uint32_t restore_to = base_no;
+                base_no = BASE_HEX;
                 dump_parameter_stack(buf, current_process);
-                console_out("%S  %Z ", buf, current_process->ip);
+                console_out("%S  ", buf);
+                dump_return_stack(buf, current_process);
+                base_no = restore_to; 
+                console_out("%S\n", buf);
+                console_pad(8);
 
-                CODE_INDEX test = current_process->ip;
-                dictionary_print_instruction(test);
+                CODE_INDEX ip = current_process->ip;
+                console_pad(level * 2);
+                int8_t change = dictionary_print_instruction(&ip);
+                if (change == 1)
+                {
+                    console_put(NL);
+                    console_pad(level * 2);
+                    console_out(">>");
+                }
+                else if (change == -1)
+                {
+                    struct Dictionary_Entry e;
+                    dictionary_find_entry_with(ip, &e);
+                    console_put(NL);
+                    console_pad(level * 2);
+                    console_out("<< (%S)", e.name);
+                }
+                level += change;
             }
             console_put(NL);
         }
@@ -573,10 +600,10 @@ void rot()
 
 void lrot() 
 {
-    CELL value = current_process->stack[current_process->sp];
+    CELL tos = current_process->stack[current_process->sp];
     current_process->stack[current_process->sp] = current_process->stack[current_process->sp - 1];
     current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 2];
-    current_process->stack[current_process->sp - 2] = value;
+    current_process->stack[current_process->sp - 2] = tos;
 }
 
 /*
@@ -605,7 +632,7 @@ void push_double_literal()
  */
 void memory_address()
 {
-    PUSH_DATA((CELL) dictionary_data_address(current_process->ip));
+    PUSH_DATA((CELL) dictionary_aligned(current_process->ip));
     return_to();
 }
 
@@ -614,7 +641,7 @@ void memory_address()
 */ 
 void data_address()
 {
-    PUSH_DATA((CELL) current_process->ip);
+    PUSH_DATA((CELL) dictionary_aligned(current_process->ip));
     return_to();
 }
 
@@ -1057,7 +1084,7 @@ static void terminate()
     {
         terminate_process->suspended = true;
         terminate_process->next_time_to_run = 0;
-        terminate_process->ip = LAST_ENTRY;
+        terminate_process->ip = BASE_ENTRY;
         terminate_process->sp = -1;
         terminate_process->rsp = -1;
     }
@@ -1101,7 +1128,7 @@ void return_to()
             dump_parameter_stack(buf, current_process);
             log_trace(LOG, "  %S", buf);
         }
-        current_process->ip = LAST_ENTRY;
+        current_process->ip = BASE_ENTRY;
         current_process->next_time_to_run = 0;
         next_task();
         log_trace(LOG, "end, go to %S", current_process->name);
@@ -1194,63 +1221,74 @@ static void print_spaces()
 }
 
 
-static void print_n_top_of_stack(uint32_t radix)
+static void print_n_top_of_stack(uint32_t radix, bool is_signed)
 {
     if (current_process->sp < 0)
     {
         forth_abort();
     } 
-    else 
+    else
     {
-        duplicate();
-        absolute();
-        PUSH_DATA(0);
         uint32_t base_restore = base_no;
         base_no = radix;
+        
+        if (is_signed)
+        {
+            duplicate();
+            absolute();
+        }
+        else 
+        {
+            PUSH_DATA(1); // not negative
+            swap();
+        }
+        PUSH_DATA(0);
         print_number();
-        base_no = base_restore;
         print_space();
+        base_no = base_restore;
     }
 }
+
 static void print_top_of_stack()
 {
-    print_n_top_of_stack(base_no);
+    print_n_top_of_stack(base_no, base_no != BASE_HEX);
 }
 
 static void print_hex_top_of_stack()
 {
-    print_n_top_of_stack(16);
+    print_n_top_of_stack(BASE_HEX, false);
 }
 
 static void print_decimal_top_of_stack()
 {
-    print_n_top_of_stack(10);
+    print_n_top_of_stack(BASE_DEC, true);
 }
 
 static void print_octal_top_of_stack()
 {
-    print_n_top_of_stack(8);
+    print_n_top_of_stack(BASE_OCT, true);
 }
 
 static void print_binary_top_of_stack()
 {
-    print_n_top_of_stack(2);
+    print_n_top_of_stack(BASE_BIN, true);
 }
 
 static void print_unsigned_top_of_stack()
 {
-   if (current_process->sp < 0)
-    {
-        forth_abort();
-    } 
-    else 
-    {
-        PUSH_DATA(1); // not negative
-        swap();
-        PUSH_DATA(0);
-        print_number();
-        print_space();
-    }
+    print_n_top_of_stack(base_no, false);
+//   if (current_process->sp < 0)
+//    {
+//        forth_abort();
+//    } 
+//    else 
+//    {
+//        PUSH_DATA(1); // not negative
+//        swap();
+//        PUSH_DATA(0);
+//        print_number();
+//        print_space();
+//    }
 }
 
 static void print_double_top_of_stack() {
@@ -1285,12 +1323,12 @@ inline void print_cr()
 
 static void base_hex()
 {
-    base_no = 16;
+    base_no = BASE_HEX;
 }
 
 static void base_decimal()
 {
-    base_no = 10;
+    base_no = BASE_DEC;
 }
 
 static void base_address()
@@ -1312,7 +1350,7 @@ static void read_memory()
 {
     uint32_t address = current_process->stack[current_process->sp--];
     log_trace(LOG, "address %Z", address);
-    if (isAccessibleMemory(address)) 
+    if (is_accessible_memory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
         uint32_t value = (uint32_t) *ptr;
@@ -1329,7 +1367,7 @@ static void two_read_memory()
 {
     uint32_t address = current_process->stack[current_process->sp--];
     log_trace(LOG, "address %Z", address);
-    if (isAccessibleMemory(address)) 
+    if (is_accessible_memory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
         uint32_t tos = (uint32_t) *ptr;
@@ -1353,6 +1391,20 @@ static void read_char()
     uint8_t value = dictionary_read_byte((CODE_INDEX) address) & 0xff;
     log_debug(LOG, "char at %Z = %X", address, value);
     current_process->stack[++(current_process->sp)] = value;
+    
+    
+    /*
+         uint32_t address = current_process->stack[current_process->sp--];
+    uint32_t align = address % 4;
+    uint32_t aligned = address - align;
+    log_trace(LOG, "address %Z", aligned);
+    uint32_t value = dictionary_read_byte((CODE_INDEX) aligned);
+    log_trace(LOG, "read %Z", value);
+    uint8_t c = word >> ((3 - align) * 8) & 0xff;
+    log_debug(LOG, "char at %Z = %X", address, c);
+    current_process->stack[++(current_process->sp)] = c;
+
+     */
 }
 
 static void write_memory()
@@ -1360,7 +1412,7 @@ static void write_memory()
     uint32_t address = current_process->stack[current_process->sp--]; // address
     uint32_t value = current_process->stack[current_process->sp--]; // write value
     log_debug(LOG, "set address %Z to %Z", address, value);
-    if (isAccessibleMemory(address)) 
+    if (is_accessible_memory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
         *ptr = value;
@@ -1375,7 +1427,7 @@ static void write_memory_add_1()
 {
     uint32_t address = current_process->stack[current_process->sp--]; // address
     log_debug(LOG, "increment value at address %Z", address);
-    if (isAccessibleMemory(address)) 
+    if (is_accessible_memory(address)) 
     {
         uint32_t *ptr = (uint32_t *) address;
         *ptr = *ptr + 1;
@@ -1389,7 +1441,7 @@ static void write_memory_add_1()
 static void two_write_memory()
 {
     uint32_t address = current_process->stack[current_process->sp--]; // address
-    if (isAccessibleMemory(address)) 
+    if (is_accessible_memory(address)) 
     {
         uint32_t value = current_process->stack[current_process->sp--]; // write value
         log_debug(LOG, "set address %Z to %Z", address, value);
@@ -1413,15 +1465,16 @@ static void write_char()
     uint32_t address = POP_DATA; // address
     uint32_t value = POP_DATA % 0xFF; // write value
     log_debug(LOG, "set address %Z to %X", address, value);
-    if (isAccessibleMemory(address)) 
-    {
-        uint8_t *ptr = (uint8_t *) address;
-        *ptr = value;
-    }
-    else 
-    {
-        in_error = true;
-    }
+    dictionary_write_byte((CODE_INDEX) address, value & 0xff);
+//    if (is_accessible_memory(address)) 
+//    {
+//        uint8_t *ptr = (uint8_t *) address;
+//        *ptr = value;
+//    }
+//    else 
+//    {
+//        in_error = true;
+//    }
 }
 
 static void stack()
@@ -1447,14 +1500,14 @@ inline void debug_off()
 }
 
 void reset() {
-    log_info(LOG, "reseting memory");
+    log_info(LOG, "reseting");
     struct Process* next = processes;
     do {
         next->sp = -1;
         next->rsp = -1;
 //        if (next != interpreter_process && next != idle_process)
 //        {
-            next->ip = LAST_ENTRY;
+            next->ip = BASE_ENTRY;
 //        }
         next = next->next;
     } while (next != NULL);
@@ -1462,16 +1515,19 @@ void reset() {
     interpreter_process->ip = interpreter_code;
     
     
-    dictionary_reset();
+    dictionary_master_reset();
 //    tasks();
 //    dictionary_debug();
 //    dump_base();
 }
 
 void shorten() {
-    log_info(LOG, "shortening dictionary");
-    CODE_INDEX boundary = (CODE_INDEX) POP_DATA;
-    dictionary_restart(boundary);
+    struct Dictionary_Entry entry;
+    if (dictionary_find_entry_with((CODE_INDEX) POP_DATA, &entry))
+    {
+        log_info(LOG, "shortening dictionary");
+        dictionary_truncate_at(&entry);
+    }
 }
 
 static void unused()
@@ -1495,18 +1551,25 @@ static void append_char()
 
 static void append_cell()
 {
-    CELL c = POP_DATA;
-    dictionary_append_value(c);
+    dictionary_append_cell(POP_DATA);
     dictionary_end_entry();
 }
 
+/*
+ * determines bytes required for specified number of cells
+ */
+static void cells()
+{
+    CELL cells = POP_DATA;
+    PUSH_DATA(cells * CELL_SIZE);
+}
 /*
  * Add four bytes to the address to move to the next cell 
  */
 static void add_cell()
 {
     CELL address = POP_DATA;
-    PUSH_DATA(address + 4);
+    PUSH_DATA(address + CELL_SIZE);
 }
 
 static void fill_with(char c)
@@ -1517,6 +1580,14 @@ static void fill_with(char c)
     for (i = 0; i < size; i++) {
         dictionary_write_byte((CODE_INDEX) address++, c);
     }
+}
+
+static void aligned() 
+{
+    CODE_INDEX address = (CODE_INDEX) POP_DATA;
+    address = dictionary_aligned(address);
+    PUSH_DATA((CELL) address);
+    
 }
 
 static void erase()
@@ -1567,7 +1638,7 @@ static void clear_registers()
 {
     current_process->sp = -1;
     current_process->rsp = -1;
-    current_process->ip = LAST_ENTRY;
+    current_process->ip = BASE_ENTRY;
 }
 
 void wait(uint32_t wait_time) {
@@ -1625,7 +1696,7 @@ static void dump_stack(char *buf, CELL * stack, int8_t top, char left, char righ
 void dump_return_stack(char *buf, struct Process *p)
 {
     uint32_t restore_to = base_no;
-    base_no = 16;
+    base_no = BASE_HEX;
     dump_stack(buf, p->return_stack, p->rsp, '{' , '}');
     base_no = restore_to; 
 }
@@ -1650,25 +1721,23 @@ void to_upper(char *string)
 
 static struct Process* new_task(uint8_t priority, char *name)
 {
+    struct Process* process = processes;
+    // check for existing name/find last process in list
+    while (process != NULL && process->next != NULL) 
+    {
+         if (strcicmp(name, process->name) == 0)
+         {
+             console_out("reusing process %S (%I)", name, process->id);
+             return process;
+         }
+         process = process->next;
+    }
+
     struct Process* new_process;
     new_process = malloc(sizeof(struct Process));
     if (new_process == NULL) {
         log_error(LOG, "failed to create task %S", name);
         return NULL;
-    }
-
-    if (processes == NULL) 
-    {
-        processes = new_process;
-    }
-    else
-    {
-        // TODO check for existing name
-        struct Process* last_process = processes;
-        while (last_process->next != NULL) {
-            last_process = last_process->next;
-        }
-        last_process->next = new_process;
     }
     
     new_process->id = next_process_id++;
@@ -1679,9 +1748,18 @@ static struct Process* new_task(uint8_t priority, char *name)
     new_process->rsp = -1;
     new_process->next = NULL;
     new_process->next_time_to_run = 0;
-    new_process->name = malloc(sizeof(strlen(name) + 1));
+    new_process->name = malloc(strlen(name) + 1);
     strcpy(new_process->name, name);
-    new_process->ip = LAST_ENTRY;
+    new_process->ip = BASE_ENTRY;
+    
+    if (process == NULL) 
+    {
+        processes = new_process;
+    }
+    else
+    {
+        process->next = new_process;
+    }
     
     if (current_process)
     {
@@ -1719,7 +1797,7 @@ void next_task()
     struct Process* next = NULL;
     do {
         if (!p->suspended 
-                && p->ip != LAST_ENTRY 
+                && p->ip != BASE_ENTRY 
                 && timer >= p->next_time_to_run 
                 && p->priority >= highest_priority) {
             highest_priority = p->priority;
@@ -1776,11 +1854,11 @@ static void abort_task(struct Process* process)
     char buf[80];
     log_debug(LOG, "abort task %S", process->name);
     dump_parameter_stack(buf, process);
-    console_out("%S aborted %S\n", process->name, buf);
+    console_out("\n%S aborted %S\n", process->name, buf);
     process->sp = -1;
     process->rsp = -1;
     process->ip = 0;
-    process->ip = (process == interpreter_process) ? interpreter_code : (CODE_INDEX) LAST_ENTRY;
+    process->ip = (process == interpreter_process) ? interpreter_code : (CODE_INDEX) BASE_ENTRY;
     process->next_time_to_run = 0;
     next_task();
     interpreter_echo();
@@ -1800,7 +1878,7 @@ static bool get_name_and_find_entry(struct Dictionary_Entry * entry)
     parser_next_text(token);
     to_upper(token);
     
-    if (!dictionary_find_entry(token, entry))
+    if (!dictionary_find_entry_for(token, entry))
     {
         console_out("No entry %S!\n", token);
         return false;
@@ -1906,16 +1984,16 @@ static void two_over()
 static void two_rot()
 {
     
-    CELL tos = current_process->stack[current_process->sp];
-    CELL nos = current_process->stack[current_process->sp - 1];
+    CELL value1 = current_process->stack[current_process->sp - 5];
+    CELL value2 = current_process->stack[current_process->sp - 4];
     
-    current_process->stack[current_process->sp] = current_process->stack[current_process->sp - 2];
-    current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 3];
-    current_process->stack[current_process->sp - 2] = current_process->stack[current_process->sp - 4];
-    current_process->stack[current_process->sp - 3] = current_process->stack[current_process->sp - 5];
+    current_process->stack[current_process->sp - 5] = current_process->stack[current_process->sp - 3];
+    current_process->stack[current_process->sp - 4] = current_process->stack[current_process->sp - 2];
+    current_process->stack[current_process->sp - 3] = current_process->stack[current_process->sp - 1];
+    current_process->stack[current_process->sp - 2] = current_process->stack[current_process->sp];
     
-    current_process->stack[current_process->sp - 4] = tos;
-    current_process->stack[current_process->sp - 5] = nos;
+    current_process->stack[current_process->sp - 1] = value1;
+    current_process->stack[current_process->sp] = value2;
 }
 
 /*
@@ -2001,28 +2079,6 @@ static void next_char()
 static void has_next_char()
 {
     PUSH_DATA(uart_has_next_char());
-}
-
-static void debug_print_stack() 
-{
-    console_put(NL);
-    console_put('<');
-    int8_t top = current_process->sp;
-    int i;
-    for (i = 0; i <= top; i++)
-    {
-        console_out("%Z ", current_process->stack[i]);
-    }
-    console_put('>');
-    console_put(NL);
-    
-    console_put('<');
-    for (i = 0; i <= top; i++)
-    {
-        console_out("%I ", current_process->stack[i]);
-    }
-    console_put('>');
-    console_put(NL);
 }
     
 static void load_words()
@@ -2194,9 +2250,11 @@ static void load_words()
     dictionary_add_core_word("ALLOT", allot, false);
     dictionary_add_core_word("CREATE", compiler_create_data, false);
     dictionary_add_core_word("ALIGN", dictionary_align, false);
+    dictionary_add_core_word("ALIGNED", aligned, false);
     dictionary_add_core_word("UNUSED", unused, false);
     dictionary_add_core_word(",", append_cell, false);
     dictionary_add_core_word("C,", append_char, false);
+    dictionary_add_core_word("CELLS", cells, false);
     dictionary_add_core_word("CELL+", add_cell, false);
     dictionary_add_core_word("ERASE", erase, false);
     dictionary_add_core_word("FILL", fill, false);
@@ -2223,16 +2281,15 @@ static void load_words()
 
     // other, non-forth standard, words
     dictionary_add_core_word("DICT", dictionary_debug, false);
-    dictionary_add_core_word("DRESET", dictionary_reset, false);
+    dictionary_add_core_word("DRESET", dictionary_master_reset, false);
     dictionary_add_core_word("LOCK", dictionary_lock, false);
+    dictionary_add_core_word("UNLOCK", dictionary_unlock, false);
     dictionary_add_core_word("_DUMP", dump_base, false);
     dictionary_add_core_word("_DEBUG", debug_on, false);
     dictionary_add_core_word("_NODEBUG", debug_off, false);
     dictionary_add_core_word("_RESET", reset, false);
     dictionary_add_core_word("_SHORT", shorten, false);
     dictionary_add_core_word("_CLEAR", clear_registers, false);
-
-    dictionary_add_core_word("..", debug_print_stack, false);
 
     // create loop with process instruction
     // =>  : _INTERACTIVE BEGIN {run code} AGAIN ;
@@ -2264,5 +2321,5 @@ static void load_words()
 //    dictionary_find_entry("IRET", &entry);
 //    int_return_code = entry.instruction;
     
-    dictionary_lock();
+//    dictionary_lock();
 }

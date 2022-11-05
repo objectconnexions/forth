@@ -13,6 +13,26 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stdarg.h>
+
+void /*__ISR(_UART_2_VECTOR, IPL7SOFT)*/ Uart2Handler(void);
+
+void _console_out(char*, va_list);
+
+/*
+ * Write the specified message to the console (via the UART).
+ */
+void console_out(char*, ...);
+
+/*
+ * Write the specified character the console (via the UART).
+ */
+void console_put(char);
+
+/*
+ * Output the specified number of blank spaces to the console.
+ */
+void console_pad(uint8_t);
 
 void uart_init(void);
 

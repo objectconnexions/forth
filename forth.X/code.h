@@ -25,6 +25,7 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>   
     
+typedef uint8_t BYTE;
 typedef uint32_t CELL;
 
 typedef int32_t SIGNED;

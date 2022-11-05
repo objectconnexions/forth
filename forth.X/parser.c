@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include "logger.h"
 #include "forth.h"
 #include "code.h"
 #include "dictionary.h"
@@ -124,7 +125,7 @@ static void process()
 
     // to_upper(token, strlen(token));
 
-    if (dictionary_find_entry(token, &entry)) {
+    if (dictionary_find_entry_for(token, &entry)) {
         instruction = entry.instruction;
         flags = entry.flags;
         type = WORD_AVAILABLE;

@@ -1,6 +1,7 @@
-DECIMAL
+\ noecho
+lock
 
-$0bf809000 CONSTANT ADC
+DECIMAL
 
 $0bf809000 CONSTANT AD1CON1
 $0bf809010 CONSTANT AD1CON2
@@ -11,6 +12,7 @@ $0bf809050 CONSTANT AD1CSSL
 $0bf809070 CONSTANT ADC1BUF0
 \  +10 for BUF1, +20 for BUF2 etc
 
+\     Select the channel to sample
 
 : ADC_SELECT ( input -- ) 
 	16 4 AD1CHS REG_BITS!				\ Positive input select, CH0SB (27:24) 
@@ -34,14 +36,17 @@ $0bf809070 CONSTANT ADC1BUF0
 
 	15 AD1CON1 REG_BIT_SET				\ turn on ADC
 	
-	6 ADC_SELECT						\ input is AN6 (A1)
+
+	4 PORTB ANSELA REG_BY_OFFSET REG_BIT_SET          \ set ADC innput
+
+	4 ADC_SELECT						    \ input is AN6 (A1)
 ;
 
 : ADC_SAMPLE ( -- value )
 	1 AD1CON1 REG_BIT_SET				\ set sampling flag, SAMP (1:1)
-\ TODO wait for DONE flag
+                                        \ TODO wait for DONE flag
 	3 MS
-	ADC1BUF0 @							\ read and display value
+	ADC1BUF0 @ 						    \ read value
 ;
 
 : ADC_DEBUG ( ) 

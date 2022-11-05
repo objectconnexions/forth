@@ -1,5 +1,5 @@
 noecho
-.( Dictionary reset) CR
+.( Dictionary reset)
 _reset
 
 HEX
@@ -78,23 +78,11 @@ HEX
 	0x80000000 OR
 ;
 
-\ Calculate the address of the register for the specified offset.
-\ Each register is 0x10 bytes apart
-\   Offset
-\   Base register address
-: OFFSET_REGISTER ( n addr - addr )
-	SWAP $10 * +          	     	\ reg addr for the offset
-;
-
 : MASK ( size pos - mask )
 	swap
 	1 swap lshift 1 -	\ basic mask
 	swap lshift			\ move into position
-;
-
-: MASK_BIT ( pos - mask )
-	1 swap				\ address 1 bit --
-	lshift				\ determine mask
+\	1 3 lshift 1 -   8 lshift .
 ;
 
 : REG_BIT@ ( bit address -- val )
@@ -109,69 +97,65 @@ HEX
 \ ;
 
 
+\ write bit at position in register
+: REG_BIT! ( bit address -- )
+	1 rot				\ address 1 bit --
+	lshift				\ determine mask
+	swap !				\ write bit to register
+;
+
 \ display register bit
 : REG_BIT? ( bit address -- )
 	REG_BIT@ .
 ;
 
 \ set bit at position in register
-: REG_BIT_SET ( bit address -- ) 
-	REG_SET or
-	SWAP MASK_BIT SWAP
-	!
+: REG_BIT_SET ( bit address -- )
+	REG_SET or REG_BIT!
 ;
 
 \ clear bit at position in register
-: REG_BIT_CLEAR ( bit address -- ) 
-	REG_CLR or
-	SWAP MASK_BIT SWAP
-	!	
+: REG_BIT_CLEAR ( bit address -- )
+	REG_CLR or REG_BIT!
 ;
 
 \ invert bit at position in register
-: REG_BIT_INVERT ( bit address -- ) 
-	REG_INV or
-	SWAP MASK_BIT SWAP
-	!
-;
-
-\ write bit at position in register
-: REG_BIT! ( flag bit address -- )
-    ROT IF REG_BIT_SET ELSE REG_BIT_CLEAR THEN
+: REG_BIT_INVERT ( bit address -- )
+	REG_INV or REG_BIT!
 ;
 
 : REG_BY_OFFSET ( port register -- register )
-	PORTA -				\ offset to register
+	PORTA -				\ offset to reister
 	+ 					\ adjust port address
 ;
 
 \ read bits at position in register
-: REG_BITS@ ( pos len address -- value ) 
+: REG_BITS@ ( pos len address -- value )
 	@ ROT RSHIFT						\ read register and align bits according to positon
 	SWAP								\ ( val len )
 	0 MASK AND							\ create mask and dipose of other bits
 ;
 
 \ read bits at position in register
-: REG_BITS? ( pos len address -- ) 
+: REG_BITS? ( pos len address -- )
 	REG_BITS@ .
 ;
 
 \ write bits at position in register
-: REG_BITS! ( value pos len address -- ) 
+: REG_BITS! ( value pos len address -- )
 	SWAP 2SWAP						\ ( addr len val pos)
-	SWAP ROT					        	\ ( - pos val len )
-	0 MASK							\ ( - - val mask ) generate a mask for the bits within the register
-	
-	DUP ROT 					        	\ ( - pos mask mask val )
-	AND								\ ( - pos mask masked-value )
-	LROT						        	\ ( - masked-value pos mask )
-	OVER LSHIFT						\ ( - - pos clear-out ) calculate the clear mask register change value 
+	SWAP ROT						\ ( - pos val len )
+	0 MASK							\ ( - - - mask ) generate a mask for the bits within the register
 
-	LROT    							\ ( - pos clear-out masked-value pos )
-	LSHIFT							\ ( - pos clear-out value-out) calculate the register clear value 
-	
-	
+	DUP ROT 						\ ( - - mask mask val )
+	AND								\ ( - - mask masked-value )
+	ROT ROT							\ ( - masked-value pos mask )
+	OVER LSHIFT						\ ( - - - clear-out ) calculate the clear mask register change value
+
+	ROT	ROT							\ ( - clear-out masked-value pos )
+	LSHIFT							\ ( - - value-out) calculate the register clear value
+
+
 	ROT SWAP OVER					\ ( clear-out addr val-out addr )
 	2SWAP
 	.S CR
@@ -222,7 +206,7 @@ HEX
 	0x33333333 SYSKEY !			\ write lock sequence
 ;
 
-: SYS_IOLOCK ( state -- ) 
+: SYS_IOLOCK ( state -- )
 
 ;
 
@@ -235,15 +219,15 @@ HEX
         2DUP REG_BIT_SET
 
 		2SWAP	\ bring timings to top
-		2DUP	
+		2DUP
         ms		\ delay for first period (on) - in top of double
 		drop	\ drop the other half
-		
+
 		2SWAP 	\ return location to top
         2DUP REG_BIT_CLEAR
 
 		2SWAP	\ bring timings to top
-		2DUP	
+		2DUP
 		drop	\ drop the first half ro expose the off time
         ms		\ delay for second period
 
@@ -272,5 +256,5 @@ HEX
  ;
 DECIMAL
 
-.( Added basic common words) CR
+.( Added basic common words)
 echo
