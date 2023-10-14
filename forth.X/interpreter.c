@@ -109,6 +109,10 @@ void interpreter_run()
                 else if (strcmp(buf, "noecho") == 0)
                 {
                     echo = false;
+                }
+                else if (strcmp(buf, "example") == 0)
+                {
+                   example();
                 }                
                 else
                 {                
@@ -163,3 +167,5 @@ static void interpret_instruction(INSTRUCTION code)
     forth_trace(true);
     forth_execute(code);
 }
+
+

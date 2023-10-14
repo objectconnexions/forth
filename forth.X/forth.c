@@ -1917,7 +1917,15 @@ static void debug_word()
         dictionary_debug_entry(&entry);
     }
 }
-
+//
+//
+//static void debug_word_at()
+//{ 
+//    struct Dictionary_Entry entry;
+//    entry = dictionary_   add  POP_DATA;  // TODO find entry for address
+//    console_put(NL);
+//    dictionary_debug_entry(&entry);
+//}
 
 static void set_log_level() 
 {
@@ -2281,8 +2289,10 @@ static void load_words()
 
     // other, non-forth standard, words
     dictionary_add_core_word("DICT", dictionary_debug, false);
+    dictionary_add_core_word("DICT2", dictionary_debug2, false);
     dictionary_add_core_word("DRESET", dictionary_master_reset, false);
     dictionary_add_core_word("LOCK", dictionary_lock, false);
+    dictionary_add_core_word("FLASH", dictionary_move_to_flash, false);
     dictionary_add_core_word("UNLOCK", dictionary_unlock, false);
     dictionary_add_core_word("_DUMP", dump_base, false);
     dictionary_add_core_word("_DEBUG", debug_on, false);
@@ -2290,6 +2300,7 @@ static void load_words()
     dictionary_add_core_word("_RESET", reset, false);
     dictionary_add_core_word("_SHORT", shorten, false);
     dictionary_add_core_word("_CLEAR", clear_registers, false);
+//    dictionary_add_core_word("_SEE", debug_word_at, false);
 
     // create loop with process instruction
     // =>  : _INTERACTIVE BEGIN {run code} AGAIN ;
@@ -2322,4 +2333,22 @@ static void load_words()
 //    int_return_code = entry.instruction;
     
 //    dictionary_lock();
+}
+
+
+
+
+
+
+
+
+void example() {
+    
+    duplicate();
+    add_1();
+    add_1();
+    print_decimal_top_of_stack();
+    print_cr();
+    drop();
+    
 }

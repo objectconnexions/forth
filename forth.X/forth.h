@@ -71,6 +71,10 @@ void s_string(void);
 void c_string(void);
 void data_address(void);
 
+
+void example(void);
+
+
 #ifdef	__cplusplus
 }
 #endif

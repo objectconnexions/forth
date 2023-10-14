@@ -17,7 +17,6 @@ extern "C" {
 #include "code.h"
 
 #define BASE_ENTRY NULL
-    // 0xffff
     
 typedef void (*CORE_FUNC)(void);
 
@@ -129,6 +128,8 @@ CODE_INDEX dictionary_offset(void);
 
 void dictionary_debug(void);
 
+void dictionary_debug2(void);
+
 bool dictionary_shortcode(CODE_INDEX);
 
 void dictionary_execute_function(CODE_INDEX);
@@ -148,6 +149,8 @@ void compiler_resume(void);
 CODE_INDEX dictionary_pad(void);
 
 int strcicmp(char const *, char const *);
+
+void dictionary_move_to_flash(void);
 
 #ifdef	__cplusplus
 }
