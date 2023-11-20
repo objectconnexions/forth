@@ -5,13 +5,28 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-static char *type[5] = {"TRACE", "DEBUG", "INFO", "ERROR", "OFF"};
+static char *type[6] = {"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF"};
 
-enum LEVEL log_level;
+static enum LEVEL log_level;
 
 void log_init()
 {
-    log_level = ERROR;
+    log_level = WARN;
+}
+
+void log_set_level(uint8_t level)
+{
+    if (level >= 0 && level <= 6) 
+    {
+        log_level = level;
+        console_out("Logging at %S\n", type[level]);
+    } else {
+        console_out("Invalid level %I\n", level);
+    }
+}
+
+bool log_is_trace() {
+    return log_level <= TRACE;
 }
 
 static void add_message(enum LEVEL log_level, char* context, char* message, va_list argptr)
@@ -52,6 +67,17 @@ void log_info(char *context, char *message, ...)
         va_list argptr;
         va_start(argptr, message);
         add_message(INFO, context, message, argptr);
+        va_end(argptr);
+    }
+}
+
+void log_warn(char *context, char *message, ...)
+{
+    if (log_level <= WARN && current_process->log) 
+    {
+        va_list argptr;
+        va_start(argptr, message);
+        add_message(WARN, context, message, argptr);
         va_end(argptr);
     }
 }

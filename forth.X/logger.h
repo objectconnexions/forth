@@ -2,6 +2,9 @@
 #ifndef _LOGGER_H    /* Guard against multiple inclusion */
 #define _LOGGER_H
 
+#include <stdint.h>
+#include <stdbool.h>   
+
 
 #define NL '\n'
 #define SPACE ' '
@@ -10,11 +13,14 @@ enum LEVEL {
     TRACE,
     DEBUG,
     INFO,
+    WARN,
     ERROR,
     OFF
 };
 
-extern enum LEVEL log_level;
+void log_set_level(uint8_t level);
+
+bool log_is_trace(void);
 
 /*
  * Initialise the logging system before it is used.

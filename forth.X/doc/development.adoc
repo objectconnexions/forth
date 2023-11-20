@@ -4,6 +4,8 @@
 
 `log_warn("LOG NAME", "log message at %Z", );`
 
+Set up the default logging (on power up) in the `log_init()` function in `logger.c`.
+
 .Flags
 
 * `%S` - String

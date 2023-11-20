@@ -32,8 +32,15 @@ struct Dictionary_Entry {
     char name[32];               // entry's name
     uint8_t flags;
     INSTRUCTION instruction;     // address of entry's executable code
+    bool core;                   // core function, rather than user created
 };
-
+    
+struct CORE_ENTRY {
+    char *name;
+    CORE_FUNC function;
+    bool immediate;
+};
+     
 void dictionary_init(void);
 
 void dictionary_init_done(void);
@@ -58,9 +65,9 @@ CODE_INDEX dictionary_add_entry(char *);
 
 void dictionary_end_entry(void);
 
-void dictionary_insert_internal_instruction(uint8_t, CORE_FUNC);
+//void dictionary_insert_internal_instruction(uint8_t, CORE_FUNC);
 
-CODE_INDEX dictionary_add_core_word(char *, CORE_FUNC, bool);
+//CODE_INDEX dictionary_add_core_word(char *, CORE_FUNC, bool);
 
 CORE_FUNC dictionary_find_core_function(uint16_t);
 
@@ -68,7 +75,7 @@ bool dictionary_find_entry_with(CODE_INDEX, struct Dictionary_Entry *);
 
 bool dictionary_find_entry_for(char *, struct Dictionary_Entry *);
 
-uint64_t dictionary_read(struct Process *);
+uint32_t dictionary_read(struct Process *);
 
 CODE_INDEX dictionary_read_instruction(struct Process *);
 
@@ -77,7 +84,7 @@ uint8_t dictionary_read_next_byte(struct Process *);
 /*
  *  Return the name of the dictionary entry for the memory at the specified address
  */
-void dictionary_find_word_for(CODE_INDEX, char *);
+bool dictionary_find_word_for(CODE_INDEX, char *);
 
 void dictionary_debug_summary(CODE_INDEX);
         
@@ -118,11 +125,13 @@ void dictionary_append_byte(BYTE);
 
 void dictionary_append_cell(CELL);
 
-void dictionary_append_instruction(CODE_INDEX);
+void dictionary_append_instruction(struct Dictionary_Entry);
 
 void dictionary_append_function(CORE_FUNC);
 
 void dictionary_append_literal(uint64_t);
+
+void dictionary_append_string(char const *);
 
 CODE_INDEX dictionary_offset(void);
 
@@ -130,13 +139,15 @@ void dictionary_debug(void);
 
 void dictionary_debug2(void);
 
-bool dictionary_shortcode(CODE_INDEX);
+void dictionary_debug_all(void);
 
-void dictionary_execute_function(CODE_INDEX);
-
-void dictionary_lock(void);
-
-void dictionary_unlock(void);
+//bool dictionary_shortcode(CODE_INDEX);
+//
+//void dictionary_execute_function(CODE_INDEX);
+//
+//void dictionary_lock(void);
+//
+//void dictionary_unlock(void);
 
 void dictionary_mark_internal(void);
 
@@ -151,6 +162,8 @@ CODE_INDEX dictionary_pad(void);
 int strcicmp(char const *, char const *);
 
 void dictionary_move_to_flash(void);
+
+void dictionary_move_to_proxy(void);
 
 #ifdef	__cplusplus
 }

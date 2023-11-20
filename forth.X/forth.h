@@ -74,6 +74,7 @@ void data_address(void);
 
 void example(void);
 
+extern const struct CORE_ENTRY core_funcs[];
 
 #ifdef	__cplusplus
 }

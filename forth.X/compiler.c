@@ -12,15 +12,15 @@
 #include "uart.h"
 #include "util.h"
 
-#define LOG "compiler"
+#define LOG "Compiler"
 
 #define IN_COMPILATION (uint8_t) 1
 
 static void add_literal(uint32_t);
 static void add_double_literal(uint64_t);
-static void complete_word(void);
+static void complete_word(bool);
 
-static CODE_INDEX jumps[6];
+static CODE_INDEX block_start[6];
 static uint8_t jp = 0;
 static bool has_error;
 
@@ -37,7 +37,7 @@ void compiler_compile_definition()
     char name[32];
     bool read;
     
-    // TODO what does this not use add_named_entry()?
+    // TODO why does this not use add_named_entry()?
     
     has_error = false;
     state = IN_COMPILATION;
@@ -45,8 +45,6 @@ void compiler_compile_definition()
     
     enum TYPE type = parser_next_token();
     if (type != WORD_AVAILABLE && type != INVALID_INSTRUCTION) {
-//        parser_drop_line();
-//        has_error = false;
         parser_token_text(name);
         log_error(LOG, "can't compile %S", name);
         return;
@@ -89,7 +87,7 @@ void compiler_compile_definition()
                 else
                 {
                     log_debug(LOG, "append entry %S", entry.name);
-                    dictionary_append_instruction(entry.instruction);
+                    dictionary_append_instruction(entry);
                 }
                 break;
                 
@@ -160,11 +158,12 @@ void compiler_constant()
 {
     if (add_named_entry())
     {
-        dictionary_append_function(push_literal);
+//        dictionary_append_function(push_literal);
         uint32_t value = pop_stack();
-        dictionary_append_literal(value);
-
-        complete_word();
+//        dictionary_append_literal(value);
+        
+        add_literal(value);
+        complete_word(true);
     }
 }
 
@@ -172,14 +171,11 @@ void compiler_2constant()
 {
     if (add_named_entry())
     {
-        CELL value1 = pop_stack();
-        CELL value2 = pop_stack();
-        dictionary_append_function(push_literal);
-        dictionary_append_literal(value2);
-        dictionary_append_function(push_literal);
-        dictionary_append_literal(value1);
-        
-        complete_word();
+        CELL tos = pop_stack();
+        CELL nos = pop_stack();
+        add_literal(nos);
+        add_literal(tos);
+        complete_word(true);
     }
 }
 
@@ -193,8 +189,7 @@ static void add_variable(uint8_t size)
         dictionary_append_byte((uint8_t) 0); // space for value
     }
 
-    complete_word();
-    
+    complete_word(false);
 }
 
 void compiler_variable()
@@ -215,52 +210,55 @@ void compiler_2variable()
 
 void compiler_end()
 {
-    complete_word();
+    complete_word(true);
 }
 
 void compiler_if()
 {
-    dictionary_append_function(zero_branch);
-    jumps[jp++] = dictionary_offset();
-    dictionary_append_byte(0);  
-}
-
-void compiler_begin()
-{
-    jumps[jp++] = dictionary_offset();
+    // zbranch offset instruction, over main block
+    block_start[jp++] = dictionary_offset();
+    dictionary_append_literal(0xD0000000);
 }
     
 // TODO these need to check if bounds are exceeded (> 128 or < -127)
 void compiler_then()
 {
-    uint8_t distance = dictionary_offset() - jumps[--jp];
-    dictionary_write_byte(jumps[jp], distance);
+    // zbranch (for if) or branch (for else) offset over respective block
+    CODE_INDEX start = block_start[--jp];
+    uint16_t jump = dictionary_offset() - start - 4;
+    dictionary_write_byte(start + 2, (jump >> 8) & 0xFF );
+    dictionary_write_byte(start + 3, jump & 0xFF );
 }
 
 void compiler_else()
 {
-    dictionary_append_function(branch);
-    CODE_INDEX jump_offset = dictionary_offset();
-    dictionary_append_byte(0);  
+    // zbranch offset distance, over main block
+    CODE_INDEX start = block_start[--jp];
+    uint16_t jump = dictionary_offset() - start;
+    dictionary_write_byte(start + 2, (jump >> 8) & 0xFF );
+    dictionary_write_byte(start + 3, jump & 0xFF );
+ 
+    // branch over else block
+    block_start[jp++] = dictionary_offset();
+    dictionary_append_literal(0xC0000000);
+}
 
-    uint8_t distance = dictionary_offset() - jumps[--jp];
-    dictionary_write_byte(jumps[jp], distance);
-    
-    jumps[jp++] = jump_offset;
+void compiler_begin()
+{
+    block_start[jp++] = dictionary_offset();
 }
 
 void compiler_again()
 {
-    dictionary_append_function(branch);
-    uint8_t distance = jumps[--jp] - dictionary_offset();
-    dictionary_append_byte(distance);
+    uint16_t distance = block_start[--jp] - dictionary_offset() - 4;
+    dictionary_append_literal(0xC0000000 | distance);
+
 }    
 
 void compiler_until()
 {
-    dictionary_append_function(zero_branch);
-    uint8_t distance = jumps[--jp] - dictionary_offset();
-    dictionary_append_byte(distance);
+    uint16_t distance = block_start[--jp] - dictionary_offset() - 4;
+    dictionary_append_literal(0xD0000000 | distance);
 }
                 
 void compiler_eol_comment()
@@ -275,7 +273,8 @@ void compiler_inline_comment()
     do
     {
         parser_next_text(text);
-    } while(text[strlen(text) - (size_t) 1] != ')');
+    }
+    while(text[strlen(text) - (size_t) 1] != ')');
 }
         
 /* 
@@ -300,8 +299,8 @@ void compiler_print_comment()
             console_out(text);
             console_put(SPACE);
         }
-    } while(!end);
-//    console_put(NL);
+    }
+    while(!end);
 }
 
 void compiler_char()
@@ -338,7 +337,8 @@ void compiler_compile_string()
         }
         len = strlen(text);
         log_debug(LOG, "%I string %S", len, text);
-    } while(text[len - 1] != '"');
+    }
+    while(text[len - 1] != '"');
     len--;
     
     CODE_INDEX lengthAt = dictionary_here();
@@ -406,7 +406,7 @@ void compiler_create_data()
     dictionary_align();
 }
 
-static void complete_word() 
+static void complete_word(bool with_return) 
 {
     if (has_error) {
         dictionary_abort_entry();
@@ -415,7 +415,10 @@ static void complete_word()
     }
     else
     {
-        dictionary_append_function(return_to);
+        if (with_return)
+        {
+            dictionary_append_function(return_to);
+        }
         dictionary_end_entry();
     }
     state = (uint8_t) 0;
@@ -423,15 +426,21 @@ static void complete_word()
 
 static void add_literal(uint32_t value)
 {
-    dictionary_append_function(push_literal);
-    log_trace(LOG, "literal = %Z", value);
-    dictionary_append_literal(value);
+    log_debug(LOG, "literal = %Z", value);
+    if ((value & 0xC0000000) == 0)
+    {
+        dictionary_append_literal(value);   
+    }
+    else 
+    {
+        dictionary_append_function(push_literal);
+        dictionary_append_literal(value);   
+    }
 }
 
 static void add_double_literal(uint64_t value)
 {
-    dictionary_append_function(push_double_literal);
-    log_trace(LOG, "literal = %W", value);
-    dictionary_append_literal(value);
+    add_literal(value >> 32);
+    add_literal(value & 0xFFFFFFFF);
 }
 

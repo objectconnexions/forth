@@ -81,11 +81,15 @@ void interpreter_run()
             {
                 log_debug(LOG, "input line: '%S'", buf);
 
-                if (strcmp(buf, "ddd") == 0)
+                if (strcmp(buf, "_mem") == 0)
                 {
                     dictionary_memory_dump(0, 0x250);
                 }
-                else if (strcmp(buf, "eee") == 0)
+                else if (strcmp(buf, "_mem2") == 0)
+                {
+                    dictionary_debug2();
+                }
+                else if (strcmp(buf, "_dict") == 0)
                 {
                     dictionary_debug();
                 }
@@ -110,10 +114,6 @@ void interpreter_run()
                 {
                     echo = false;
                 }
-                else if (strcmp(buf, "example") == 0)
-                {
-                   example();
-                }                
                 else
                 {                
                     if (echo)

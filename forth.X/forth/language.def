@@ -1,6 +1,6 @@
 noecho
 .( Dictionary reset) CR
-_reset
+\ _reset
 
 HEX
 

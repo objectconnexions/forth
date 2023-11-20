@@ -21,6 +21,7 @@ static char * ptr;
 static char token[32];
 static enum TYPE type;
 static CODE_INDEX instruction;
+static bool core;
 static uint8_t flags;
 static UNSIGNED_DOUBLE number_value;
 
@@ -55,6 +56,7 @@ void parser_token_text(char * name)
  */
 enum TYPE parser_next_text(char * text)
 {
+    strcpy(text, "");
     if (type != NONE) {
         parse_next();
         if (type != END_LINE) {
@@ -90,6 +92,7 @@ uint64_t parser_token_number()
 void parser_token_entry(struct Dictionary_Entry *entry)
 {
     entry->instruction = instruction;
+    entry->core = core;
     entry->flags = flags;
 }
 
@@ -127,9 +130,10 @@ static void process()
 
     if (dictionary_find_entry_for(token, &entry)) {
         instruction = entry.instruction;
+        core = entry.core;
         flags = entry.flags;
         type = WORD_AVAILABLE;
-        log_debug(LOG, "word %Z %Z", entry.instruction, entry.flags);
+        log_debug(LOG, "%Sword %S, %Z/%X", core ? "core " : "" , token, entry.instruction, entry.flags);
         return;
 
     } else {

@@ -1,7 +1,5 @@
 noecho
 
-lock
-
 \ for MX570 prototype PCB
 
 DECIMAL

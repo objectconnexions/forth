@@ -1,7 +1,10 @@
 
 : Y ( -- n ) 1 + 2 + 3 + ;
-: X ( n -- n doubls the number ) DUP * ;
+
+: X ( n -- n squares the number ) DUP * ;
+
 : Z Y X ; \ n n -- n multiple numbers
+
 : TEST0 Z DUP Z . CR . CR ;
 
 : IFF IF 222 . CR THEN ;
@@ -50,7 +53,8 @@
 	BEGIN
 		1 - DUP
 		0=
-		.S
+\		.S
+        OVER .
 	UNTIL
 	DROP
 	CR

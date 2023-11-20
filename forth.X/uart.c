@@ -190,7 +190,12 @@ void _console_out(char* message, va_list argptr)
             } 
             else if (*message == 'I')
             {
-                uint32_t val = va_arg(argptr, uint32_t);
+                int32_t val = va_arg(argptr, uint32_t);
+                if (val < 0)
+                {
+                    *out++ = '-';
+                    val = -val;
+                }
                 out += number_to_string(out, val, 10, 0);
             }
             else

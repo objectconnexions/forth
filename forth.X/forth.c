@@ -9,7 +9,6 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <GenericTypeDefs.h>
-//#include <proc/p32mx270f256d.h>
 #include <cp0defs.h>
 #include <plib.h>
 
@@ -23,6 +22,7 @@
 #include "dictionary.h"
 #include "uart.h"
 #include "timer.h"
+#include "flash.h"
 
 #define PEEK_DATA current_process->stack[current_process->sp]
 #define PUSH_DATA(value) push(value)
@@ -39,7 +39,6 @@
 
 void dump_parameter_stack(char *, struct Process*);
 void dump_return_stack(char *, struct Process*);
-//void execute_next_instruction(void);
 void display_code(uint8_t*);
 CELL pop_stack(void);
 void next_task();
@@ -109,7 +108,10 @@ int forth_init()
     
     log_info(LOG, "loaded initial words");
     
-//    tasks();
+    dictionary_debug2();
+    dictionary_debug_all();
+
+    tasks();
 }
 
 void forth_trace(bool trace) {
@@ -188,10 +190,11 @@ bool stack_underflow()
  */
 static bool is_accessible_memory(uint32_t address)
 {
-    if ((address >= 0xBF800000 && address <= 0xBF8FFFFF) ||
-            (address >= 0xA0000000 && address <= 0xA000FFFF) ||
-            (address >= 0x80000000 && address <= 0x8000FFFF)) 
-    {
+    // TODO is this enough
+//    if ((address >= 0xBF800000 && address <= 0xBF8FFFFF) ||
+//            (address >= 0xA0000000 && address <= 0xA000FFFF) ||
+//            (address >= 0x80000000 && address <= 0x8000FFFF)) 
+//    {
         if (address % 4 != 0)
         {
             console_out("NON-ALIGNED %Z!", address); // reading from non-aligned address causes PIC exception
@@ -201,12 +204,12 @@ static bool is_accessible_memory(uint32_t address)
         {
             return true;
         }
-    } 
-    else
-    {
-        console_out("MEMORY LIMIT %Z!", address);
-        return false;
-    }
+//    } 
+//    else
+//    {
+//        console_out("MEMORY LIMIT %Z!", address);
+//        return false;
+//    }
 }
 
 static void test_compile(char * input) {
@@ -221,30 +224,7 @@ void forth_run()
     in_error = false;
     while (true)
     {
-            
-//    processes = NULL;
-
-    /*    
-//        if (trace_code) {
-//    //        char word_name[64];
-//    //        dictionary_find_word_for(instruction, word_name);
-//    //        log_trace(LOG, "execute #%I %Z: %S", current_process->id, instruction, word_name);
-//            
-//            char buf[100];
-//            dump_parameter_stack(buf, current_process);
-//            console_out("%S  %Z ", buf, current_process->ip);
-//
-//            dictionary_print_instruction(current_process->ip);
-//            
-//            console_put(NL);
-//        }
-        */
-        
-    
          if (trace_code) {
-    //        char word_name[64];
-    //        dictionary_find_word_for(instruction, word_name);
-    //        log_trace(LOG, "execute #%I %Z: %S", current_process->id, instruction, word_name);
             if (current_process->ip == interpreter_code + 1) {
                 trace_code = false;
             } else {
@@ -295,128 +275,87 @@ void forth_run()
         }
     }
 }
-//
-//void start_code(CODE_INDEX at_address)
-//{
-//    PUSH_RETURN(current_process->ip);
-//    // TODO this should be the main current_process only
-//    interpreter_process->ip = at_address;
-//}
 
 void forth_execute(CODE_INDEX instruction_pointer)
 {
-    /*
-//    if (trace_code && current_process == interpreter_process) {
-//        
-//        
-//        0bf80f230 CONSTANT SYSKEYtask
-//        
-////        char word_name[64];
-////        CODE_INDEX entry = dictionary_find_word_for(instruction_pointer, word_name);
-//
-//        
-////        char buf[100];
-//       // dump_parameter_stack(buf, current_process);
-////        char *buf = "< ?? >";
-//        
-//        log_info(LOG, "instruction pointer #%I: %Z:", current_process->id, instruction_pointer);
-//
-////        
-//////        CODE_INDEX location = current_process->ip;
-//        dictionary_print_instruction(instruction_pointer); 
-//        //2 logconsole_put(NL);
-//
-//        
-//        
-//        
-//    }
+    CODE_INDEX pos;
+    int16_t relative;
+            
+    log_trace(LOG, "exec %Z: %Z", current_process->ip, instruction_pointer);
     
-//    CODE_INDEX instruction_pointer = dictionary_read_instruction(current_process);
-//    if (log_level == INFO && current_process == interpreter_process)
-//    { 
-//        dictionary_print_instruction(current_process->ip); 
-//    }
-    
-    
-//    
-//    
-//         if (trace_code) {
-//    //        char word_name[64];
-//    //        dictionary_find_word_for(instruction, word_name);
-//    //        log_trace(LOG, "execute #%I %Z: %S", current_process->id, instruction, word_name);
-//            
-//            char buf[100];
-//            dump_parameter_stack(buf, current_process);
-//            console_out("%S  %Z ", buf, instruction_pointer);
-//
-//            CODE_INDEX test = instruction_pointer;
-//            dictionary_print_instruction(test);
-//            
-//            console_put(NL);
-//        }
-//    
-    */
-    
-    if (dictionary_shortcode(instruction_pointer))
-    {
-        dictionary_execute_function(instruction_pointer);
+    uint32_t instruction = ((uint32_t) instruction_pointer);
+    switch (instruction & 0xF0000000)
+    {            
+        case 0x90000000:
+            // function
+            instruction |= 0x9D000000;
+            ((CORE_FUNC) instruction)();
+            break;
+            
+        case 0xA0000000:
+            // flash word
+            instruction |= 0xA0000000;
+            log_trace(LOG, "flash %Z", instruction_pointer);
+            PUSH_RETURN(current_process->ip);
+            if (log_is_trace()) 
+            {
+                char word_name[32];
+                dictionary_find_word_for((CODE_INDEX) instruction, word_name);
+                log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction, current_process->ip);
+            }
+            current_process->ip = (CODE_INDEX) instruction;
+            break;
+            
+        case 0xB0000000:
+            // ram word
+            instruction &= 0xEFFFFFFF;
+            log_trace(LOG, "ram %Z", instruction_pointer);
+            PUSH_RETURN(current_process->ip);
+            if (log_is_trace()) 
+            {
+                char word_name[32];
+                dictionary_find_word_for((CODE_INDEX) instruction, word_name);
+                log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction, current_process->ip);
+            }
+            current_process->ip = (CODE_INDEX) instruction;
+            break;
+
+        case 0xC0000000:
+            // branch
+            pos = current_process->ip;
+            relative = instruction & 0x0000FFFF; // dictionary_read_next_byte(current_process);
+            log_trace(LOG, "branch for %I", relative);
+            current_process->ip = pos + relative;
+            break;
+
+        case 0xD0000000:
+            // zero branch
+            pos = current_process->ip;
+            relative = instruction & 0x0000FFFF; 
+            uint32_t is_zero = POP_DATA;
+            log_trace(LOG, "zbranch for %I -> %S", relative, (is_zero == 0 ? "zero" : "non-zero"));
+            if (is_zero == 0) {
+                current_process->ip = pos + relative;
+            } else {
+            }
+            break;
+
+        case 0xE0000000:
+            // exit
+            // TODO can we exit via a short code rather than a full function?
+            break;
+                            
+        default:
+            // literal
+            PUSH_DATA(instruction);
+            break;
+
     }
-    else
-    {
-        PUSH_RETURN(current_process->ip);
-        if (log_level <= TRACE) 
-        {
-            char word_name[64];
-            dictionary_find_word_for(instruction_pointer, word_name);
-            log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction_pointer, current_process->ip);
-        }
-        current_process->ip = instruction_pointer;
-    }
+    
     if (stack_underflow()) {
         forth_abort();
     }
 }
-
-//void execute_next_instruction()
-//{
-////    in_error = false;
-////    
-////    // TODO move location into trace block
-////    CODE_INDEX location = current_process->ip; // capture first as can't infer how many bytes it was later on
-////    
-////    if (location == LAST_ENTRY) {
-////        return;
-////    }
-////    
-////    CODE_INDEX instruction = dictionary_read_instruction(current_process);
-////    if (log_level == INFO && current_process == interpreter_process)
-////    { 
-////        dictionary_print_instruction(current_process->ip); 
-////    }
-////    
-//////    if (log_level <= TRACE)
-//////    {   
-////        char word_name[64];
-////        dictionary_find_word_for(instruction, word_name);
-////        log_trace(LOG, "execute #%I ~%Z: %Z: %S", current_process->id, location, instruction, word_name);
-//////    }
-////        console_out("execute!\n");
-////    forth_execute(instruction);
-////
-////    // TODO how do we set up the errors? needs to be part of the current_process struct
-////    if (in_error)
-////    {
-////        in_error = false;
-////        current_process->sp = -1;
-////        current_process->rsp = -1;
-////        current_process->ip = LAST_ENTRY;
-////        current_process->next_time_to_run = 0;
-////        next_task();
-////        console_out(" ABORTED\n");
-////    }
-//}
-//   
-
 
 void forth_interrupt(uint8_t vector)
 {
@@ -462,12 +401,6 @@ void forth_interrupt(uint8_t vector)
         }
     }
 }
-//    
-//    processes = NULL;
-
-//static void interrupt_return() {
-//   log_info(LOG, "INT RET!");
-//}
 
 static void write_mask(uint32_t address, CELL mask, bool set)
 {
@@ -623,8 +556,10 @@ void push_literal()
 
 void push_double_literal()
 {
-    uint64_t value = dictionary_read(current_process);
-    push_double(value);
+    uint32_t value1 = dictionary_read(current_process);
+    uint32_t value2 = dictionary_read(current_process);
+    push_double(value2);
+    push_double(value1);
 }
 
 /*
@@ -999,8 +934,6 @@ static void ticks()
 static void time()
 {
     uint32_t count = _CP0_GET_COUNT();
-//    uint32_t compare = _CP0_GET_COMPARE();
-//    log_info(LOG, "core timer count %I =? %I", count, compare);
     PUSH_DATA(count / (CORE_TIMER_INTERVAL / 1000));
 }
 
@@ -1015,24 +948,6 @@ void wait_for()
     wait(time);
 }
 
-void branch()
-{
-    CODE_INDEX pos = current_process->ip;
-    int8_t relative = dictionary_read_next_byte(current_process);
-    current_process->ip = pos + relative;
-}
-
-void zero_branch()
-{
-    uint32_t offset = POP_DATA;
-    log_trace(LOG, "zbranch for %I -> %S", offset, (offset == 0 ? "zero" : "non-zero"));
-    if (offset == 0) {
-        branch();
-    } else {
-        current_process->ip++;
-    }
-}
-
 void execute_word() 
 {
     if (stack_underflow()) {
@@ -1043,7 +958,6 @@ void execute_word()
     current_process->return_stack[++(current_process->rsp)] = (CELL) current_process->ip;
     current_process->ip = instruction;
 }
-
 
 static struct Process* get_process()
 {
@@ -1111,19 +1025,16 @@ static void resume()
 void return_to()
 {
     char buf[64];
-    if (log_level <= TRACE) 
+    if (log_is_trace()) 
     {
-        if (log_level <= TRACE) 
-        {
-            dump_return_stack(buf, current_process);
-            log_trace(LOG, "return %S", buf);
-            dump_parameter_stack(buf, current_process);
-            log_trace(LOG, "  %S", buf);
-        }
+        dump_return_stack(buf, current_process);
+        log_trace(LOG, "return %S", buf);
+        dump_parameter_stack(buf, current_process);
+        log_trace(LOG, "  %S", buf);
     }
     if (current_process->rsp < 0) {
         // copy of END code - TODO refactor
-        if (log_level <= TRACE) 
+        if (log_is_trace()) 
         {
             dump_parameter_stack(buf, current_process);
             log_trace(LOG, "  %S", buf);
@@ -1277,18 +1188,6 @@ static void print_binary_top_of_stack()
 static void print_unsigned_top_of_stack()
 {
     print_n_top_of_stack(base_no, false);
-//   if (current_process->sp < 0)
-//    {
-//        forth_abort();
-//    } 
-//    else 
-//    {
-//        PUSH_DATA(1); // not negative
-//        swap();
-//        PUSH_DATA(0);
-//        print_number();
-//        print_space();
-//    }
 }
 
 static void print_double_top_of_stack() {
@@ -1391,20 +1290,6 @@ static void read_char()
     uint8_t value = dictionary_read_byte((CODE_INDEX) address) & 0xff;
     log_debug(LOG, "char at %Z = %X", address, value);
     current_process->stack[++(current_process->sp)] = value;
-    
-    
-    /*
-         uint32_t address = current_process->stack[current_process->sp--];
-    uint32_t align = address % 4;
-    uint32_t aligned = address - align;
-    log_trace(LOG, "address %Z", aligned);
-    uint32_t value = dictionary_read_byte((CODE_INDEX) aligned);
-    log_trace(LOG, "read %Z", value);
-    uint8_t c = word >> ((3 - align) * 8) & 0xff;
-    log_debug(LOG, "char at %Z = %X", address, c);
-    current_process->stack[++(current_process->sp)] = c;
-
-     */
 }
 
 static void write_memory()
@@ -1466,15 +1351,6 @@ static void write_char()
     uint32_t value = POP_DATA % 0xFF; // write value
     log_debug(LOG, "set address %Z to %X", address, value);
     dictionary_write_byte((CODE_INDEX) address, value & 0xff);
-//    if (is_accessible_memory(address)) 
-//    {
-//        uint8_t *ptr = (uint8_t *) address;
-//        *ptr = value;
-//    }
-//    else 
-//    {
-//        in_error = true;
-//    }
 }
 
 static void stack()
@@ -1505,20 +1381,13 @@ void reset() {
     do {
         next->sp = -1;
         next->rsp = -1;
-//        if (next != interpreter_process && next != idle_process)
-//        {
-            next->ip = BASE_ENTRY;
-//        }
+        next->ip = BASE_ENTRY;
         next = next->next;
     } while (next != NULL);
     idle_process->ip = idle_code;
     interpreter_process->ip = interpreter_code;
-    
-    
+        
     dictionary_master_reset();
-//    tasks();
-//    dictionary_debug();
-//    dump_base();
 }
 
 void shorten() {
@@ -1642,6 +1511,7 @@ static void clear_registers()
 }
 
 void wait(uint32_t wait_time) {
+//    log_trace(LOG, "wait %I", wait_time);
     current_process->next_time_to_run = timer + wait_time;
     next_task();
 }
@@ -1761,6 +1631,7 @@ static struct Process* new_task(uint8_t priority, char *name)
         process->next = new_process;
     }
     
+    // can't log until a current process exists
     if (current_process)
     {
         log_debug(LOG, "new task %S (P%I)", new_process->name, priority);
@@ -1808,8 +1679,10 @@ void next_task()
     if (next != NULL && next != current_process) {
         current_process = next;
         current_process->activations++;
-        // log_trace(LOG, "switch to current_process %S", current_process->name);
-    }
+        log_trace(LOG, "switch to current_process %S", current_process->name);
+    } 
+    else         log_trace(LOG, "no switch");
+
 }
 static void print_task(struct Process* p) 
 {
@@ -1875,16 +1748,22 @@ void forth_abort()
 static bool get_name_and_find_entry(struct Dictionary_Entry * entry)
 {
     char token[32];
-    parser_next_text(token);
-    to_upper(token);
-    
-    if (!dictionary_find_entry_for(token, entry))
+    if (parser_next_text(token) != END_LINE)
     {
-        console_out("No entry %S!\n", token);
-        return false;
-    }
+        to_upper(token);
 
-    return true;
+        if (!dictionary_find_entry_for(token, entry))
+        {
+            console_out("No entry %S!\n", token);
+            return false;
+        }
+
+        return true;
+    }
+    else 
+    {
+        console_out("word required!");
+    }
 }
 
 /*
@@ -1917,19 +1796,11 @@ static void debug_word()
         dictionary_debug_entry(&entry);
     }
 }
-//
-//
-//static void debug_word_at()
-//{ 
-//    struct Dictionary_Entry entry;
-//    entry = dictionary_   add  POP_DATA;  // TODO find entry for address
-//    console_put(NL);
-//    dictionary_debug_entry(&entry);
-//}
 
 static void set_log_level() 
 {
-    log_level = current_process->stack[current_process->sp--];
+    CELL level = current_process->stack[current_process->sp--];
+    log_set_level((uint8_t) level);
 }
 
 static void question_dup() 
@@ -2041,15 +1912,6 @@ void print_string()
     c_string();
     count();
     type();
-    /*
-    
-    uint8_t len = dictionary_read_next_byte(current_process);
-    int i;
-    for (i = 0; i < len; i++) {
-        char ch = dictionary_read_next_byte(current_process);
-        console_out("%c", ch);
-    }
-     */
 }
 
 /*
@@ -2060,13 +1922,6 @@ void s_string()
 {
     c_string();
     count();
-    
-    /*
-    uint8_t len = dictionary_read_next_byte(current_process);
-    PUSH_DATA((CELL) current_process->ip);
-    PUSH_DATA(len);
-    current_process->ip += len;
-     */
 }
 /*
  * Pushes the address of the counted string onto the stack and moves the 
@@ -2088,267 +1943,257 @@ static void has_next_char()
 {
     PUSH_DATA(uart_has_next_char());
 }
-    
-static void load_words()
+
+
+static void test_write_flash()
 {
-    log_info(LOG, "load words");
+    uint32_t index = POP_DATA;
+    uint32_t data = POP_DATA;
+    flash_write_word(index, data);
+}
+
+static void test_erase_flash()
+{
+    flash_erase();
+}
+
+const struct CORE_ENTRY core_funcs[200] = {
+    {NULL, return_to, false},
     
-    dictionary_add_core_word(NULL, nop, false);
-    dictionary_add_core_word(NULL, push_literal, false);
-    dictionary_add_core_word(NULL, memory_address, false);
-    dictionary_add_core_word(NULL, branch, false);
-    dictionary_add_core_word(NULL, zero_branch, false);
-    // TODO replace with EXIT word
-    int_return_code = dictionary_add_core_word(NULL, return_to, false);
-    dictionary_add_core_word(NULL, interpreter_run, false);
-    dictionary_add_core_word(NULL, print_string, false);
-    dictionary_add_core_word(NULL, s_string, false);
-    dictionary_add_core_word(NULL, c_string, false);
-    dictionary_add_core_word(NULL, data_address, false);
+    {NULL, nop, false},
+    {NULL, push_literal, false},
+    {NULL, memory_address, false},
+    {NULL, data_address, false},
+    {NULL, interpreter_run, false},
+    {NULL, print_string, false},
+    {NULL, s_string, false},
+    {NULL, c_string, false},
     
-    // words with short codes
-    dictionary_add_core_word("?DUP", question_dup, false);
-    dictionary_add_core_word("DEPTH", depth, false);
-    dictionary_add_core_word("DROP", drop, false);
-    dictionary_add_core_word("DUP", duplicate, false);
-    dictionary_add_core_word("NIP", nip, false);
-    dictionary_add_core_word("OVER", over, false);
-    dictionary_add_core_word("PICK", pick, false);
-    dictionary_add_core_word("ROT", rot, false);
-    dictionary_add_core_word("LROT", lrot, false);
-    dictionary_add_core_word("SWAP", swap, false);
-    dictionary_add_core_word("TUCK", tuck, false);
+    {"?DUP", question_dup, false},
+    {"DEPTH", depth, false},
+    {"DROP", drop, false},
+    {"DUP", duplicate, false},
+    {"NIP", nip, false},
+    {"OVER", over, false},
+    {"PICK", pick, false},
+    {"ROT", rot, false},
+    {"LROT", lrot, false},
+    {"SWAP", swap, false},
+    {"TUCK", tuck, false},
 
-    dictionary_add_core_word("2DROP", two_drop, false);
-    dictionary_add_core_word("2DUP", two_dup, false);
-    dictionary_add_core_word("2OVER", two_over, false);
-    dictionary_add_core_word("2ROT", two_rot, false);
-    dictionary_add_core_word("2SWAP", two_swap, false);
-
+    {"2DROP", two_drop, false},
+    {"2DUP", two_dup, false},
+    {"2OVER", two_over, false},
+    {"2ROT", two_rot, false},
+    {"2SWAP", two_swap, false},
     
-    dictionary_add_core_word("DUMP", dump, false);
-    dictionary_add_core_word("WORDS", dictionary_words, false);
+    {"DUMP", dump, false},
+    {"WORDS", dictionary_words, false},
 
-    dictionary_add_core_word("+", add, false);
-    dictionary_add_core_word("D+", double_add, false);
-    dictionary_add_core_word("M+", mixed_add, false);
-    dictionary_add_core_word("-", subtract, false);
-    dictionary_add_core_word("D-", double_subtract, false);
-    dictionary_add_core_word("NEGATE", negate, false);
-    dictionary_add_core_word("DNEGATE", double_negate, false);
-    dictionary_add_core_word("*", multiply, false);
-    dictionary_add_core_word("M*", mixed_multiply, false);
-    dictionary_add_core_word("MU*", unsigned_multiply, false);
-    dictionary_add_core_word("/", divide, false);
-    dictionary_add_core_word("M/", mixed_divide, false);
-    dictionary_add_core_word("MOD", mod, false);
-    dictionary_add_core_word("/MOD", divide_mod, false);
-    dictionary_add_core_word("UM/MOD", unsigned_divide_mod, false);
-    dictionary_add_core_word("*/", multiply_divide, false);
-    dictionary_add_core_word("M*/", mixed_multiply_divide, false);
-    dictionary_add_core_word("1+", add_1, false);
-    dictionary_add_core_word("2+", add_2, false);
-    dictionary_add_core_word("1-", subtract_1, false);
-    dictionary_add_core_word("2-", subtract_2, false);
-    dictionary_add_core_word("2*", left_shift_1, false);
-    dictionary_add_core_word("2/", right_shift_1, false);
-    dictionary_add_core_word(">", greater_than, false);
-    dictionary_add_core_word(">=", greater_than_equal, false);
-    dictionary_add_core_word("<", less_than, false);
-    dictionary_add_core_word("<=", less_than_equal, false);
-    dictionary_add_core_word("=", equal_to, false);
-    dictionary_add_core_word("<>", not_equal_to, false);
-    dictionary_add_core_word("0=", equal_to_zero, false);
-    dictionary_add_core_word("0>", greater_than_zero, false);
-    dictionary_add_core_word("0<", less_than_zero, false);
-    dictionary_add_core_word("0<>", not_equal_to_zero, false);
-    dictionary_add_core_word("ABS", absolute, false);
-    dictionary_add_core_word("DABS", double_absolute, false);
-    dictionary_add_core_word("MAX", single_max, false);
-    dictionary_add_core_word("DMAX", double_max, false);
-    dictionary_add_core_word("MIN", single_min, false);
-    dictionary_add_core_word("DMIN", double_min, false);
+    {"+", add, false},
+    {"D+", double_add, false},
+    {"M+", mixed_add, false},
+    {"-", subtract, false},
+    {"D-", double_subtract, false},
+    {"NEGATE", negate, false},
+    {"DNEGATE", double_negate, false},
+    {"*", multiply, false},
+    {"M*", mixed_multiply, false},
+    {"MU*", unsigned_multiply, false},
+    {"/", divide, false},
+    {"M/", mixed_divide, false},
+    {"MOD", mod, false},
+    {"/MOD", divide_mod, false},
+    {"UM/MOD", unsigned_divide_mod, false},
+    {"*/", multiply_divide, false},
+    {"M*/", mixed_multiply_divide, false},
+    {"1+", add_1, false},
+    {"2+", add_2, false},
+    {"1-", subtract_1, false},
+    {"2-", subtract_2, false},
+    {"2*", left_shift_1, false},
+    {"2/", right_shift_1, false},
+    {">", greater_than, false},
+    {">=", greater_than_equal, false},
+    {"<", less_than, false},
+    {"<=", less_than_equal, false},
+    {"=", equal_to, false},
+    {"<>", not_equal_to, false},
+    {"0=", equal_to_zero, false},
+    {"0>", greater_than_zero, false},
+    {"0<", less_than_zero, false},
+    {"0<>", not_equal_to_zero, false},
+    {"ABS", absolute, false},
+    {"DABS", double_absolute, false},
+    {"MAX", single_max, false},
+    {"DMAX", double_max, false},
+    {"MIN", single_min, false},
+    {"DMIN", double_min, false},
 
-    dictionary_add_core_word("AND", and, false);
-    dictionary_add_core_word("OR", or, false);
-    dictionary_add_core_word("XOR", xor, false);
-    dictionary_add_core_word("NOT", not, false);
-    dictionary_add_core_word("LSHIFT", left_shift, false);
-    dictionary_add_core_word("RSHIFT", right_shift, false);
-    dictionary_add_core_word(".", print_top_of_stack, false);
-    dictionary_add_core_word("HEX.", print_hex_top_of_stack, false);
-    dictionary_add_core_word("DEC.", print_decimal_top_of_stack, false);
-    dictionary_add_core_word("OCT.", print_octal_top_of_stack, false);
-    dictionary_add_core_word("BIN.", print_binary_top_of_stack, false);
-    dictionary_add_core_word("U.", print_unsigned_top_of_stack, false);
-    dictionary_add_core_word("D.", print_double_top_of_stack, false);
-    dictionary_add_core_word("?", print_cell_of_address, false);
-    dictionary_add_core_word("C?", print_char_of_address, false);
-    dictionary_add_core_word("SPACE", print_space, false);
-    dictionary_add_core_word("SPACES", print_spaces, false);
+    {"AND", and, false},
+    {"OR", or, false},
+    {"XOR", xor, false},
+    {"NOT", not, false},
+    {"LSHIFT", left_shift, false},
+    {"RSHIFT", right_shift, false},
+    {".", print_top_of_stack, false},
+    {"HEX.", print_hex_top_of_stack, false},
+    {"DEC.", print_decimal_top_of_stack, false},
+    {"OCT.", print_octal_top_of_stack, false},
+    {"BIN.", print_binary_top_of_stack, false},
+    {"U.", print_unsigned_top_of_stack, false},
+    {"D.", print_double_top_of_stack, false},
+    {"?", print_cell_of_address, false},
+    {"C?", print_char_of_address, false},
+    {"SPACE", print_space, false},
+    {"SPACES", print_spaces, false},
     
-    dictionary_add_core_word("<#", start_format_number, false);
-    dictionary_add_core_word("#", add_format_digit, false);
-    dictionary_add_core_word("#S", add_format_digits, false);
-    dictionary_add_core_word("SIGN", add_format_sign, false);
-    dictionary_add_core_word("HOLD", add_format_hold, false);
-    dictionary_add_core_word("#>", end_format_number, false);
+    {"<#", start_format_number, false},
+    {"#", add_format_digit, false},
+    {"#S", add_format_digits, false},
+    {"SIGN", add_format_sign, false},
+    {"HOLD", add_format_hold, false},
+    {"#>", end_format_number, false},
     
-    dictionary_add_core_word("BASE", base_address, false);
-    dictionary_add_core_word("HEX", base_hex, false);
-    dictionary_add_core_word("DECIMAL", base_decimal, false);
-    dictionary_add_core_word("CR", print_cr, false);
-    dictionary_add_core_word("EMIT", emit, false);
-    dictionary_add_core_word("@", read_memory, false);
-    dictionary_add_core_word("2@", two_read_memory, false);
-    dictionary_add_core_word("C@", read_char, false);
-    dictionary_add_core_word("!", write_memory, false);
-    dictionary_add_core_word("!+", write_memory_add_1, false);
-    dictionary_add_core_word("2!", two_write_memory, false);
-    dictionary_add_core_word("C!", write_char, false);
-    dictionary_add_core_word("EXECUTE", execute_word, false);
-    dictionary_add_core_word(".S", stack, false);
-    dictionary_add_core_word("CLEAR", clear_stack, false);
-    dictionary_add_core_word("TICKS", ticks, false);
-    dictionary_add_core_word("TIME", time, false);
-    dictionary_add_core_word("TASK", add_task, false);
-    dictionary_add_core_word("PRIORITY", task_priority, false);
+    {"BASE", base_address, false},
+    {"HEX", base_hex, false},
+    {"DECIMAL", base_decimal, false},
+    {"CR", print_cr, false},
+    {"EMIT", emit, false},
+    {"@", read_memory, false},
+    {"2@", two_read_memory, false},
+    {"C@", read_char, false},
+    {"!", write_memory, false},
+    {"!+", write_memory_add_1, false},
+    {"2!", two_write_memory, false},
+    {"C!", write_char, false},
+    {"EXECUTE", execute_word, false},
+    {".S", stack, false},
+    {"CLEAR", clear_stack, false},
+    {"TICKS", ticks, false},
+    {"TIME", time, false},
+    {"TASK", add_task, false},
+    {"PRIORITY", task_priority, false},
 
-    dictionary_add_core_word("'", tick, false);
+    {"'", tick, false},
 
-    dictionary_add_core_word("INITIATE", initiate, false);
-    dictionary_add_core_word("TERMINATE", terminate, false);
-    dictionary_add_core_word("SUSPEND", suspend, false);
-    dictionary_add_core_word("RESUME", resume, false);
-    dictionary_add_core_word("PAUSE", yield, false);
-    dictionary_add_core_word("MS", wait_for, false);
+    {"INITIATE", initiate, false},
+    {"TERMINATE", terminate, false},
+    {"SUSPEND", suspend, false},
+    {"RESUME", resume, false},
+    {"PAUSE", yield, false},
+    {"MS", wait_for, false},
     
-    dictionary_add_core_word("CHAR", push_char, false);
-    dictionary_add_core_word("BL", push_blank, false);
+    {"CHAR", push_char, false},
+    {"BL", push_blank, false},
 
-    dictionary_add_core_word("VARIABLE", compiler_variable, false);
-    dictionary_add_core_word("2VARIABLE", compiler_2variable, false);
-    dictionary_add_core_word("CONSTANT", compiler_constant, false);
-    dictionary_add_core_word("2CONSTANT", compiler_2constant, false);
+    {"VARIABLE", compiler_variable, false},
+    {"2VARIABLE", compiler_2variable, false},
+    {"CONSTANT", compiler_constant, false},
+    {"2CONSTANT", compiler_2constant, false},
 
-    dictionary_add_core_word("SEE", debug_word, false);
-    dictionary_add_core_word("TASKS", tasks, false);
+    {"SEE", debug_word, false},
+    {"TASKS", tasks, false},
 
     
     // Immediate words
-    dictionary_add_core_word("\\", compiler_eol_comment, true);
-    dictionary_add_core_word("(", compiler_inline_comment, true);
-    dictionary_add_core_word(".(", compiler_print_comment, true);
-    dictionary_add_core_word("IF", compiler_if, true);
-    dictionary_add_core_word("THEN", compiler_then, true);
-    dictionary_add_core_word("ELSE", compiler_else, true);
-    dictionary_add_core_word("BEGIN", compiler_begin, true);
-    dictionary_add_core_word("AGAIN", compiler_again, true);
-    dictionary_add_core_word("UNTIL", compiler_until, true);
-    dictionary_add_core_word(":", compiler_compile_definition, false);
-    dictionary_add_core_word(";", compiler_end, true);
-    dictionary_add_core_word(",\"", compiler_compile_string, true);
-    dictionary_add_core_word(".\"", compiler_print_string, true);
-    dictionary_add_core_word("S\"", new_s_string, true);
-    dictionary_add_core_word("C\"", compiler_c_string, true);
-    dictionary_add_core_word("[CHAR]", compiler_char, true);
-    dictionary_add_core_word("IMMEDIATE", dictionary_mark_internal, true); 
+    {"\\", compiler_eol_comment, true},
+    {"(", compiler_inline_comment, true},
+    {".(", compiler_print_comment, true},
+    {"IF", compiler_if, true},
+    {"THEN", compiler_then, true},
+    {"ELSE", compiler_else, true},
+    {"BEGIN", compiler_begin, true},
+    {"AGAIN", compiler_again, true},
+    {"UNTIL", compiler_until, true},
+    {":", compiler_compile_definition, false},
+    {";", compiler_end, true},
+    {",\"", compiler_compile_string, true},
+    {".\"", compiler_print_string, true},
+    {"S\"", new_s_string, true},
+    {"C\"", compiler_c_string, true},
+    {"[CHAR]", compiler_char, true},
+    {"IMMEDIATE", dictionary_mark_internal, true}, 
     
-    dictionary_add_core_word("LOG", set_log_level, false);
-    dictionary_add_core_word("ALLOT", allot, false);
-    dictionary_add_core_word("CREATE", compiler_create_data, false);
-    dictionary_add_core_word("ALIGN", dictionary_align, false);
-    dictionary_add_core_word("ALIGNED", aligned, false);
-    dictionary_add_core_word("UNUSED", unused, false);
-    dictionary_add_core_word(",", append_cell, false);
-    dictionary_add_core_word("C,", append_char, false);
-    dictionary_add_core_word("CELLS", cells, false);
-    dictionary_add_core_word("CELL+", add_cell, false);
-    dictionary_add_core_word("ERASE", erase, false);
-    dictionary_add_core_word("FILL", fill, false);
-    dictionary_add_core_word("HERE", here, false);
-    dictionary_add_core_word("STATE", state_address, false);
-    dictionary_add_core_word("[", compiler_suspend, true);
-    dictionary_add_core_word("]", compiler_resume, true);
-    dictionary_add_core_word("PAD", pad, false);
-    dictionary_add_core_word("COUNT", count, false);
-    dictionary_add_core_word("TYPE", type, false);
+    {"LOG", set_log_level, false},
+    {"ALLOT", allot, false},
+    {"CREATE", compiler_create_data, false},
+    {"ALIGN", dictionary_align, false},
+    {"ALIGNED", aligned, false},
+    {"UNUSED", unused, false},
+    {",", append_cell, false},
+    {"C,", append_char, false},
+    {"CELLS", cells, false},
+    {"CELL+", add_cell, false},
+    {"ERASE", erase, false},
+    {"FILL", fill, false},
+    {"HERE", here, false},
+    {"STATE", state_address, false},
+    {"[", compiler_suspend, true},
+    {"]", compiler_resume, true},
+    {"PAD", pad, false},
+    {"COUNT", count, false},
+    {"TYPE", type, false},
     
-    dictionary_add_core_word("KEY", next_char, false);
-    dictionary_add_core_word("KEY?", has_next_char, false);
-    dictionary_add_core_word("ABORT", forth_abort, false);
+    {"KEY", next_char, false},
+    {"KEY?", has_next_char, false},
+    {"ABORT", forth_abort, false},
 
     // interrupts
-    dictionary_add_core_word("IREG", interrupt_register, false);
-    dictionary_add_core_word("IPRI", interrupt_priority, false);
-    dictionary_add_core_word("IEN", interrupt_enable, false);
-    dictionary_add_core_word("IDIS", interrupt_disable, false);
-    dictionary_add_core_word("ICLR", interrupt_clear, false);
-    dictionary_add_core_word("ISTS", interrupt_status, false);
-//    dictionary_add_core_word("IRET", interrupt_return, false);
+    {"IREG", interrupt_register, false},
+    {"IPRI", interrupt_priority, false},
+    {"IEN", interrupt_enable, false},
+    {"IDIS", interrupt_disable, false},
+    {"ICLR", interrupt_clear, false},
+    {"ISTS", interrupt_status, false},
+//    {"IRET", interrupt_return, false},
 
     // other, non-forth standard, words
-    dictionary_add_core_word("DICT", dictionary_debug, false);
-    dictionary_add_core_word("DICT2", dictionary_debug2, false);
-    dictionary_add_core_word("DRESET", dictionary_master_reset, false);
-    dictionary_add_core_word("LOCK", dictionary_lock, false);
-    dictionary_add_core_word("FLASH", dictionary_move_to_flash, false);
-    dictionary_add_core_word("UNLOCK", dictionary_unlock, false);
-    dictionary_add_core_word("_DUMP", dump_base, false);
-    dictionary_add_core_word("_DEBUG", debug_on, false);
-    dictionary_add_core_word("_NODEBUG", debug_off, false);
-    dictionary_add_core_word("_RESET", reset, false);
-    dictionary_add_core_word("_SHORT", shorten, false);
-    dictionary_add_core_word("_CLEAR", clear_registers, false);
-//    dictionary_add_core_word("_SEE", debug_word_at, false);
+    {"DICT", dictionary_debug, false},
+    {"DICTA", dictionary_debug_all, false},
+    {"DICT2", dictionary_debug2, false},
+    {"DRESET", dictionary_master_reset, false},
+    {"FLASH", dictionary_move_to_flash, false},
+    {"PROXY", dictionary_move_to_proxy, false},
+    {"_DUMP", dump_base, false},
+    {"_DEBUG", debug_on, false},
+    {"_NODEBUG", debug_off, false},
+    {"_RESET", reset, false},
+    {"_SHORT", shorten, false},
+    {"_CLEAR", clear_registers, false},
 
+    {"f!", test_write_flash, false},
+    {"ferase", test_erase_flash, false}
+            
+};
+
+static void load_words()
+{
+    log_info(LOG, "load words");
+ 
     // create loop with process instruction
-    // =>  : _INTERACTIVE BEGIN {run code} AGAIN ;
+    //   =>  : _INTERACTIVE BEGIN {run code} AGAIN ;
     interpreter_code = dictionary_add_entry("_INTERACTIVE");
     compiler_begin();
     dictionary_append_function(interpreter_run);
     compiler_again();
     dictionary_end_entry();
     
+    struct Dictionary_Entry entry;
+    dictionary_find_entry_for("_INTERACTIVE", &entry);
+    dictionary_debug_entry(&entry);
+    
     // create loop with pause instruction  
-    // =>  : _IDLE BEGIN PAUSE AGAIN ;
+    //   =>  : _IDLE BEGIN PAUSE AGAIN ;
     idle_code = dictionary_add_entry("_IDLE");
     compiler_begin();
-    struct Dictionary_Entry entry;
     dictionary_append_function(yield);
     compiler_again();
     dictionary_end_entry();
 
-  //  dictionary_find_entry("_INTERACTIVE", &entry);
-  //  interpreter_code = entry.instruction;
+    dictionary_find_entry_for("_IDLE", &entry);
+    dictionary_debug_entry(&entry);
+
     interpreter_process->ip = interpreter_code;
-
- //   log_error(LOG, "%Z == %Z", cdix, interpreter_code);
-    
-//    dictionary_find_entry("_IDLE", &entry);
-//    idle_code = entry.instruction;
     idle_process->ip = idle_code;
-
-//    dictionary_find_entry("IRET", &entry);
-//    int_return_code = entry.instruction;
-    
-//    dictionary_lock();
-}
-
-
-
-
-
-
-
-
-void example() {
-    
-    duplicate();
-    add_1();
-    add_1();
-    print_decimal_top_of_stack();
-    print_cr();
-    drop();
-    
 }

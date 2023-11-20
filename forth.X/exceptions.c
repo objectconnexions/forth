@@ -134,11 +134,12 @@ void _general_exception_handler(void)
     {
         PORTBbits.RB1 = 1;
         console_out("\nEXCEPTION: %X @ %Z\n\n", _excep_code, _excep_addr);
-        if (_excep_code == 0x1c)
-        {
-            forth_abort();
-        } else {
-            SoftReset();
-        }
+//        if (_excep_code == 0x1c)
+//        {
+//            forth_abort();
+//        } else {
+//            SoftReset();
+//        }
+        SoftReset();
     }
 }

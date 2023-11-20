@@ -17,6 +17,7 @@
       <itemPath>logger.h</itemPath>
       <itemPath>timer.h</itemPath>
       <itemPath>util.h</itemPath>
+      <itemPath>flash.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -162,7 +163,7 @@
         <property key="fill-flash-options-seq" value=""/>
         <property key="fill-flash-options-what" value="0"/>
         <property key="generate-16-bit-code" value="false"/>
-        <property key="generate-cross-reference-file" value="false"/>
+        <property key="generate-cross-reference-file" value="true"/>
         <property key="generate-micro-compressed-code" value="false"/>
         <property key="heap-size" value="4096"/>
         <property key="input-libraries" value=""/>
@@ -176,7 +177,7 @@
         <property key="optimization-level" value=""/>
         <property key="preprocessor-macros" value=""/>
         <property key="remove-unused-sections" value="false"/>
-        <property key="report-memory-usage" value="false"/>
+        <property key="report-memory-usage" value="true"/>
         <property key="serial-length" value=""/>
         <property key="serial-origin" value=""/>
         <property key="stack-size" value=""/>
@@ -270,6 +271,7 @@
         <property key="debugoptions.debug-startup" value="Use system settings"/>
         <property key="debugoptions.reset-behaviour" value="Use system settings"/>
         <property key="debugoptions.useswbreakpoints" value="false"/>
+        <property key="firmware.download.all" value="false"/>
         <property key="hwtoolclock.frcindebug" value="false"/>
         <property key="memories.aux" value="false"/>
         <property key="memories.bootflash" value="true"/>
