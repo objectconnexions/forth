@@ -121,7 +121,6 @@ void interpreter_run()
                         if (strlen(buf) > 0) {
                             console_out(buf);
                             console_put(NL);
-                            //console_put(SPACE);
                         }
                     }
                     parser_input(buf);
@@ -129,13 +128,6 @@ void interpreter_run()
             }
             else
             {
-//                if (log_level <= DEBUG) 
-//                {
-//                    dump_parameter_stack(process);
-//                    console_out("\n");
-//                }
-                    
-                    
                 wait(250);
             }
 

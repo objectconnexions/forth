@@ -47,6 +47,8 @@ void dictionary_init_done(void);
 
 void dictionary_master_reset(void);
 
+void dictionary_purge(struct Dictionary_Entry *);
+
 /*
  * Removes the specified entry and all subsequent entries from 
  * the dictionary.
@@ -129,7 +131,7 @@ void dictionary_append_instruction(struct Dictionary_Entry);
 
 void dictionary_append_function(CORE_FUNC);
 
-void dictionary_append_literal(uint64_t);
+void dictionary_append_literal(uint32_t);
 
 void dictionary_append_string(char const *);
 

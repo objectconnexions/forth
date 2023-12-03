@@ -108,10 +108,10 @@ int forth_init()
     
     log_info(LOG, "loaded initial words");
     
-    dictionary_debug2();
-    dictionary_debug_all();
+//    dictionary_debug2();
+//    dictionary_debug_all();
 
-    tasks();
+//    tasks();
 }
 
 void forth_trace(bool trace) {
@@ -292,7 +292,7 @@ void forth_execute(CODE_INDEX instruction_pointer)
             ((CORE_FUNC) instruction)();
             break;
             
-        case 0xA0000000:
+        case 0x80000000:
             // flash word
             instruction |= 0xA0000000;
             log_trace(LOG, "flash %Z", instruction_pointer);
@@ -306,8 +306,22 @@ void forth_execute(CODE_INDEX instruction_pointer)
             current_process->ip = (CODE_INDEX) instruction;
             break;
             
-        case 0xB0000000:
+        case 0xA0000000:
             // ram word
+//            instruction |= 0xA0000000;
+            log_trace(LOG, "flash %Z", instruction_pointer);
+            PUSH_RETURN(current_process->ip);
+            if (log_is_trace()) 
+            {
+                char word_name[32];
+                dictionary_find_word_for((CODE_INDEX) instruction, word_name);
+                log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction, current_process->ip);
+            }
+            current_process->ip = (CODE_INDEX) instruction;
+            break;
+            
+        case 0xB0000000:
+            // ??? word
             instruction &= 0xEFFFFFFF;
             log_trace(LOG, "ram %Z", instruction_pointer);
             PUSH_RETURN(current_process->ip);
@@ -1788,7 +1802,7 @@ static void debug_word()
     struct Dictionary_Entry entry;
     if (!get_name_and_find_entry(&entry)) 
     {
-        forth_abort();
+//        forth_abort();
     }
     else
     {
@@ -1944,12 +1958,20 @@ static void has_next_char()
     PUSH_DATA(uart_has_next_char());
 }
 
+static void purge()
+{ 
+    struct Dictionary_Entry entry;
+    if (get_name_and_find_entry(&entry)) 
+    {
+        dictionary_purge(&entry);
+    }
+}
 
 static void test_write_flash()
 {
     uint32_t index = POP_DATA;
     uint32_t data = POP_DATA;
-    flash_write_word(index, data);
+    flash_write_word_to(index, data);
 }
 
 static void test_erase_flash()
@@ -2152,15 +2174,17 @@ const struct CORE_ENTRY core_funcs[200] = {
     {"DICT", dictionary_debug, false},
     {"DICTA", dictionary_debug_all, false},
     {"DICT2", dictionary_debug2, false},
-    {"DRESET", dictionary_master_reset, false},
     {"FLASH", dictionary_move_to_flash, false},
     {"PROXY", dictionary_move_to_proxy, false},
     {"_DUMP", dump_base, false},
     {"_DEBUG", debug_on, false},
     {"_NODEBUG", debug_off, false},
-    {"_RESET", reset, false},
     {"_SHORT", shorten, false},
     {"_CLEAR", clear_registers, false},
+
+    {"DRESET", dictionary_master_reset, false},
+    {"_RESET", reset, false},
+    {"PURGE", purge, false},
 
     {"f!", test_write_flash, false},
     {"ferase", test_erase_flash, false}
@@ -2179,9 +2203,9 @@ static void load_words()
     compiler_again();
     dictionary_end_entry();
     
-    struct Dictionary_Entry entry;
-    dictionary_find_entry_for("_INTERACTIVE", &entry);
-    dictionary_debug_entry(&entry);
+//    struct Dictionary_Entry entry;
+//    dictionary_find_entry_for("_INTERACTIVE", &entry);
+//    dictionary_debug_entry(&entry);
     
     // create loop with pause instruction  
     //   =>  : _IDLE BEGIN PAUSE AGAIN ;
@@ -2191,8 +2215,8 @@ static void load_words()
     compiler_again();
     dictionary_end_entry();
 
-    dictionary_find_entry_for("_IDLE", &entry);
-    dictionary_debug_entry(&entry);
+//    dictionary_find_entry_for("_IDLE", &entry);
+//    dictionary_debug_entry(&entry);
 
     interpreter_process->ip = interpreter_code;
     idle_process->ip = idle_code;

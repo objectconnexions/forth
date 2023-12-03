@@ -36,7 +36,9 @@
 
 static uint8_t code_ram[CODE_RAM_SIZE];
 static uint8_t code_flash_proxy[CODE_FLASH_PROXY_SIZE] = {0};
-static const uint8_t __attribute__ ((aligned (PAGE_SIZE))) code_flash[CODE_FLASH_SIZE] = {0xff};
+static const uint8_t __attribute__ ((aligned (PAGE_SIZE))) code_flash[CODE_FLASH_SIZE] = {[0 ... CODE_FLASH_SIZE - 1] = 0xff};
+
+static uint8_t flash_buffer[160];
 
 struct Memory
 {
@@ -51,6 +53,7 @@ struct Memory
 static struct Memory ram_memory;
 static struct Memory flash_proxy_memory;
 static struct Memory flash_memory;
+//static struct Memory flash_buffer_memory;
 static struct Memory* memory;
 
 
@@ -64,6 +67,10 @@ static CODE_INDEX find_entry(CODE_INDEX, char *);
 static bool read_next_entry(struct Dictionary_Entry *);
 static void debug(bool);
 static void out_mem_map();
+static void append_cell(CODE_INDEX *, CELL);
+void flash_write_word_to(uint32_t, uint32_t);
+static void flash_write_word(CELL);
+static void flash_buffer_to_flash();
 
 
 
@@ -81,10 +88,16 @@ void dictionary_init()
     log_info(LOG, "code (FLASH proxy) at %Z", code_flash_proxy);
     log_info(LOG, "functions at %Z", core_funcs);
         
-    reset(&flash_memory, code_flash, CODE_FLASH_SIZE);
+    reset(&flash_memory, (CODE_INDEX) code_flash, CODE_FLASH_SIZE);
     reset(&flash_proxy_memory, code_flash_proxy, CODE_FLASH_PROXY_SIZE);
     reset(&ram_memory, code_ram, CODE_RAM_SIZE);
 
+//    struct Memory *m = &flash_buffer_memory;
+//    m->first_entry = m->next_entry = m->last_entry = (CODE_INDEX) code_flash;
+//    m->insertion_point = flash_buffer;
+//    m->limit = flash_buffer + 160;
+
+    
     clear_memory(ram_memory.first_entry);
     
     memory = &flash_proxy_memory;
@@ -139,6 +152,39 @@ void dictionary_truncate_at(struct Dictionary_Entry *entry)
 {        
         read_next_entry(entry);
         truncate_after(entry);
+}
+
+void dictionary_purge(struct Dictionary_Entry *entry)
+{
+    if (entry->starts > ram_memory.first_entry)
+    {
+        /*
+         * adjust pointers within the RAM to overwrite the remaining section
+         */
+        ram_memory.next_entry = entry->starts;
+        ram_memory.insertion_point = entry->starts;
+        ram_memory.last_entry = read_address(&ram_memory.insertion_point);
+        
+    } else {
+        /*
+         * adjust pointers within the RAM so all old code will be overwritten
+         */
+        ram_memory.insertion_point = ram_memory.first_entry;
+        ram_memory.last_entry = ram_memory.first_entry;
+        ram_memory.next_entry = ram_memory.first_entry;
+        
+        /*
+         * adjust back pointer from RAM to the remaining flash area
+         */        
+        append_cell(&ram_memory.insertion_point, (CELL) flash_proxy_memory.insertion_point);
+        
+        /*
+         * adjust back pointers within the flash to go back to remaining code (_IDLE word)
+         */        
+        dictionary_find_entry_for("_IDLE", entry);
+        flash_write_word((CELL) entry->starts);
+        flash_buffer_to_flash();
+    }
 }
 
 static void clear_memory(CODE_INDEX from)
@@ -271,7 +317,7 @@ void dictionary_append_byte(uint8_t value)
  */
 static void append_cell(CODE_INDEX *code, CELL value)
 {
-    if (is_valid_address(*code)) 
+    if (is_valid_address((uint32_t) *code)) 
     {
         write_byte(code, value & 0xff);
         write_byte(code, value >> 8 & 0xff);
@@ -298,7 +344,7 @@ static void write_literal(CODE_INDEX *code, uint32_t value)
 /*
  Encode the specified value as a series (variable number of bytes)
  */
-void dictionary_append_literal(uint64_t value)
+void dictionary_append_literal(uint32_t value)
 {
     // TODO check memory
     write_literal(&(memory->insertion_point), value);
@@ -512,7 +558,7 @@ static bool is_valid_address(uint32_t address)
 // TODO rename - about reading an encoded literal
 static uint64_t read(CODE_INDEX *offset) 
 {
-    if (is_valid_address(*offset))
+    if (is_valid_address((uint32_t) *offset))
     {
     //    CODE_INDEX addr = *offset;
         uint32_t read =
@@ -817,6 +863,19 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
     uint32_t type = instruction & 0xF0000000;
     switch(type)
     {
+            
+        case 0x80000000:
+            // flash word
+            // TODO change to 0x90... for real flash
+            dictionary_find_word_for((CODE_INDEX) (instruction | 0xA0000000), name);
+            debug_print(*addr, ptr);
+            console_out("%S", name);
+            console_pad(PAD - strlen(name));
+            console_out("(%Z)", instruction | 0xA0000000);
+            level = 1;
+            
+            break;
+
         case 0x90000000:
             ;
             CORE_FUNC function = (CORE_FUNC) (instruction | 0x9D000000);
@@ -974,6 +1033,8 @@ static void out_mem_map()
     console_out("  used: %I/%I\n", flash_memory.next_entry - flash_memory.first_entry, flash_memory.limit - flash_memory.first_entry);
     console_out("  insert at: %Z\n\n", flash_memory.insertion_point);
 
+    console_out("flash buffer: %Z\n\n", flash_buffer);
+     
     console_out("Proxy\n");
     console_out("  first entry: %Z\n", flash_proxy_memory.first_entry);
     console_out("  last entry: %Z\n", flash_proxy_memory.last_entry);
@@ -1125,8 +1186,8 @@ void dictionary_move_to_proxy()
                 
                 if (instruction == (CODE_INDEX) push_literal)
                 {
-                    CELL value2 = read_address(&ram_src);
-                    dictionary_append_cell(instruction);
+                    CELL value2 = (CELL) read_address(&ram_src);
+                    dictionary_append_cell((CELL) instruction);
                     dictionary_append_cell(value2);
                     log_debug(LOG, "     append literal %Z", value2);
                     continue;
@@ -1149,7 +1210,7 @@ void dictionary_move_to_proxy()
                     log_debug(LOG, "     variable (%I bytes) at %Z", len, variables);
 
                     dictionary_append_function(push_literal);
-                    dictionary_append_literal(variables);
+                    dictionary_append_literal((uint32_t) variables);
                     dictionary_append_function(return_to);
                     dictionary_end_entry();
                     
@@ -1159,7 +1220,7 @@ void dictionary_move_to_proxy()
                 }
                 else if (instruction == (CODE_INDEX) data_address)
                 {
-                    CELL value2 = read_address(&ram_src);
+                    CELL value2 = (CELL) read_address(&ram_src);
                     log_debug(LOG, "     append data %Z", value2);
 //
 //                   value = dictionary_aligned(ptr);
@@ -1184,7 +1245,7 @@ void dictionary_move_to_proxy()
                         break;
                 }
                 log_debug(LOG, "     append instruction %Z", instruction);
-                dictionary_append_cell(instruction);
+                dictionary_append_cell((uint32_t) instruction);
             }
 
             
@@ -1216,97 +1277,166 @@ void dictionary_move_to_proxy()
         
     CODE_INDEX data_map = flash_proxy_memory.limit - 8;
     log_debug(LOG, "write addresses %Z & %Z to %Z", flash_proxy_memory.next_entry, variables, data_map);
-    write_literal(&data_map, variables);
-    write_literal(&data_map, flash_proxy_memory.next_entry);
+    write_literal(&data_map, (uint32_t) variables);
+    write_literal(&data_map, (uint32_t) flash_proxy_memory.next_entry);
     
     out_mem_map();
 
 }
+
+//static uint8_t flash_buffer[100];
+
+static uint8_t flash_buffer_index;
+
+static void add_flash_buffer_byte(uint8_t byte)
+{
+    flash_buffer[flash_buffer_index++] = byte;
+}
+
+static void add_flash_bufffer_cell(CELL data)
+{
+    add_flash_buffer_byte(data & 0xff);
+    add_flash_buffer_byte(data >> 8 & 0xff);
+    add_flash_buffer_byte(data >> 16 & 0xff);
+    add_flash_buffer_byte(data >> 24 & 0xff);
+}
+
+static void flash_buffer_to_flash()
+{
+    uint8_t over = flash_buffer_index % 4;
+    uint8_t end = flash_buffer_index / 4 * 4;
+    log_debug(LOG, "  flash @%I, end %I, over %I", flash_buffer_index, end, over);
+    int i;
+//    int last = flash_buffer_index - 4;
+    for (i = 0; i < end; i += 4)
+    {
+        CELL cell = flash_buffer[i + 3] << 24 |
+                flash_buffer[i + 2] << 16 |
+                flash_buffer[i + 1] << 8 |
+                flash_buffer[i + 0];
+        flash_write_word(cell);
+        log_debug(LOG, "   - write @%Z", cell);
+
+    }
+//    log_debug(LOG, "  written @%I end %I", flash_buffer_index, end);
+    for (i = 0; i < over; i++)
+    {
+        log_debug(LOG, "   - copy %I to %I", end+i, i);
+        flash_buffer[i] = flash_buffer[end + i];
+    }
+    flash_buffer_index = over;
+}
+
 
 void dictionary_move_to_flash()
 {
     console_out("Copy %I bytes to FLASH\n", ram_memory.next_entry - ram_memory.first_entry);
     
     memory = &flash_proxy_memory;
-    log_debug(LOG, "copy code from %Z to %Z", ram_memory.first_entry, memory->insertion_point);
+    CODE_INDEX insert_at = memory->insertion_point;
+    log_debug(LOG, "copy code from %Z to %Z", ram_memory.first_entry, insert_at);
      
     struct Dictionary_Entry entry;
     CODE_INDEX ram_src;
     CODE_INDEX old_instruction, new_instruction;
-    CODE_INDEX start;
-    
+    CODE_INDEX new_entry;
+
     CODE_INDEX variables = ram_memory.first_entry;
     log_debug(LOG, "variables go to %Z", variables);
  
     ram_src = ram_memory.first_entry;
+    
+    flash_buffer_index = 0;
     
     while (ram_src < ram_memory.next_entry)
     {
         log_debug(LOG, "- looking for entry at %Z", ram_src);
         if (dictionary_find_entry_with(ram_src, &entry))
         {
-            start = memory->next_entry;
-            int len = entry.ends - entry.starts + 1;
-            console_out("%S : %Z~%Z -> %Z/%Z (%I bytes)\n", entry.name, entry.starts, entry.ends, memory->next_entry, memory->insertion_point, len);
+            new_entry = memory->next_entry;
+            
+            ram_src = entry.starts;
+            int entry_len = entry.ends - ram_src + 1;
+            console_out("%S : %Z~%Z -> %Z/%Z (%I bytes)\n", entry.name, entry.starts, entry.ends, memory->next_entry, insert_at, entry_len);
 
             uint8_t name_len = strlen(entry.name);
-            ram_src = entry.starts;
-            read_address(&ram_src);
-            log_debug(LOG, "   copy entry for '%S' (%I chars) at %Z -> %Z", entry.name, name_len, ram_src, memory->insertion_point);
-            append_flag(name_len, entry.flags);
-            dictionary_append_string(entry.name);
+            
+            read_address(&ram_src); // consume backpointer
+            log_debug(LOG, "   copy entry for '%S' (%I chars) at %Z -> %Z", entry.name, name_len, ram_src, insert_at);
+            
+            // copy length/flag and name
+            add_flash_buffer_byte(*ram_src++);
+            int i;
+            for (i = 0; i < name_len; i++) {
+                add_flash_buffer_byte(*ram_src++);
+            }
+            insert_at += 1 + name_len;
 
-            ram_src += 1 + name_len;
+
             old_instruction = ram_src;
-            new_instruction = dictionary_here();  // where the new code now starts
+            new_instruction = insert_at;
             
             // copy code - exactly
             while (ram_src <= entry.ends)
             {
-//                log_trace(LOG, "   copy code %X from %Z -> %Z", *ram_src, ram_src, memory->insertion_point);
-//                dictionary_append_byte(*ram_src++);
                 CODE_INDEX instruction = read_address(&ram_src);
-                
                 log_debug(LOG, "   copy instruction %Z", instruction);
-                
-                
                 if (instruction == (CODE_INDEX) push_literal)
                 {
-                    CELL value2 = read_address(&ram_src);
-                    dictionary_append_cell(instruction);
-                    dictionary_append_cell(value2);
+                    CELL value2 = (CELL) read_address(&ram_src);
+                    add_flash_bufffer_cell((CELL) instruction);
+                    add_flash_bufffer_cell(value2);
                     log_debug(LOG, "     append literal %Z", value2);
+                    insert_at += 8;
                     continue;
                     
                 }
                 else if (instruction == (CODE_INDEX) memory_address)
                 {
-//                    CELL value2 = read_address(&ram_src);
-//                    log_debug(LOG, "     append address %Z", value2);
-
-//                   value = dictionary_aligned(ptr);
-//                   debug_print(*addr, ptr);
-//                   console_out("ADDR");
-//                   console_pad(PAD - 4);
-//                   console_out("%Z", value);
-                    
-                    
-                    len = entry.ends - ram_src;
+                    // variables are store aligned in RAM
+                    ram_src = dictionary_aligned(ram_src);  
+                    uint8_t data_len = entry.ends - ram_src + 1;
                     variables = dictionary_aligned(variables);
-                    log_debug(LOG, "     variable (%I bytes) at %Z", len, variables);
+                    log_debug(LOG, "     for variable (%I bytes) from %Z~%Z: %Z", data_len, ram_src, entry.ends, variables);
 
-                    dictionary_append_function(push_literal);
-                    dictionary_append_literal(variables);
-                    dictionary_append_function(return_to);
-                    dictionary_end_entry();
+                    add_flash_bufffer_cell((CELL) push_literal);
+                    add_flash_bufffer_cell((CELL) variables);
+                    add_flash_bufffer_cell((CELL) return_to);
+                    insert_at += 12;
+
+                    memory->last_entry = memory->next_entry;
+                    memory->next_entry = insert_at;
                     
-                    ram_src += len;
-                    variables += len;
+                    ram_src += data_len;
+                    variables += data_len;
                     
                 }
                 else if (instruction == (CODE_INDEX) data_address)
                 {
-                    CELL value2 = read_address(&ram_src);
+                    // TODO not always aligned!
+//                    
+//                   // variables are store aligned in RAM
+//                    ram_src = dictionary_aligned(ram_src);  
+//                    variables = dictionary_aligned(variables);
+//                    len = entry.ends - ram_src + 1;
+//                    log_debug(LOG, "     variable (%I bytes) at %Z", len, variables);
+//
+//                    add_flash_bufffer_cell((CELL) push_literal);
+//                    add_flash_bufffer_cell((CELL) variables);
+//                    add_flash_bufffer_cell((CELL) return_to);
+//                    
+//                    memory->last_entry = memory->next_entry;
+//                    memory->next_entry = new_instruction + 12;
+////                    log_debug(LOG, "     link for previous_entry at %Z", memory->last_entry);
+////                    add_flash_bufffer_cell((CELL) memory->last_entry);
+//                    
+//                    ram_src += len;
+//                    variables += len;
+                    
+                    
+                    
+                    
+                    CELL value2 = (CELL) read_address(&ram_src);
                     log_debug(LOG, "     append data %Z", value2);
 //
 //                   value = dictionary_aligned(ptr);
@@ -1314,47 +1444,72 @@ void dictionary_move_to_flash()
 //                   console_out("DATA");
 //                   console_pad(PAD - 4);
 //                   console_out("%Z", value);
+                    
                 }
                 else if (instruction == (CODE_INDEX) print_string || instruction == (CODE_INDEX) c_string || instruction == (CODE_INDEX) s_string)
                 {
                     log_debug(LOG, "     append string");
                     continue;
-                }
-                
-                uint32_t type = ((uint32_t) instruction) & 0xF0000000;
-                switch(type)
+                    
+                } 
+                else 
                 {
-                    case 0xB0000000:
-                        instruction = (CODE_INDEX) (((uint32_t) instruction) & 0xEFFFFFFF);
-                        log_debug(LOG, "       translate %Z to %Z", instruction, peek_address(instruction));
-                        instruction = peek_address(instruction);
-                        break;
+                    uint32_t type = ((uint32_t) instruction) & 0xF0000000;
+                    switch(type)
+                    {
+                        case 0xB0000000:
+                            instruction = (CODE_INDEX) (((uint32_t) instruction) & 0xEFFFFFFF);
+                            log_debug(LOG, "       translate %Z to %Z", instruction, peek_address(instruction));
+                            instruction = peek_address(instruction);
+                            break;
+                    }
+                    log_debug(LOG, "     append instruction %Z", instruction);
+                    add_flash_bufffer_cell((CELL) instruction);
+                    insert_at += 4;
+    //                dictionary_append_cell((uint32_t) instruction);
                 }
-                log_debug(LOG, "     append instruction %Z", instruction);
-                dictionary_append_cell(instruction);
             }
 
-            
+
                 
             memory->last_entry = memory->next_entry;
-            memory->next_entry = memory->insertion_point;
-            log_debug(LOG, "   link for previous_entry at %Z", new_instruction);
-            dictionary_append_cell((CELL) start);
+            memory->next_entry = insert_at;
+            log_debug(LOG, "   link for previous_entry at %Z", new_entry);
+            add_flash_bufffer_cell((CELL) new_entry);
+            insert_at += 4;
+            
+            flash_buffer_to_flash();
+ 
+
+
             
             // writes the new address into the RAM entry for lookup in rest of transfer
-            write_literal(&old_instruction, (uint32_t) new_instruction);
+            write_literal(&old_instruction, (((uint32_t) new_instruction) & 0x0FFFFFFF) | 0x80000000);
         }
         else
         {
             break;
         }
     }
+
+    // fill in remaining bytes to cell boundary
+    int i;
+    for (i = flash_buffer_index; i < 4; i++)
+    {
+        flash_buffer[flash_buffer_index++] = 0xff;
+        log_debug(LOG, "   - stuff %I with 0xff", i);
+
+    }
+    flash_buffer_to_flash();
+
+    memory->insertion_point = insert_at;
+    
     reset(&ram_memory, ram_memory.first_entry, CODE_RAM_SIZE);
     ram_memory.next_entry = variables;
     ram_memory.insertion_point = variables;
     memory = &ram_memory;
-    log_debug(LOG, "write last entry %Z to %Z", start, memory->insertion_point);
-    dictionary_append_cell((CELL) start); // sets the previous link in ram to the last entry in flash
+    log_debug(LOG, "write last entry %Z to %Z", new_entry, memory->insertion_point);
+    dictionary_append_cell((CELL) new_entry); // sets the previous link in ram to the last entry in flash
     
     ram_memory.last_entry = flash_proxy_memory.last_entry;
     
@@ -1363,8 +1518,10 @@ void dictionary_move_to_flash()
         
     CODE_INDEX data_map = flash_proxy_memory.limit - 8;
     log_debug(LOG, "write addresses %Z & %Z to %Z", flash_proxy_memory.next_entry, variables, data_map);
-    write_literal(&data_map, variables);
-    write_literal(&data_map, flash_proxy_memory.next_entry);
+    flash_write_word_to((uint32_t) data_map, (uint32_t) variables);
+    flash_write_word_to((uint32_t) data_map + 4, (uint32_t) flash_proxy_memory.next_entry);
+//    write_literal(&data_map, (uint32_t) variables);
+//    write_literal(&data_map, (uint32_t) flash_proxy_memory.next_entry);
     
     out_mem_map();
 
@@ -1375,7 +1532,8 @@ void dictionary_debug2()
     out_mem_map();
     dictionary_memory_dump(ram_memory.first_entry, 200);
     dictionary_memory_dump(flash_proxy_memory.first_entry, 200);
-    dictionary_memory_dump(flash_memory.first_entry, 200);
+    dictionary_memory_dump((CODE_INDEX) code_flash, 200);
+    dictionary_memory_dump(flash_buffer, 200);
 }
 
 
@@ -1425,12 +1583,22 @@ void flash_erase()
     flash_op(OP_ERASE_PAGE);
 }
     
-void flash_write_word(uint32_t index, uint32_t data)
+void flash_write_word_to(uint32_t index, uint32_t data)
 {
-    NVMADDR = KVA_TO_PA(code_flash + index);
-    NVMDATA = data;
-    flash_op(OP_WRITE_WORD);
-  
+    uint8_t *addr = (uint8_t *)index;
+    *addr++ = data & 0xff;
+    *addr++ = data >> 8 & 0xff;
+    *addr++ = data >> 16 & 0xff;
+    *addr++ = data >> 24 & 0xff;
+    
+//    NVMADDR = KVA_TO_PA(code_flash + index);
+//    NVMDATA = data;
+//    flash_op(OP_WRITE_WORD);
 }
     
+static void flash_write_word(CELL data)
+{
+    flash_write_word_to((uint32_t) flash_proxy_memory.insertion_point, (uint32_t) data);
+    flash_proxy_memory.insertion_point += 4;
+}
    

@@ -10,6 +10,9 @@ create DATA3 10 , 20 , 40 , 80 ,
 .S
 
 DATA U.
+DATA CELL+ U.
+DATA CELL+ CELL+ U.
+
 DATA2 U.
 
 DATA3 U.
