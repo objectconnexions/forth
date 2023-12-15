@@ -43,7 +43,7 @@ void display_code(uint8_t*);
 CELL pop_stack(void);
 void next_task();
 static struct Process* new_task(uint8_t, char*);
-static void load_words(void);
+//static void load_words(void);
 void reset(void);
 static void print_top_of_stack(void);
 static void abort_task(struct Process*);
@@ -89,24 +89,40 @@ int forth_init()
     
     interrupt_process = new_task(10, "IRQ");
     interrupt_process->log = true;
+    
     interpreter_process = new_task(5, "INTERP");
     interpreter_process->log = true;
     interpreter_process->suspended = false;
-    current_process = interpreter_process;
-    current_process->log = true;
+    
     idle_process = new_task(1, "IDLE");
-    idle_process->suspended = false;
     idle_process->log = false;
+    idle_process->suspended = false;
+    
     power_process = new_task(5, "POWER");
     power_process->log = false;
+    
+    current_process = interpreter_process;
+//    current_process->log = true;
 
     uart_transmit_buffer("FORTH v0.4\n\n");        
     
-    dictionary_init();
-    load_words();
-    dictionary_init_done();
+    dictionary_init(&interpreter_code, &idle_code);
     
-    log_info(LOG, "loaded initial words");
+    interpreter_process->ip = interpreter_code;
+    idle_process->ip = idle_code;
+
+    /*
+     * TODO this needs to be done manually so the words are are added to flash 
+     * on first startup
+     * 
+     * Then the two process variables need to be assigned from the that code 
+     * (each time).
+     */ 
+//    load_words();
+//    log_info(LOG, "loaded initial words");
+    
+    // TODO only do this if user flash  not set up
+//    dictionary_init_done();
     
 //    dictionary_debug2();
 //    dictionary_debug_all();
@@ -195,6 +211,10 @@ static bool is_accessible_memory(uint32_t address)
 //            (address >= 0xA0000000 && address <= 0xA000FFFF) ||
 //            (address >= 0x80000000 && address <= 0x8000FFFF)) 
 //    {
+    if ((address >= 0x9D000000 && address <= 0x9D07FFFF) ||
+            (address >= 0xA0000000 && address <= 0xA000FFFF) ||
+            (address >= 0xBF800000 && address <= 0xBF8FFFFF)) 
+    {
         if (address % 4 != 0)
         {
             console_out("NON-ALIGNED %Z!", address); // reading from non-aligned address causes PIC exception
@@ -204,12 +224,12 @@ static bool is_accessible_memory(uint32_t address)
         {
             return true;
         }
-//    } 
-//    else
-//    {
-//        console_out("MEMORY LIMIT %Z!", address);
-//        return false;
-//    }
+    } 
+    else
+    {
+        console_out("MEMORY LIMIT %Z!", address);
+        return false;
+    }
 }
 
 static void test_compile(char * input) {
@@ -225,6 +245,7 @@ void forth_run()
     while (true)
     {
          if (trace_code) {
+             // TODO is this not + 4, for next word?
             if (current_process->ip == interpreter_code + 1) {
                 trace_code = false;
             } else {
@@ -286,16 +307,16 @@ void forth_execute(CODE_INDEX instruction_pointer)
     uint32_t instruction = ((uint32_t) instruction_pointer);
     switch (instruction & 0xF0000000)
     {            
-        case 0x90000000:
+        case 0x80000000:
             // function
             instruction |= 0x9D000000;
             ((CORE_FUNC) instruction)();
             break;
             
-        case 0x80000000:
+        case 0x90000000:
             // flash word
-            instruction |= 0xA0000000;
-            log_trace(LOG, "flash %Z", instruction_pointer);
+            instruction |= 0x9D000000;
+            log_trace(LOG, "in flash %Z", instruction_pointer);
             PUSH_RETURN(current_process->ip);
             if (log_is_trace()) 
             {
@@ -309,7 +330,7 @@ void forth_execute(CODE_INDEX instruction_pointer)
         case 0xA0000000:
             // ram word
 //            instruction |= 0xA0000000;
-            log_trace(LOG, "flash %Z", instruction_pointer);
+            log_trace(LOG, "in ram %Z", instruction_pointer);
             PUSH_RETURN(current_process->ip);
             if (log_is_trace()) 
             {
@@ -320,20 +341,20 @@ void forth_execute(CODE_INDEX instruction_pointer)
             current_process->ip = (CODE_INDEX) instruction;
             break;
             
-        case 0xB0000000:
-            // ??? word
-            instruction &= 0xEFFFFFFF;
-            log_trace(LOG, "ram %Z", instruction_pointer);
-            PUSH_RETURN(current_process->ip);
-            if (log_is_trace()) 
-            {
-                char word_name[32];
-                dictionary_find_word_for((CODE_INDEX) instruction, word_name);
-                log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction, current_process->ip);
-            }
-            current_process->ip = (CODE_INDEX) instruction;
-            break;
-
+//        case 0xB0000000:
+//            // ??? word
+//            instruction &= 0xEFFFFFFF;
+//            log_trace(LOG, "ram %Z", instruction_pointer);
+//            PUSH_RETURN(current_process->ip);
+//            if (log_is_trace()) 
+//            {
+//                char word_name[32];
+//                dictionary_find_word_for((CODE_INDEX) instruction, word_name);
+//                log_trace(LOG, "run %S jump to %Z return to %Z", word_name, instruction, current_process->ip);
+//            }
+//            current_process->ip = (CODE_INDEX) instruction;
+//            break;
+//
         case 0xC0000000:
             // branch
             pos = current_process->ip;
@@ -1413,6 +1434,7 @@ void shorten() {
     }
 }
 
+// TODO could find out unused flash as well as unused ram
 static void unused()
 {
     PUSH_DATA(dictionary_unused());
@@ -1663,6 +1685,27 @@ static void add_task()
     new_task(5, name);
 }
 
+static void task_address()
+{
+    struct Dictionary_Entry entry;    
+    dictionary_find_entry_with(current_process->ip, &entry);
+    struct Process* process = new_task(5, entry.name);
+    PUSH_DATA((CELL) process);
+    return_to();
+}
+
+static void add_task_entry()
+{
+    char name[32];
+    parser_next_text(name); 
+    to_upper(name);
+    log_info(LOG, "add task %S", name);
+    dictionary_add_entry(name);
+    dictionary_append_function(task_address);
+//    dictionary_append_function(return_to);
+    dictionary_end_entry();
+}
+
 static void task_priority()
 {
     CELL priority = POP_DATA;
@@ -1745,11 +1788,16 @@ static void abort_task(struct Process* process)
     process->sp = -1;
     process->rsp = -1;
     process->ip = 0;
-    process->ip = (process == interpreter_process) ? interpreter_code : (CODE_INDEX) BASE_ENTRY;
+//    process->ip = (process == interpreter_process) ? interpreter_code : (CODE_INDEX) BASE_ENTRY;
     process->next_time_to_run = 0;
+    interpreter_process->ip = interpreter_code;
+    
+        log_debug(LOG, " go %Z %Z", interpreter_process->ip, interpreter_code);
+
     next_task();
     interpreter_echo();
     uart_dispose();
+    tasks();
     INTEnableInterrupts();  // re-enable interrupts
 
 }
@@ -1976,7 +2024,12 @@ static void test_write_flash()
 
 static void test_erase_flash()
 {
+    interpreter_process->suspended = true;
+    idle_process->suspended = true;
     flash_erase();
+//    interpreter_process->suspended = false;
+//    idle_process->suspended = false;
+    console_out("Flash erased. Restart to continue");
 }
 
 const struct CORE_ENTRY core_funcs[200] = {
@@ -2095,6 +2148,7 @@ const struct CORE_ENTRY core_funcs[200] = {
     {"TICKS", ticks, false},
     {"TIME", time, false},
     {"TASK", add_task, false},
+    {"TASK+", add_task_entry, false},
     {"PRIORITY", task_priority, false},
 
     {"'", tick, false},
@@ -2175,7 +2229,7 @@ const struct CORE_ENTRY core_funcs[200] = {
     {"DICTA", dictionary_debug_all, false},
     {"DICT2", dictionary_debug2, false},
     {"FLASH", dictionary_move_to_flash, false},
-    {"PROXY", dictionary_move_to_proxy, false},
+//    {"PROXY", dictionary_move_to_proxy, false},
     {"_DUMP", dump_base, false},
     {"_DEBUG", debug_on, false},
     {"_NODEBUG", debug_off, false},
@@ -2191,33 +2245,33 @@ const struct CORE_ENTRY core_funcs[200] = {
             
 };
 
-static void load_words()
-{
-    log_info(LOG, "load words");
- 
-    // create loop with process instruction
-    //   =>  : _INTERACTIVE BEGIN {run code} AGAIN ;
-    interpreter_code = dictionary_add_entry("_INTERACTIVE");
-    compiler_begin();
-    dictionary_append_function(interpreter_run);
-    compiler_again();
-    dictionary_end_entry();
-    
-//    struct Dictionary_Entry entry;
-//    dictionary_find_entry_for("_INTERACTIVE", &entry);
-//    dictionary_debug_entry(&entry);
-    
-    // create loop with pause instruction  
-    //   =>  : _IDLE BEGIN PAUSE AGAIN ;
-    idle_code = dictionary_add_entry("_IDLE");
-    compiler_begin();
-    dictionary_append_function(yield);
-    compiler_again();
-    dictionary_end_entry();
-
-//    dictionary_find_entry_for("_IDLE", &entry);
-//    dictionary_debug_entry(&entry);
-
-    interpreter_process->ip = interpreter_code;
-    idle_process->ip = idle_code;
-}
+//static void load_words()
+//{
+//    log_info(LOG, "load words");
+// 
+//    // create loop with process instruction
+//    //   =>  : _INTERACTIVE BEGIN {run code} AGAIN ;
+//    interpreter_code = dictionary_add_entry("_INTERACTIVE");
+//    compiler_begin();
+//    dictionary_append_function(interpreter_run);
+//    compiler_again();
+//    dictionary_end_entry();
+//    
+////    struct Dictionary_Entry entry;
+////    dictionary_find_entry_for("_INTERACTIVE", &entry);
+////    dictionary_debug_entry(&entry);
+//    
+//    // create loop with pause instruction  
+//    //   =>  : _IDLE BEGIN PAUSE AGAIN ;
+//    idle_code = dictionary_add_entry("_IDLE");
+//    compiler_begin();
+//    dictionary_append_function(yield);
+//    compiler_again();
+//    dictionary_end_entry();
+//
+////    dictionary_find_entry_for("_IDLE", &entry);
+////    dictionary_debug_entry(&entry);
+//
+//    interpreter_process->ip = interpreter_code;
+//    idle_process->ip = idle_code;
+//}

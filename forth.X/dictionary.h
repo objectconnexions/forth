@@ -27,12 +27,12 @@ typedef void (*CORE_FUNC)(void);
 #define OTHER (uint8_t) 4
     
 struct Dictionary_Entry {
-    CODE_INDEX starts;           // starting address of entry
-    CODE_INDEX ends;             // ending address of entry
+    CODE_INDEX start;           // starting address of entry
+    CODE_INDEX end;             // ending address of entry
     char name[32];               // entry's name
     uint8_t flags;
     INSTRUCTION instruction;     // address of entry's executable code
-    bool core;                   // core function, rather than user created
+    bool is_core;                   // core function, rather than user created
 };
     
 struct CORE_ENTRY {
@@ -41,7 +41,8 @@ struct CORE_ENTRY {
     bool immediate;
 };
      
-void dictionary_init(void);
+//void dictionary_init(void);
+void dictionary_init(CODE_INDEX *, CODE_INDEX *);
 
 void dictionary_init_done(void);
 
@@ -165,7 +166,7 @@ int strcicmp(char const *, char const *);
 
 void dictionary_move_to_flash(void);
 
-void dictionary_move_to_proxy(void);
+//void dictionary_move_to_proxy(void);
 
 #ifdef	__cplusplus
 }

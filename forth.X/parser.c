@@ -92,7 +92,7 @@ uint64_t parser_token_number()
 void parser_token_entry(struct Dictionary_Entry *entry)
 {
     entry->instruction = instruction;
-    entry->core = core;
+    entry->is_core = core;
     entry->flags = flags;
 }
 
@@ -130,7 +130,7 @@ static void process()
 
     if (dictionary_find_entry_for(token, &entry)) {
         instruction = entry.instruction;
-        core = entry.core;
+        core = entry.is_core;
         flags = entry.flags;
         type = WORD_AVAILABLE;
         log_debug(LOG, "%Sword %S, %Z/%X", core ? "core " : "" , token, entry.instruction, entry.flags);

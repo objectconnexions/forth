@@ -92,6 +92,10 @@ void interpreter_run()
                 else if (strcmp(buf, "_dict") == 0)
                 {
                     dictionary_debug();
+                } 
+                else if (strcmp(buf, "_erase") == 0)
+                {
+                    flash_erase();
                 }
                 else if (strcmp(buf, "load") == 0)
                 {

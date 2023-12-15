@@ -205,10 +205,10 @@ HEX
 
 : DIGITAL_OUT ( bit port -- )
 	2dup				\ copy params
-	ANSELA REG_BY_OFFSET \ offset to reister
+	ANSELA REG_BY_OFFSET \ offset to register
 	REG_BIT_CLEAR		\ clear analogue flag
 	2dup
-	TRISA REG_BY_OFFSET	\ offset to reister
+	TRISA REG_BY_OFFSET	\ offset to register
 	REG_BIT_CLEAR  		\ set TRIS register to input
 	REG_BIT_CLEAR  		\ set output off
 ;

@@ -19,11 +19,11 @@ DATA3 U.
 DATA3 CELL+ U.
 DATA3 CELL+ CELL+ U.
 
-DATA U.
+\ DATA U.
 
 \ DATA3 ?
 \ CELL+ ?
 \ CELL+ ?
 .
 
-' DATA 50 DUMP
+\ ' DATA 50 DUMP

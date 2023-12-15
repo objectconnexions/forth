@@ -26,8 +26,17 @@ extern "C" {
 
 void flash_erase(void);
 
-void flash_write_word(uint32_t, uint32_t);
+void flash_write_word_to(uint32_t, uint32_t);
     
+
+void flash_prepare_buffer(uint32_t);
+void flash_buffer_add_byte(uint8_t);
+void flash_buffer_add_cell(uint32_t);
+void flash_write_buffer();
+void flash_stuff_buffer();
+
+
+
 #ifdef __cplusplus
 }
 #endif

@@ -33,7 +33,7 @@ HEX
 	RTCDATE @ 8 RSHIFT
 ;
 
-: rtcc_time ( -- n  get date as BCD yymmdd ) 
+: rtcc_time ( -- n  get date as BCD hhmmss ) 
 	RTCTIME @ 8 RSHIFT
 ;
 

@@ -64,6 +64,7 @@ void branch(void);
 
 void zero_branch(void);
 
+void yield(void);
 void return_to(void);
 void interpreter_run(void);
 void print_string(void);
