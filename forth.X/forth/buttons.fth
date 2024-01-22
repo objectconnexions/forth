@@ -2,19 +2,19 @@
 
 
 : button ( - )
-  PORTA 1 2dup digital_in
+  DIO_1 2dup digital_in
   ." button init "
-  2dup port_read .
+  2dup reg_bit@ .
   
   begin
-    2dup port_read
+    2dup reg_bit@
     if
       50 ms
-      2dup port_read
-      if
+      2dup reg_bit@
+      not if
         \ do action
         ." pressed"
-        300ms
+        300 ms
       then
     then
     
@@ -22,5 +22,8 @@
   again
 ;
 
-task scan
-' button initiate scan
+task+ scan
+
+: scan_button ( )
+    scan activate button
+;

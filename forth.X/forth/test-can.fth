@@ -1,50 +1,135 @@
 noecho
 
-\ Add filter for an Rx FIFO
-\ 	Mask index (0-3)
-\   FIFO index (0-31)
-\	Filter index (0-31)
-\   SID pattern (0-0x7FF)
-\ : can_fifo_filter ( n n n n - )
+\ set up the mask pattern
+\   - mask (0-7FF)
+\   - mask no (0-4)
+: can_sid_mask ( u u - ) 21 LSHIFT SWAP C1RXM0 OFFSET_REGISTER ! ;
 
-HEX
+\ print the mask pattern
+\   - mask no (0-4)
+: .can_sid_mask ( u - ) C1RXM0 OFFSET_REGISTER @ 21 RSHIFT hex. ;
 
-\ test data
-\ $1a8 $0 1 0
+\ set up the filter pattern
+\   - filter pattern (0-7FF)
+\   - filter no (0-15)
+: can_sid_filter ( u u - ) 21 LSHIFT SWAP C1RXF0 OFFSET_REGISTER ! ;
 
-CR .S CR
-                                    \ Derive 8 bits of control data
-	5 LSHIFT			            		\ TOS is mask, bits 6:5
-	OR		        		    			\ NOS is FIFO index, bits 4:0
-                                    \ S: SID filter# control-data
+\ print the filter pattern
+\   - filter no (0-15)
+: .can_sid_filter ( u - ) C1RXF0 OFFSET_REGISTER @ 21 RSHIFT hex. ;
 
-    OVER                            \ Copy the filter index
-    8 SWAP                          \ Add literal for size of control bits in register, used later
 
-    4 /MOD                          \ Get register offset and byte offset
-    C1FLTCON0 OFFSET_REGISTER       \ Calc register address (8 regs for 32 entries)
+
+\ C1FLTCON0: address  and bits for filter control register for filer number
+: can_c1fltconn ( u - a u ) 
+    DUP
+    4 mod 8 *                     \ bit 0, 8, 16, 24
+    SWAP 4 / $10 * C1FLTCON0 +    \ in reg C1RXM0-3
     SWAP
-                                    \ S: SID filter# control-data 8 addr byte-offset
-    2DUP
-    2ROT 2ROT
-                                    \ S: SID filter# addr byte-offset control-data 8  addr byte-offset
+;
 
-    8 * LROT            		        \ Calc offset within register (4 per cell)
-\    REG_BITS!
-    CR .( Write to control reg ) 2SWAP SWAP . .  SWAP . . CR
 
-                                    \ S: SID filter# addr byte-offset
-    2SWAP SWAP $15 LSHIFT SWAP      \ adjust pattern positon (31:21)
-    C1RXF0 OFFSET_REGISTER          \ Filter register for index        
-\    !                              \ writer pattern to filter register
-    .( Write to filter reg ) SWAP . . CR
+\ Disable the filter for the given number (0-15)
+: can_filter_dis ( u - )  can_c1fltconn 7 + SWAP REG_BIT_CLEAR ;
+
+\ Enable the filter for the given number (0-15)
+: can_filter_en ( u - )  can_c1fltconn 7 + SWAP REG_BIT_SET ;
+
+\ Is filter n (0-15) enabled?
+: .can_filter_enabled ( u - )  can_c1fltconn 7 + SWAP REG_BIT@
+                IF ." enabled" THEN ;
+
+\ set the mask used for the filter
+\   - filter number (0-15)
+\   - mask number (0-4)
+: can_filter_mask ( u u - ) can_c1fltconn 5 + 2 ROT REG_BITS! ;
+
+: .can_filter_mask ( u - ) can_c1fltconn 5 + 2 ROT REG_BITS@ bin. ;
+
+\ set the filter used for the filter
+\   - filter number (0-15)
+\   - fifo number  (0-15)
+: can_filter_fifo ( u u - ) can_c1fltconn 5 ROT REG_BITS! ;
+
+: .can_filter_fifo ( u - ) can_c1fltconn 5 ROT REG_BITS@ bin. ;
+
+
+: can_sum_fifo_size ( u u - u )
+    4 4 * * +
+
+;
+
+
+
+
+0 CONSTANT TX1_FIFO
+1 CONSTANT RX1_FIFO
+\ CREATE TEST_FIFOS 6 4 4 * * ALLOT			\ create FIFO buffers
+CREATE TEST_FIFOS
+    0 
+    2 can_sum_fifo_size
+    3 can_sum_fifo_size
+    ALLOT			\ create FIFO buffers
+
+: can_test_setup ( )
+	TEST_FIFOS can_init
+
+	CAN_TX 2 TX1_FIFO can_add_fifo						\ Buffer #0: Tx, 2 messages
+	CAN_RX 3 RX1_FIFO can_add_fifo						\ Buffer #1: Rx, 3 messages
+
+
+\    $7ff 0 can_fifo_mask                    \ Mask #0: include all bits
+\    $146 0 1 0 can_fifo_filter              \ Filter #0, using mask 0 and SID of 146 to Rx FIFO (#1)
+
+    $7ff 0 can_sid_mask
+    $146 0 can_sid_filter
+    $64 1 can_sid_filter
+
+    0 C1FLTCON0 !                           \ clear filters 0-3
+    0 0 can_filter_mask                     \ filters 0 and 1 to use filter pattern 0
+    0 1 can_filter_mask
+    RX1_FIFO 0 can_filter_fifo          \ filters 0 and 1 to use RX1 fifo
+    RX1_FIFO 1 can_filter_fifo
+    0 can_filter_en                         \ enable both filters
+    1 can_filter_en
     
-    8 * 7 +                         \ determine bit to enable
-\   SWAP REG_BIT_SET                \ set enable in control register 
-    .( enable ) SWAP . . CR
+    2 can_mode!
+;
+
+: can_test_write ( - )
+    \ buffer two messages in Tx FIFO
+	TX1_FIFO		    				    \ Tx FIFO (#0)
+	$6543210 $DCBA987       				\ Data, bytes 0-3 and 4 - 7
+	8									    \ Length
+	$146						        	\ SID
+	can_write
+
+	TX1_FIFO $789abcd $12345  8  $64  can_write
+
+	\ send messages
+	TX1_FIFO can_send
+;
+
+: can_test_read  ( - )
+    \ Read from Rx FIFO
+	RX1_FIFO can_read_ready IF ." Ready" ELSE ." Empty" THEN CR
+	RX1_FIFO can_read . ." -> " DROP . . CR
+	RX1_FIFO can_read . ." -> " DROP . . CR
+;
+
+: can_test ( )
+    HEX
+    TX1_FIFO can_debug								\ display Tx buffer
+	can_test_write
+	TX1_FIFO can_debug
+
+    can_test_read
+	RX1_FIFO can_debug							    \ display Rx buffer
+;
 
 
-CR
-    .S CR
 
+
+.( FIFO data @) TEST_FIFOS HEX. CR
+.( CAN test loaded) CR
 echo

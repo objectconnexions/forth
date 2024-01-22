@@ -48,43 +48,16 @@ HEX
 ;
 
 \ turn LCD to control mode
-: control_lcd ( )  
+: lcd_control ( )  
 	LCD_RS REG_BIT_CLEAR
 ;
 
 \ turn LCD to data mode
-: data_lcd ( ) 
+: lcd_data ( ) 
 	LCD_RS REG_BIT_SET
 ;
 
-\ clear the LCD display
-: clear_lcd ( - )
-	control_lcd
-	01 lcd_byte!		\ write clear command
-	2 ms
-;
-
-\ clear the LCD display
-: cursor_at_lcd ( position - )
-	control_lcd
-	80 + lcd_byte!		\ write set data position command
-;
-
-: lcd_string! ( string len - )
-	swap
-	data_lcd
-	0						\ create counter
-	BEGIN
-		2DUP +				\ calc position
-		@C lcd_byte!	        \ display char
-		1+					\ increment char count
-
-		DUP 3 PICK >= 		\ determine if all characters written
-	UNTIL
-	DROP 2DROP
-;
-
-: init_lcd ( - )
+: lcd_init ( - )
 	LCD_RS DIGITAL_OUT
 	LCD_EN DIGITAL_OUT
 	LCD_D0 DIGITAL_OUT
@@ -92,47 +65,70 @@ HEX
 	LCD_D2 DIGITAL_OUT
 	LCD_D3 DIGITAL_OUT
 
-	control_lcd
+	lcd_control
 	03 lcd_nibble!		\ ensure in 8 bit mode
 	03 lcd_nibble!
 	03 lcd_nibble!
 	02 lcd_nibble!		\ set to 4 bit interface
 	4 ms
 	
-	0f lcd_byte!		\ turn on display with cursor
-	
+	0C lcd_byte!		\ turn on display without cursor
 ;
 
-: test_lcd	
-	clear_lcd
-	data_lcd
-	[char] h lcd_byte!
-	[char] e lcd_byte!
-	[char] l lcd_byte!
-	[char] l lcd_byte!
-	[char] o lcd_byte!
-	20 lcd_byte!
+\ clear the LCD display
+: lcd_clear ( - )
+	lcd_control
+	01 lcd_byte!		\ write clear command
+	2 ms
 ;
 
-: test_lcd_string
-	s" example" 
-	lcd_string!
+: lcd_cursor_on_block ( )
+	lcd_control
+	0D lcd_byte!
 ;
 
-: nnn ( n - c-addr u )
+: lcd_cursor_on_line ( )
+	lcd_control
+	0E lcd_byte!
+;
+
+: lcd_cursor_off ( )
+	lcd_control
+	0C lcd_byte!
+;
+
+\ clear the LCD display
+: lcd_position ( line position - )
+	lcd_control
+	swap 40 * +
+	80 OR lcd_byte!		\ write set data position command
+;
+
+: lcd_append_string ( string len - )
+	swap
+	lcd_data
+	0						\ create counter
+	BEGIN
+		2DUP +				\ calc position
+		C@ lcd_byte!	        \ display char
+		1+					\ increment char count
+
+		DUP 3 PICK >= 		\ determine if all characters written
+	UNTIL
+	DROP 2DROP
+;
+
+: lcd_append_space ( )
+	lcd_data
+	BL lcd_byte!
+;
+
+: lcd_append_decimal ( n - c-addr u )
 	dup abs 0 	 			\ convert to double
 	<# # # [CHAR] . HOLD #S ROT SIGN #>
+	lcd_append_string
 ;
 
-
-
-DECIMAL
-
-init_lcd
-
-test_lcd
-BL lcd_byte!
-3039 nnn lcd_string!
 
 DECIMAL
 

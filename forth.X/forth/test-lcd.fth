@@ -1,8 +1,25 @@
 
-	0x03 lcd_nibble!		\ ensure in 8 bit mode
-	0x03 lcd_nibble!
-	0x03 lcd_nibble!
-	0x02 lcd_nibble!		\ set to 4 bit interface
-	4 ms
-	
-	0x0f lcd_byte!
+lcd_init
+
+\ test lcd with direct character writing
+
+lcd_clear
+lcd_data
+char h lcd_byte!
+char e lcd_byte!
+char l lcd_byte!
+char l lcd_byte!
+char o lcd_byte!
+20 lcd_byte!
+
+1 2 lcd_position
+
+\ test lcd string
+
+s" example" lcd_append_string
+
+
+\ test lcd number
+
+lcd_append_space 3039 lcd_append_decimal
+

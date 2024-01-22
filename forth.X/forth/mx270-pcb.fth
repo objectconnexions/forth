@@ -26,6 +26,10 @@ DECIMAL
 3 PORTB 2CONSTANT ADC_3				\ AN5 -- A3
 1 PORTA 2CONSTANT ADC_4				\ AN1 - shared with debug serial! -- A4
 
+6 CONSTANT TEMP				        \ AN6
+12 CONSTANT VOLTAGE                  \ AN12
+5 CONSTANT A3
+1 CONSTANT A4
 
-.( added pcb ports)
+.( added pcb ports) CR
 echo

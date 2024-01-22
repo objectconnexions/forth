@@ -1,6 +1,6 @@
 noecho
 
-lock
+\ lock
 
 HEX
 
@@ -28,6 +28,9 @@ HEX
 0bf88b380 CONSTANT C1FIFOC0
 
 2 PORTE 2CONSTANT C1EN
+
+1 CONSTANT CAN_TX 
+0 CONSTANt CAN_RX
 
 
 DECIMAL
@@ -58,11 +61,14 @@ DECIMAL
 	SYS_LOCK
 ;
 
-: can_set_mode ( n - )
-	24 3 C1CON REG_BITS!		        			\ set REQOP (C1CON 26:24) to mode
 
-	." Mode set " 21 3 C1CON REG_BITS?		\ read OPMOD (C1CON 23:21)
-											\ should be mode - to show it is set
+: can_mode@ ( - n )
+    21 3 C1CON REG_BITS@                    \ read OPMOD (C1CON 23:21)
+;
+
+: can_mode! ( n - )
+	24 3 C1CON REG_BITS!		    	    \ set REQOP (C1CON 26:24) to mode
+	." Mode set " can_mode@ . CR      		\ should be mode - to show it is set
 ;
 
 \ Create FIFO n:-
@@ -139,20 +145,22 @@ DECIMAL
 	\ Set up can module
 	15 C1CON REG_BIT_SET					    \ enable CAN module
 
-    4 can_set_mode							\ configuration
+    4 can_mode!				        			\ configuration mode
 
-    SWAP
+.S
+
 	\ Data base address
 	0xFFFF AND								\ Physical address
-	." ADDR " DUP HEX.
+\    TO_PHYSICAL
+	DUP ." ADDR " HEX. CR
 	C1FIFOBA !								\ set up address register
 
 	\ Bit rate
-	15 C1CFG REG_BIT_SET    				    \ set SEG2PHTS -- freely programmable
+	15 C1CFG REG_BIT_SET    				\ set SEG2PHTS -- freely programmable
 	2 16 3 C1CFG REG_BITS!					\ SEG2PH (18:16) -- 2xTQ
 	2 11 3 C1CFG REG_BITS!					\ SEG1PH (13:11) -- 2xTQ
 	2 8 3 C1CFG REG_BITS!					\ PRSEG (10:8) -- 2xTQ
-	14 C1CFG REG_BIT_SET		       		    \ set SAM -- sample three times
+	14 C1CFG REG_BIT_SET		       		\ set SAM -- sample three times
 	2 6 2 C1CFG REG_BITS!					\ SJW (7:6) -- length 3xTQ
 	3 0 5 C1CFG REG_BITS!					\ BRP (5:0) -- (2 x 4)/FSYS
 ;

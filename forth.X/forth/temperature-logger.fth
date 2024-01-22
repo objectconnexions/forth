@@ -1,5 +1,5 @@
 noecho
-lock
+\ lock
 
 \ Temperature logger
 
@@ -25,7 +25,7 @@ lock
 
 : log-temp ( ) 
 	ADC_INIT
-  	4 ADC_SELECT				\ sensor on AN6
+  	ADC_1 DROP ADC_SELECT				\ sensor on AN6
   	
 \	BEGIN
 		read-temp		

@@ -1,7 +1,5 @@
 noecho
 
-LOCK
-
 \ for MX130 breadboard
 
 DECIMAL
@@ -19,11 +17,17 @@ DECIMAL
 9 PORTB 2CONSTANT LCD_D3			\ LCD DB3
 
 \ Digital IO
-11 PORTB 2CONSTANT DIO_1			\ PUSH BUTTON
+11 PORTB 2CONSTANT DIO_PB1			\ PUSH BUTTON
+2 PORTB 2CONSTANT RB2               \ pin 9
+3 PORTB 2CONSTANT RB3               \ pin 10
+13 PORTB 2CONSTANT RB13               \ pin 24
 
 \ ADC
-0 PORTA 2CONSTANT ADC_1				\ TEMP
-4 PORTA 2CONSTANT ADC_2				\ VR
-
+0 PORTA 2CONSTANT ADC_TEMP			\ pin 2 - AN0, Temperature
+0 CONSTANT TEMP				        \ pin 2 - AN
+2 PORTB 2CONSTANT ADC_VR    		\ pin 6 - AN4, VR
+4 CONSTANT VOLTAGE                  \ pin 6 - AN4
+13 PORTB 2CONSTANT ADC_AN11          \ pin 24 - AN11
+11 CONSTANT AN11                    \ pin 24 - AN11
 .( added breadboard ports)
 echo
