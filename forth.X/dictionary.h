@@ -25,7 +25,15 @@ typedef void (*CORE_FUNC)(void);
 #define SCRUB (uint8_t) 1
 #define IMMEDIATE (uint8_t) 2
 #define OTHER (uint8_t) 4
-    
+
+#define LITERAL 0x00000000
+#define FUNCTION 0x80000000
+#define WORD_IN_FLASH 0x90000000
+#define WORD_IN_RAM 0xA0000000
+#define BRANCH 0xC0000000
+#define ZERO_BRANCH 0xD0000000
+
+
 struct Dictionary_Entry {
     CODE_INDEX start;           // starting address of entry
     CODE_INDEX end;             // ending address of entry
@@ -88,6 +96,8 @@ uint8_t dictionary_read_next_byte(struct Process *);
  *  Return the name of the dictionary entry for the memory at the specified address
  */
 bool dictionary_find_word_for(CODE_INDEX, char *);
+
+void dictionary_display_memory(void);
 
 void dictionary_debug_summary(CODE_INDEX);
         

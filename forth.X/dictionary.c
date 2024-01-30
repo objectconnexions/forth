@@ -5,7 +5,8 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <GenericTypeDefs.h>
-#include <proc/p32mx570f512h.h>
+// #include <proc/p32mx570f512h.h>
+#include <proc/p32mx270f256d.h>
 #include <pic32m_builtins.h>
 #include "sys/kmem.h"
 
@@ -15,20 +16,19 @@
 #include "forth.h"
 #include "interpreter.h"
 #include "flash.h"
-//#include "flash.h"
+#include "util.h"
 
 
 #define LOG "Dictionary"
 
-#define PAGE_SIZE 1024
 // #define PAGE_SIZE 4096  -- for MX795
 
 #ifdef MX130
-    #define RAM_PAGES 16
-    #define FLASH_PAGES 32
-    #define CODE_RAM_SIZE (PAGE_SIZE * RAM_PAGES)
-    #define CODE_FLASH_SIZE (PAGE_SIZE * FLASH_PAGES)
+    #define PAGE_SIZE 1024
+    #define RAM_PAGES 20
+    #define FLASH_PAGES 64
 #else
+    #define PAGE_SIZE 1024
     #define FLASH_PAGES 128
     #define RAM_PAGES 32
     #define CODE_RAM_SIZE (PAGE_SIZE * RAM_PAGES)
@@ -37,29 +37,22 @@
 #endif
 #define CORE_WORDS 220
 
+#define CODE_RAM_SIZE (PAGE_SIZE * RAM_PAGES)
+#define CODE_FLASH_SIZE (PAGE_SIZE * FLASH_PAGES)
+
 
 #define PAD 24
+#define EMBED_CODE_SIZE 16
 
-static uint8_t code_ram[CODE_RAM_SIZE];
-//static uint8_t code_flash_proxy[CODE_FLASH_PROXY_SIZE] = {0};
-static const uint8_t __attribute__ ((aligned (PAGE_SIZE))) code_flash[CODE_FLASH_SIZE] = {[0 ... CODE_FLASH_SIZE - 1] = 0xff};
+static uint8_t code_ram[CODE_RAM_SIZE];static const uint8_t __attribute__ ((aligned (PAGE_SIZE))) code_flash[CODE_FLASH_SIZE] = {[0 ... CODE_FLASH_SIZE - 1] = 0xff};
 
-struct Memory
-{
-    bool flash_write;
-    CODE_INDEX first_entry;
-    CODE_INDEX insertion_point;
-    CODE_INDEX next_entry;
-    CODE_INDEX last_entry;
-    CODE_INDEX limit;
-};
+CODE_INDEX first_entry;
+CODE_INDEX next_entry;
+CODE_INDEX insertion_point;
 
-static struct Memory ram_memory;
-//static struct Memory flash_proxy_memory;
-static struct Memory flash_memory;
-//static struct Memory flash_buffer_memory;
-//static struct Memory* memory;
-
+CODE_INDEX next_flash_entry;
+// TODO remove - this is based on next entry above
+CODE_INDEX flash_insertion_point;
 
 
 static void clear_memory(CODE_INDEX);
@@ -68,12 +61,11 @@ static uint64_t read(CODE_INDEX *);
 static CODE_INDEX peek_address(CODE_INDEX);
 static CODE_INDEX read_address(CODE_INDEX *);
 static CODE_INDEX find_entry(CODE_INDEX, char *);
-//static void read_top_entry(struct Dictionary_Entry *);
 static bool read_next_entry(struct Dictionary_Entry *);
 static void debug(bool);
-static void out_mem_map();
 static void append_cell(CODE_INDEX *, CELL);
 static uint32_t encode_function(CORE_FUNC);
+static void write_memory_setup(void); 
 
 
 
@@ -84,134 +76,105 @@ void dictionary_init(CODE_INDEX *interpreter_code, CODE_INDEX *idle_code)
     log_info(LOG, "%I bytes allocated at %Z", CODE_RAM_SIZE, code_ram);
     log_info(LOG, "code (RAM) at %Z", code_ram);
     log_info(LOG, "code (FLASH) at %Z", code_flash);
-//    log_info(LOG, "code (FLASH proxy) at %Z", code_flash_proxy);
     log_info(LOG, "functions at %Z", core_funcs);
-        
-//    reset(&flash_memory, (CODE_INDEX) code_flash, CODE_FLASH_SIZE);
-////    reset(&flash_proxy_memory, code_flash_proxy, CODE_FLASH_PROXY_SIZE);
-//    reset(&ram_memory, code_ram, CODE_RAM_SIZE);
-    
-    dictionary_master_reset();
 
-//    clear_memory(ram_memory.first_entry);
-    
-//    memory = &ram_memory;
-    // TODO don't work with different memories!
-//    memory = &flash_proxy_memory;
-//    
-//    dictionary_append_cell(BASE_ENTRY);
+    dictionary_master_reset();
     
     *interpreter_code = (CODE_INDEX) code_flash;
     *idle_code = (CODE_INDEX) code_flash + 8;
 }
-//
-//void dictionary_init_done()
-//{
-//    // TODO set up the _IDLE and _INTERACTIVE words manually - also don't allow them to be called interactively
-//    
-////    memory = &ram_memory;
-////    dictionary_append_cell((CELL) flash_proxy_memory.last_entry);
-////    ram_memory.last_entry = flash_proxy_memory.last_entry;
-//    
-//    
-////    // set ram memory pointers to link to flash entries
-////    dictionary_append_cell((CELL) flash_memory.last_entry);
-////    ram_memory.last_entry = flash_memory.last_entry;
-//    
-//    
-////    out_mem_map();
-//
-//}
 
+static CODE_INDEX ram_limit() 
+{
+    return code_ram + CODE_RAM_SIZE;
+}
+
+static CODE_INDEX flash_limit() 
+{
+    CODE_INDEX end_of_flash = (CODE_INDEX) (code_flash + CODE_FLASH_SIZE);
+
+    while (peek_address((CODE_INDEX) end_of_flash - 8) != (CODE_INDEX) 0xffffffff)
+    {
+        log_debug(LOG, "  ends at %Z", end_of_flash);
+        // addresses in flash after main code
+        end_of_flash -= 8;
+    }
+    return end_of_flash;
+
+}
+
+/*
+ * Master reset ensures the flash, ram and its pointers are all set up before they
+ * are used. If there is no code in flash, then it is initialised with two routines
+ * that allow for the interpreter to run and an idle loop pick up any inactivity.
+ * 
+ * If there are not offsets  specified in the end of the flash area, then there is 
+ * no code in flash and none in ram. Hence all pointers are set to the default positions.
+ * 
+ * Otherwise, the offsets are read in and the pointers are set up allocate any variable
+ * space and to point to the next entry in flash. Also, the link from the ram entries
+ * to flash entries is established.
+ */
 void dictionary_master_reset()
 {      
-    if (peek_address((CODE_INDEX) code_flash) == (CODE_INDEX) 0xFFFFFFFF) {
+    bool blank_memory = peek_address((CODE_INDEX) code_flash) == (CODE_INDEX) 0xFFFFFFFF;   
+    if (blank_memory) {
         // new device, no flash code
-        
-       // flash_memory.insertion_point = (CODE_INDEX) code_flash;
-        
         uint32_t addr = (uint32_t) code_flash;
-//        flash_write_to((uint32_t) code_flash);
         
+        // code for INTERP process, running interpreter_run()
         flash_write_word_to(addr, encode_function(interpreter_run));
         addr += 4;
-        flash_write_word_to(addr, 0xC000FFF8); // branch back to be re run interpreter
+        flash_write_word_to(addr, 0xC000FFF8); // branch back (8 bytes) to re-run interpreter
                                         // F8 FF 00   TERACTIV E.y.....
                                         // A00040A0  C0
         addr += 4;
-        
-        // TODO confirm we don't need this as we won't search this part of dictionary - what about trace?
-//        flash_write_word(flash_memory.first_entry); // previous entry from second entry
-        
+                
+        // code for IDLE process, running yield()
         flash_write_word_to(addr, encode_function(yield));
         addr += 4;
 
         flash_write_word_to(addr, 0xC000FFF8); // branch back to be re run idle loop
         addr += 4;
 
-        flash_write_word_to(addr, BASE_ENTRY);      // previous entry indicates first entry
-        addr += 4;
+        // set up first entries previous link-back, which indicates it is the  first entry
+        flash_write_word_to(addr, (uint32_t) BASE_ENTRY);      
         
-        log_error(LOG, "loaded initial flash data, next at %Z", addr);
-//        flash_memory.insertion_point = addr;
+        log_info(LOG, "loaded initial flash data, next at %Z", addr + 4);
     }
 
- 
-    flash_memory.limit = (CODE_INDEX) code_flash + CODE_FLASH_SIZE;
-    ram_memory.limit = code_ram + CODE_RAM_SIZE;
-
-    while (peek_address((CODE_INDEX) (flash_memory.limit - 8)) != (CODE_INDEX) 0xffffffff)
+    CODE_INDEX dict_offsets = flash_limit();
+    // TODO name is wrong - to invert
+    bool code_in_flash = dict_offsets != ((CODE_INDEX) code_flash + CODE_FLASH_SIZE);
+    if (!code_in_flash)
     {
-        flash_memory.limit -= 8;
-        log_debug(LOG, "  check %Z", flash_memory.limit);
+        next_flash_entry = (CODE_INDEX) code_flash + EMBED_CODE_SIZE;
+        // TODO move to point before copying to flash
+        flash_insertion_point = next_flash_entry + 4;
 
-    }
-    
-    if (flash_memory.limit == (CODE_INDEX) code_flash + CODE_FLASH_SIZE)
-    {
-        // addresses in flash after main code
-        flash_memory.first_entry = flash_memory.last_entry = 
-                flash_memory.next_entry = (CODE_INDEX) code_flash + 16;
-        flash_memory.insertion_point = (CODE_INDEX) code_flash + 20;
-
-        ram_memory.first_entry = ram_memory.last_entry =
-            ram_memory.next_entry = ram_memory.insertion_point = code_ram;
+        first_entry = next_entry = insertion_point = code_ram;
         
         dictionary_append_cell((CELL) BASE_ENTRY);
-        ram_memory.last_entry = BASE_ENTRY;
-        
-    
+        log_info(LOG, "  initialise empty flash, ram code starts at %Z, insert at %Z", next_entry, insertion_point);
+
     }
     else
     {
-        CODE_INDEX addr = peek_address((CODE_INDEX) (flash_memory.limit));
-        log_debug(LOG, "  ram address %Z", addr);
-        ram_memory.first_entry = ram_memory.next_entry = ram_memory.insertion_point = addr;
-        ram_memory.limit = code_ram + CODE_RAM_SIZE;
+        next_flash_entry = peek_address(dict_offsets + 4);
+        flash_insertion_point = next_flash_entry + 4;
+        log_debug(LOG, "  flash code continues at %Z, insert at %Z", next_flash_entry, flash_insertion_point);
 
-        addr = peek_address((CODE_INDEX) (flash_memory.limit + 4));
-        log_debug(LOG, "  flash address %Z", addr);
-        flash_memory.first_entry = (CODE_INDEX) code_flash + 16; // TODO we don't use this value for flash
-        flash_memory.next_entry = addr;
-        flash_memory.last_entry = peek_address(flash_memory.next_entry);
-        if (flash_memory.last_entry == BASE_ENTRY)
-        {
-            flash_memory.last_entry = (CODE_INDEX) code_flash + 16;
-        }
-        flash_memory.insertion_point = addr + 4;
-
-//        out_mem_map();
-
-//        flash_memory.limit -= i * 8;
         
-        dictionary_append_cell((CELL) flash_memory.last_entry);
-        // set ram memory pointers to link to flash entries
-        ram_memory.last_entry = flash_memory.last_entry;
+        first_entry = peek_address(dict_offsets);
+        next_entry = first_entry;
+        insertion_point = next_entry;
+        // set up back pointer for first entry in ram so it points to last entry in flash
+        CODE_INDEX previous_entry = peek_address(next_flash_entry);
+        dictionary_append_cell((CELL) previous_entry);
+        log_debug(LOG, "  ram code starts at %Z, insert at %Z", first_entry, insertion_point);
     }
  
-    out_mem_map();
- 
-    clear_memory(ram_memory.insertion_point);
+//    dictionary_display_memory();
     
     log_error(LOG, "completed master reset");
 }
@@ -232,69 +195,70 @@ void dictionary_truncate_at(struct Dictionary_Entry *entry)
         truncate_after(entry);
 }
 
+// TODO check over this logic
 void dictionary_purge(struct Dictionary_Entry *entry)
 {
-    if (entry->start > ram_memory.first_entry)
+    if (entry->start > first_entry)
     {
         /*
          * adjust pointers within the RAM to overwrite the remaining section
          */
-        ram_memory.next_entry = entry->start;
-        ram_memory.insertion_point = entry->start;
-        ram_memory.last_entry = read_address(&ram_memory.insertion_point);
+        next_entry = entry->start;
+        insertion_point = entry->start + 4;
+        
+        clear_memory(insertion_point);
         
     } else {
         /*
          * adjust pointers within the RAM so all old code will be overwritten
          */
-        ram_memory.insertion_point = ram_memory.first_entry;
-        ram_memory.last_entry = ram_memory.first_entry;
-        ram_memory.next_entry = ram_memory.first_entry;
+        next_entry = first_entry;
+        insertion_point = first_entry;
+        clear_memory(insertion_point);
         
         /*
          * adjust back pointer from RAM to the remaining flash area
          */        
-//        append_cell(&ram_memory.insertion_point, (CELL) flash_proxy_memory.insertion_point);
-        append_cell(&ram_memory.insertion_point, (CELL) flash_memory.insertion_point);
+        CODE_INDEX next = peek_address(entry->start);
+        append_cell(&insertion_point, (CELL) next);
+        
+        next_flash_entry = flash_insertion_point;
         
         /*
-         * adjust back pointers within the flash to go back to remaining code (_IDLE word)
+         * adjust back pointers within the flash to go back to what will be
+         * the last entry in the remaining code.
          */        
-//        flash_buffer_index = 0;
-        flash_prepare_buffer((uint32_t) flash_memory.insertion_point);
-        dictionary_find_entry_for("_IDLE", entry);
-        flash_memory.last_entry = flash_memory.insertion_point;
-        flash_memory.last_entry = read_address(&flash_memory.last_entry);
-        flash_buffer_add_cell((CELL) entry->start);
+        flash_prepare_buffer((uint32_t) flash_insertion_point);
+        flash_buffer_add_cell((CELL) next);
         flash_write_buffer();
-        flash_memory.next_entry = flash_memory.insertion_point;
+        flash_flush_buffer();
         
-        out_mem_map();
+        write_memory_setup();
     }
 }
 
 // TODO rename to clear ram
 static void clear_memory(CODE_INDEX from)
 {
-    uint32_t offset = ((uint32_t) from) - ((uint32_t) ram_memory.first_entry);
+    uint32_t offset = ((uint32_t) from) - ((uint32_t) first_entry);
     memset(from, 0, CODE_RAM_SIZE - offset);   
 }
 
 uint32_t dictionary_unused() 
 {
-    uint32_t used = ((uint32_t) ram_memory.insertion_point) - ((uint32_t) ram_memory.last_entry);
+    uint32_t used = ((uint32_t) insertion_point) - ((uint32_t) first_entry);
     return CODE_RAM_SIZE - used;
 }
 
 CODE_INDEX dictionary_here()
 {
-    return ram_memory.insertion_point;
+    return insertion_point;
 }
 
 CODE_INDEX dictionary_pad()
 {
     // TODO what should this be. It's not the same as dictionary_here
-    return ram_memory.insertion_point;
+    return insertion_point;
 }
 
 static void append_flag(uint8_t len, uint8_t flags)
@@ -305,14 +269,15 @@ static void append_flag(uint8_t len, uint8_t flags)
 // TODO move this code into next function
 static CODE_INDEX add_entry(char *name, uint8_t flags)
 {
-    // note, the pointer to the previous entry alreay exists.
+    to_upper(name);
+    // note, the pointer to the previous entry already exists.
     int len = strlen(name);
     log_debug(LOG, "   new entry for '%S' (%I chars) (%Z; next previous %Z)", name, len & 0x1f, 
-            ram_memory.insertion_point, ram_memory.next_entry);
+            insertion_point, next_entry);
     append_flag(len, flags);
     dictionary_append_string(name);
-    log_debug(LOG, "   code start %Z", ram_memory.insertion_point);
-    return ram_memory.insertion_point;
+    log_debug(LOG, "   code start %Z", insertion_point);
+    return insertion_point;
 }
 
 CODE_INDEX dictionary_add_entry(char *name)
@@ -322,11 +287,11 @@ CODE_INDEX dictionary_add_entry(char *name)
 
 void dictionary_end_entry() 
 {
-    log_trace(LOG, "    entry ends at %Z", ram_memory.insertion_point - 1);
-    ram_memory.last_entry = ram_memory.next_entry;
-    ram_memory.next_entry = ram_memory.insertion_point;
-    log_debug(LOG, "   link for previous_entry at %Z", ram_memory.last_entry);
-    dictionary_append_cell((CELL) ram_memory.last_entry);
+    log_debug(LOG, "    entry ends at %Z", insertion_point - 1);
+    CODE_INDEX previous_entry = next_entry;
+    next_entry = insertion_point;
+    log_debug(LOG, "   link for previous_entry at %Z", previous_entry);
+    dictionary_append_cell((CELL) previous_entry);
 }
 
 /*
@@ -344,9 +309,9 @@ void dictionary_abort_entry() {
 //        last_ram_entry = read_address(&last_ram_entry);
 //    }
 //    memory->insertion_point = memory->link_to_previous;
-    ram_memory.insertion_point = ram_memory.next_entry;
+    insertion_point = next_entry + 4;
     
-    log_info(LOG, "abort, stick at %Z", ram_memory.insertion_point);
+    log_info(LOG, "abort, stick at %Z", insertion_point);
 }
 
 
@@ -365,21 +330,21 @@ CODE_INDEX dictionary_aligned(CODE_INDEX address)
  */
 void dictionary_align()
 {
-    log_debug(LOG, "alignment offset %I", ((uint32_t) ram_memory.insertion_point) % 4);
-    while (((uint32_t) ram_memory.insertion_point) % 4 != 0) {
+    log_debug(LOG, "alignment offset %I", ((uint32_t) insertion_point) % 4);
+    while (((uint32_t) insertion_point) % 4 != 0) {
         dictionary_append_byte(0);
     }
-    log_debug(LOG, "aligned to %Z", ram_memory.insertion_point);
+    log_debug(LOG, "aligned to %Z", insertion_point);
 }
 
 void dictionary_allot(int32_t size)
 {
     size = size < 0 ? 0 : size;
     log_debug(LOG, "allot %I bytes", size);
-    ram_memory.insertion_point += size;
+    insertion_point += size;
 }
 
-static void write_byte(CODE_INDEX *code, uint8_t value)
+static void append_byte(CODE_INDEX *code, uint8_t value)
 {
     log_trace(LOG, "write %X to %Z", value, *code);
     *(*code) = value;
@@ -389,13 +354,13 @@ static void write_byte(CODE_INDEX *code, uint8_t value)
 void dictionary_append_byte(uint8_t value)
 {
     // TODO refactor into function with multiple callers
-    if (ram_memory.insertion_point >= ram_memory.limit)
+    if (insertion_point >= ram_limit())
     {
-        log_warn(LOG, "out of memory %Z", ram_memory.insertion_point);
+        log_warn(LOG, "out of memory %Z", insertion_point);
     } 
     else
     {
-        write_byte(&(ram_memory.insertion_point), value);
+        append_byte(&(insertion_point), value);
     }
 }
 
@@ -407,10 +372,10 @@ static void append_cell(CODE_INDEX *code, CELL value)
 {
     if (is_valid_address((uint32_t) *code)) 
     {
-        write_byte(code, value & 0xff);
-        write_byte(code, value >> 8 & 0xff);
-        write_byte(code, value >> 16 & 0xff);
-        write_byte(code, value >> 24 & 0xff);
+        append_byte(code, value & 0xff);
+        append_byte(code, value >> 8 & 0xff);
+        append_byte(code, value >> 16 & 0xff);
+        append_byte(code, value >> 24 & 0xff);
     }
 }
 
@@ -421,7 +386,7 @@ static void append_cell(CODE_INDEX *code, CELL value)
 void dictionary_append_cell(CELL value)
 {
     // TODO check memory
-    append_cell(&(ram_memory.insertion_point), value);
+    append_cell(&(insertion_point), value);
 }
 
 static void write_literal(CODE_INDEX *code, uint32_t value)
@@ -435,22 +400,22 @@ static void write_literal(CODE_INDEX *code, uint32_t value)
 void dictionary_append_literal(uint32_t value)
 {
     // TODO check memory
-    write_literal(&(ram_memory.insertion_point), value);
+    write_literal(&(insertion_point), value);
 }
 
 void dictionary_append_string(char const * text)
 {
     uint8_t len = strlen(text);
     // TODO check memory
-    strcpy(ram_memory.insertion_point, text);
-    ram_memory.insertion_point += len;
+    strcpy(insertion_point, text);
+    insertion_point += len;
 }
 
 static uint32_t encode_function(CORE_FUNC function)
 {
     uint32_t instruction =  (uint32_t) function;
     instruction &= 0x00FFFFFF;
-    instruction |= 0x80000000;
+    instruction |= FUNCTION;
     return instruction;
 }
 
@@ -470,7 +435,7 @@ void dictionary_append_instruction(struct Dictionary_Entry entry)
     {
         // TODO does this actually change any values?
         uint32_t instruction =  (uint32_t) entry.instruction;
-        if (entry.instruction >= ram_memory.first_entry && entry.instruction <= ram_memory.limit)
+        if (entry.instruction >= first_entry && entry.instruction <= ram_limit())
         {
 //            instruction &= 0x0FFFFFFF;
 //            instruction |= 0xB0000000;
@@ -478,8 +443,8 @@ void dictionary_append_instruction(struct Dictionary_Entry entry)
         else
         {
             // TODO this can be detected by looking for 0x9D....
-            instruction &= 0x0FFFFFFF;
-            instruction |= 0x80000000;
+//            instruction &= 0x0FFFFFFF;
+//            instruction |= 0x80000000;
         }
         dictionary_append_cell(instruction);
     }
@@ -499,7 +464,7 @@ void dictionary_write_byte(CODE_INDEX index, uint8_t value)
  Mark the most recent entry as IMMEDIATE
  */
 void dictionary_mark_internal() {
-   CODE_INDEX current_index = ram_memory.next_entry;
+   CODE_INDEX current_index = next_entry;
    read_address(&current_index);    // move the pointer to right address
    *current_index = *current_index | IMMEDIATE << 5;
 }
@@ -522,10 +487,10 @@ static void entry_details(CODE_INDEX code, CODE_INDEX end, struct Dictionary_Ent
 {
     entry->start = code;
     // swap to flash memory after all entries in RAM
-    if (end == ram_memory.first_entry - 1) 
+    if (end == first_entry - 1) 
     {
 //        entry->ends = flash_proxy_memory.next_entry;
-        entry->end = flash_memory.next_entry;
+        entry->end = next_flash_entry;
     }
     else
     {
@@ -542,9 +507,7 @@ static void entry_details(CODE_INDEX code, CODE_INDEX end, struct Dictionary_Ent
     log_trace(LOG, " code for '%S' at %Z~%Z", entry->name, entry->start, entry->end);
     entry->is_core = false;
     // TODO refactor - same calculation in move to flash code
-    entry->instruction = code; // > code > flash_memory.limit ?
-//        (INSTRUCTION) (((uint32_t) code & 0x00FFFFFF) | 0x80000000) : 
-//        code;
+    entry->instruction = code;
 }
 
 /*
@@ -570,7 +533,7 @@ static bool read_next_entry(struct Dictionary_Entry *entry)
  // TODO RENAME to compiler_find_word())
 bool dictionary_find_entry_with(CODE_INDEX search_index, struct Dictionary_Entry *entry)
 {
-    entry_details(ram_memory.next_entry, ram_memory.next_entry - 1, entry);
+    entry_details(next_entry, next_entry - 1, entry);
     do
     {
         if (search_index >= entry->start && search_index <= entry->end) 
@@ -584,17 +547,22 @@ bool dictionary_find_entry_with(CODE_INDEX search_index, struct Dictionary_Entry
     return false;
 }
 
+static CODE_INDEX last_entry()
+{
+    return peek_address(next_entry);    
+}
+
 /*
     Returns the address of the memory for for the specified word.
  */
  // TODO RENAME to compiler_find_word())
 bool dictionary_find_entry_for(char * name, struct Dictionary_Entry *entry)
 {
-    CODE_INDEX start = ram_memory.last_entry;
+    CODE_INDEX start = last_entry();
     log_debug(LOG, " start scan for '%S' at entry at %Z", name, start);
     if (start != BASE_ENTRY)
     {
-        entry_details(start, ram_memory.next_entry - 1, entry);
+        entry_details(start, next_entry - 1, entry);
         do
         {
             if (strcicmp(entry->name, name) == 0)
@@ -641,6 +609,7 @@ uint8_t dictionary_read_next_byte(struct Process *process)
     return read_byte(&process->ip);
 }
 
+// TODO a similar function appears in forth.c
 // TODO is valid RAM address (upper limit will depend on chip!)
 static bool is_valid_address(uint32_t address)
 {
@@ -654,7 +623,7 @@ static bool is_valid_address(uint32_t address)
     }
     else
     {
-        console_out("MEMORY ACCESS %Z!", address); 
+        console_out("MEMORY ACCESS %Z!\n", address); 
         forth_abort();
         return false;
     }
@@ -700,7 +669,7 @@ CODE_INDEX dictionary_read_instruction(struct Process *process)
 
 CODE_INDEX dictionary_offset() 
 {
-    return ram_memory.insertion_point;
+    return insertion_point;
 }
 
 /*
@@ -718,7 +687,7 @@ bool dictionary_find_word_for(CODE_INDEX code_pointer, char *name) {
         return false;
     }
 
-    entry = ram_memory.last_entry;
+    entry = last_entry();
     while (entry != BASE_ENTRY)
     {
         next = read_address(&entry);
@@ -759,17 +728,17 @@ bool dictionary_find_word_for(CODE_INDEX code_pointer, char *name) {
  */
 void dictionary_words() {
     CODE_INDEX entry;
-    CODE_INDEX next_entry;
+    CODE_INDEX next;
     char name[32];
     uint8_t width = 0;
     
     console_put(NL);
-    entry = ram_memory.next_entry;
+    entry = next_entry;
     entry = read_address(&entry);
 
     while (entry != BASE_ENTRY)
     {
-        next_entry = read_address(&entry);
+        next = read_address(&entry);
         uint8_t len = *entry++ & 0x1f;
         strncpy(name, entry, len);
         name[len] = 0;
@@ -781,11 +750,11 @@ void dictionary_words() {
         }
         console_out(name);
         console_put(SPACE);
-        entry = next_entry;
+        entry = next;
     }
 
     int i;
-    for (i = 0; i < 200; i++)
+    for (i = 200; i >= 0; i--)
     {
         struct CORE_ENTRY elem = core_funcs[i];
         if (elem.function == NULL)
@@ -812,7 +781,7 @@ void dictionary_words() {
 
 void dictionary_memory_dump(CODE_INDEX start, uint16_t size) {
     uint32_t addr, col;
-    uint32_t offset = (uint32_t) (start == 0 ? ram_memory.first_entry : start);
+    uint32_t offset = (uint32_t) (start == 0 ? first_entry : start);
     uint32_t from = offset;
     from = from - (from % 16);
     uint32_t end = offset + size;
@@ -858,23 +827,23 @@ void dictionary_memory_dump(CODE_INDEX start, uint16_t size) {
 static CODE_INDEX find_entry(CODE_INDEX offset, char * name)
 {
     CODE_INDEX entry;
-    CODE_INDEX next_entry;
+    CODE_INDEX next;
     CODE_INDEX start_at;
        
-    entry = ram_memory.last_entry;
+    entry = last_entry();
     entry = read_address(&entry);
 
     while (entry != BASE_ENTRY)
     {
         start_at = entry;
-        next_entry = read_address(&entry);
+        next = read_address(&entry);
         if (start_at <= offset) {
             uint8_t len = *entry++ & 0x1f;
             strncpy(name, entry, len);
             name[len] = 0;
             return start_at;
         }
-        entry = next_entry;
+        entry = next;
     }
     
     return (CODE_INDEX) BASE_ENTRY;
@@ -924,7 +893,7 @@ void dictionary_debug_entry(struct Dictionary_Entry * entry)
     // TODO would this ever occur?
     if (end_at == BASE_ENTRY)
     {
-        end_at = ram_memory.insertion_point - 1;
+        end_at = insertion_point - 1;
     }
     
     
@@ -969,19 +938,19 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
     switch(type)
     {
             
-        case 0x90000000:
+        case WORD_IN_FLASH:
             // flash word
             // TODO change to 0x90... for real flash
             dictionary_find_word_for((CODE_INDEX) (instruction | 0x9D000000), name);
             debug_print(*addr, ptr);
             console_out("%S", name);
             console_pad(PAD - strlen(name));
-            console_out("(%Z)", instruction | 0x9D000000);
+            console_out("word(%Z)", instruction | 0x9D000000);
             level = 1;
             
             break;
 
-        case 0x80000000:
+        case FUNCTION:
             ;
             CORE_FUNC function = (CORE_FUNC) (instruction | 0x9D000000);
             if (function == push_literal)
@@ -992,7 +961,7 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
                console_pad(PAD - 3);
                console_out("%Z", value2);
             }
-            else if (function == memory_address)
+            else if (function == data_address)
             {
                value = dictionary_aligned(ptr);
                debug_print(*addr, ptr);
@@ -1004,18 +973,36 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
                console_put(NL);
                console_out("  - aligned to %Z", value);
                
-               
-               // value is the address where the data starts; don't know where it ends!
-               // if we pass it in then we can loop through here and print data
-               // same for next
             }
-            else if (function == data_address)
+            else if (function == do_loop_begin)
             {
-               value = dictionary_aligned(ptr);
                debug_print(*addr, ptr);
-               console_out("DATA");
+               console_out("DO");
+               console_pad(PAD - 2);
+              
+            }
+            else if (function == do_loop_add_step_and_check)
+            {
+               debug_print(*addr, ptr);
+               console_out("LOOP");
                console_pad(PAD - 4);
-               console_out("%Z", value);
+               
+            }
+            else if (function == do_loop_increment_and_check)
+            {
+               debug_print(*addr, ptr);
+               console_out("LOOP+");
+               console_pad(PAD - 5);
+               
+            }
+            else if (function == process_address)
+            {
+               debug_print(*addr, ptr);
+               console_out("PROC ADD");
+               console_pad(PAD - 8);
+               CELL var_addr = read(&ptr);
+               console_out("%Z", var_addr);
+                
             }
             else if (function == return_to)
             {
@@ -1066,30 +1053,17 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
             }
             break;
             
-        case 0xA0000000:
-            // flash word
-            dictionary_find_word_for((CODE_INDEX) (instruction | 0xA0000000), name);
+        case WORD_IN_RAM:
+            dictionary_find_word_for((CODE_INDEX) (instruction | WORD_IN_RAM), name);
             debug_print(*addr, ptr);
             console_out("%S", name);
             console_pad(PAD - strlen(name));
-            console_out("(%Z)", instruction | 0xA0000000);
+            console_out("(%Z)", instruction | WORD_IN_RAM);
             level = 1;
             
             break;
-//            
-//        case 0xB0000000:
-//            // ram word
-//            dictionary_find_word_for((CODE_INDEX) (instruction & 0xEFFFFFFF), name);
-//            debug_print(*addr, ptr);
-//            console_out("%S", name);
-//            console_pad(PAD - strlen(name));
-//            console_out("(%Z)", instruction & 0xEFFFFFFF);
-//            level = 1;
-//            
-//            break;
             
-        case 0xC0000000:
-            // branch
+        case BRANCH:
             relative = instruction & 0x0000FFFF;
             debug_print(*addr, ptr);
             console_out("BRANCH");
@@ -1097,8 +1071,7 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
             console_out("%Z (%I)", *addr + 4 + relative, relative);            
             break;
 
-        case 0xD0000000:
-            // zero branch
+        case ZERO_BRANCH:
             relative = instruction & 0x0000FFFF;
             debug_print(*addr, ptr);
             console_out("ZBRANCH");
@@ -1106,7 +1079,7 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
             console_out("%Z (%I)", *addr + 4 + relative, relative);            
             break;
  
-        case 0x00000000:
+        case LITERAL:
             debug_print(*addr, ptr);
             console_out("LIT");
             console_pad(PAD - 3);
@@ -1114,10 +1087,15 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
             break;
 
         case 0x40000000:
+            debug_print(*addr, ptr);
+            console_out("DBL ???");
+            
             // for double literals
             break;
             
         default:
+            debug_print(*addr, ptr);
+            console_out("???");
      
             break;
 
@@ -1128,31 +1106,26 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
     return level;
 }
 
-static void out_mem_map() 
+void dictionary_display_memory() 
 {
     console_out("RAM\n");
-    console_out("  data: %Z~%Z\n", code_ram, code_ram + CODE_RAM_SIZE);    
-    console_out("  first entry: %Z\n", ram_memory.first_entry);
-    console_out("  last entry: %Z\n", ram_memory.last_entry);
-    console_out("  next entry: %Z\n", ram_memory.next_entry);
-    console_out("  limit: %Z\n", ram_memory.limit);
-    console_out("  used: %I/%I\n", ram_memory.next_entry - ram_memory.first_entry, ram_memory.limit - ram_memory.first_entry);
-    console_out("  insert at: %Z\n\n", ram_memory.insertion_point);
+    console_out("  allocated: %Z~%Z\n", code_ram, ram_limit());    
+    console_out("  used: %I/%I\n", next_entry - code_ram, CODE_RAM_SIZE);
+    console_out("  first entry: %Z\n", first_entry);
+    console_out("  next entry: %Z\n", next_entry);
+    console_out("  insert at: %Z\n\n", insertion_point);
 
     console_out("Flash\n");
-    console_out("  data: %Z~%Z\n", code_flash, code_flash + CODE_FLASH_SIZE);    
-    console_out("  first entry: %Z\n", flash_memory.first_entry);
-    console_out("  last entry: %Z\n", flash_memory.last_entry);
-    console_out("  next entry: %Z\n", flash_memory.next_entry);
-    console_out("  limit: %Z\n", flash_memory.limit);
-    console_out("  used: %I/%I\n", flash_memory.next_entry - flash_memory.first_entry, flash_memory.limit - flash_memory.first_entry);
-    console_out("  insert at: %Z\n\n", flash_memory.insertion_point);
+    console_out("  allocated: %Z~%Z\n", code_flash, code_flash + CODE_FLASH_SIZE);    
+    console_out("  used: %I/%I\n", next_flash_entry - code_flash, CODE_FLASH_SIZE);
+    console_out("  next entry: %Z\n", next_flash_entry);
+    console_out("  insert at: %Z\n\n", flash_insertion_point);
 }
 
 // TODO rename to a more appropriate name
 static void debug(bool include_functions)
 {
-    out_mem_map();
+    dictionary_display_memory();
     
     if (include_functions)
     {
@@ -1183,8 +1156,8 @@ static void debug(bool include_functions)
         console_out(" --- \n");
     }
     
-    CODE_INDEX prev_code = ram_memory.last_entry;
-    CODE_INDEX last_code = ram_memory.next_entry;
+    CODE_INDEX prev_code = last_entry();
+    CODE_INDEX last_code = next_entry;
     CODE_INDEX code = prev_code;
     char name[32];
 
@@ -1195,12 +1168,9 @@ static void debug(bool include_functions)
     while (code != BASE_ENTRY)
     {     
         CODE_INDEX start = code;
-//        console_out("%Z  ", start);
-        
-        if (last_code == ram_memory.first_entry)
+        if (last_code == first_entry)
         {
-//            last_code = flash_proxy_memory.next_entry;
-            last_code = flash_memory.next_entry;
+            last_code = next_flash_entry;
         }
         
         uint16_t size = last_code - start;
@@ -1211,7 +1181,6 @@ static void debug(bool include_functions)
         name[name_len] = 0;
         code += name_len;
         console_out("%Z  %Z  (%Z)  %S", start, code, prev_code, name);
-//        console_out(name);
         console_pad(30 - name_len);
         console_out("[%X]  ", byte >> 5);
 
@@ -1238,212 +1207,208 @@ void dictionary_debug_all()
 
 static void write_memory_setup() 
 {
+    if (next_entry == 0 || first_entry == 0)
+    {
+        
+        log_debug(LOG, "ram memory failure %Z / %Z", first_entry, next_entry);
+        dictionary_display_memory();
+        return;
+    }
+
     //    IS this writing to unaligned memory?
         
-    flash_memory.limit -= 8;
-    log_debug(LOG, "write startup addresses %Z & %Z to %Z", flash_memory.next_entry, ram_memory.next_entry, flash_memory.limit);
-    flash_write_word_to((uint32_t) flash_memory.limit, (uint32_t) ram_memory.next_entry);
-    flash_write_word_to((uint32_t) flash_memory.limit + 4, (uint32_t) flash_memory.next_entry);
+    // allocate the previous 8 bytes to store the two offsets
+    CODE_INDEX addr = flash_limit() - 8;
+    log_debug(LOG, "write startup addresses %Z & %Z to %Z", next_flash_entry, first_entry, addr);
+    // point in  RAM where the variable storage finishes and volatile dictionary entries start
+    flash_write_word_to((uint32_t) addr, (uint32_t) first_entry);
+    // point in FLASH where the next entry will be placed
+    flash_write_word_to((uint32_t) addr + 4, (uint32_t) next_flash_entry);
 }
 
 void dictionary_move_to_flash()
 {
-    CODE_INDEX destination = flash_memory.insertion_point;
-    flash_prepare_buffer((uint32_t) destination);
-    
-    console_out("Copying %I bytes to FLASH\n", ram_memory.next_entry - ram_memory.first_entry);
-    log_debug(LOG, "copy code from %Z to %Z", ram_memory.first_entry, destination);
-     
     struct Dictionary_Entry entry;
-    CODE_INDEX source;
+    CODE_INDEX source_code;
     CODE_INDEX source_instruction;
-    uint32_t new_instruction;
-    CODE_INDEX variables = ram_memory.first_entry;
-    log_debug(LOG, "variables go to %Z", variables);
- 
-    source = ram_memory.first_entry;
-    while (source < ram_memory.next_entry)
-    {
-        log_debug(LOG, "- looking for entry at %Z", source);
-        if (dictionary_find_entry_with(source, &entry))
-        {
-            source = entry.start;
-            uint16_t entry_len = entry.end - source + 1;
-            uint8_t name_len = strlen(entry.name);
-            console_out("%S : %Z~%Z -> %Z/%Z (%I bytes)\n", entry.name, entry.start, entry.end, flash_memory.next_entry, destination, entry_len);
-            log_debug(LOG, "   copy entry for '%S' (%I chars) at %Z -> %Z", entry.name, name_len, source, destination);
+    uint32_t destination_instruction;
+    CODE_INDEX variables_boundary;
+    CODE_INDEX flash_destination;
+    CODE_INDEX previous_flash_entry;
 
-            read_address(&source); // consume backpointer
+    
+    flash_insertion_point = next_flash_entry + 4;
+    flash_destination = flash_insertion_point;
+    flash_prepare_buffer((uint32_t) flash_destination);
+
+    if (next_entry == 0 || first_entry == 0)
+    {
+            log_debug(LOG, "ram memory failure %Z / %Z", first_entry, next_entry);
+            dictionary_display_memory();
+            return;
+    }
+    
+    uint16_t size = next_entry - first_entry;
+    if (size == 0)
+    {
+        console_out("No code to copy to FLASH\n");
+        return;
+    }
+    console_out("Copying %I bytes to FLASH\n", size);
+    log_debug(LOG, "copy code from %Z to %Z", first_entry, flash_destination);
+     
+    variables_boundary = first_entry;
+    log_debug(LOG, "variables go to %Z", variables_boundary);
+ 
+    source_code = first_entry;
+    while (source_code < next_entry)
+    {
+        log_debug(LOG, "- looking for entry at %Z", source_code);
+        if (dictionary_find_entry_with(source_code, &entry))
+        {
+            source_code = entry.start;
+            uint16_t entry_len = entry.end - source_code + 1;
+            uint8_t name_len = strlen(entry.name);
+            console_out("%S : %Z~%Z -> %Z/%Z (%I bytes)\n", entry.name, entry.start, entry.end, next_flash_entry, flash_destination, entry_len);
+            log_debug(LOG, "   copy entry for '%S' (%I chars) at %Z -> %Z", entry.name, name_len, source_code, flash_destination);
+
+            // consume the back-pointer
+            read_address(&source_code); 
             
             // copy length/flag and name
-            flash_buffer_add_byte(*source++);
+            flash_buffer_add_byte(*source_code++);
             int i;
             for (i = 0; i < name_len; i++) {
-                flash_buffer_add_byte(*source++);
+                flash_buffer_add_byte(*source_code++);
             }
-            destination += 1 + name_len;
+            flash_destination += 1 + name_len;
 
-            source_instruction = source;
-            new_instruction = (uint32_t) destination; // (((uint32_t) destination) & 0x00FFFFFF) | 0x80000000;
+            // record the start for the code in the source and destination, so we
+            // can map one to the other for later entries that refer back to this
+            // entry.
+            source_instruction = source_code;
+            destination_instruction = (uint32_t) flash_destination;
             
+            previous_flash_entry = next_flash_entry;
+
             // copy code - exactly
-            while (source <= entry.end)
+            while (source_code <= entry.end)
             {
-                CODE_INDEX instruction = read_address(&source);
-                
+                CODE_INDEX instruction = read_address(&source_code);
                 uint32_t type = ((uint32_t) instruction) & 0xFF000000;
-                        
-                if (type == 0x80000000)
+                if (type == FUNCTION)
                 {
+                    // if instruction is function then translate address: 0x80... -> 0x9D...
                     CORE_FUNC function = (CORE_FUNC) (((uint32_t) instruction) | 0x9D000000);
-                
-//                if instruction is function then translate address: 0x80... -> 0x9D...
-
-
                     log_debug(LOG, "   copying function %Z (%Z)", function, instruction);
                     if (function == push_literal)
                     {
-                        CELL value = (CELL) read_address(&source);
+                        CELL value = (CELL) read_address(&source_code);
                         flash_buffer_add_cell(encode_function(push_literal));
                         flash_buffer_add_cell(value);
                         log_debug(LOG, "     append literal value %Z", value);
-                        destination += 8;
+                        flash_destination += 8;
                         continue;
 
                     }
-                    else if (function == memory_address)
+                    else if (function == process_address)
                     {
                         // variables are stored aligned in RAM
-                        variables = dictionary_aligned(variables);
-                        source = dictionary_aligned(source);  
-                        uint8_t data_len = entry.end - source + 1;
-                        log_debug(LOG, "     for variable (%I bytes) from %Z~%Z: %Z", data_len, source, entry.end, variables);
+                        variables_boundary = dictionary_aligned(variables_boundary);
+                        flash_buffer_add_cell(encode_function(process_address));
+                        flash_buffer_add_cell((CELL) variables_boundary);
+                        flash_destination += 8;
+                        source_code = entry.end;
+                        variables_boundary += 4;
+
+                    }
+                    else if (function == data_address)
+                    {
+                        // variables are stored aligned in RAM
+                        variables_boundary = dictionary_aligned(variables_boundary);
+                        source_code = dictionary_aligned(source_code);  
+                        uint8_t data_len = entry.end - source_code + 1;
+                        log_debug(LOG, "     for variable (%I bytes) from %Z~%Z: %Z", data_len, source_code, entry.end, variables_boundary);
 
                         flash_buffer_add_cell(encode_function(push_literal));
-                        flash_buffer_add_cell((CELL) variables);
+                        flash_buffer_add_cell((CELL) variables_boundary);
                         flash_buffer_add_cell(encode_function(return_to));
-                        destination += 12;
-
-    //                    flash_memory.last_entry = flash_memory.next_entry;
-    //                    flash_memory.next_entry = destination;
-
-                        source += data_len;
-                        variables += data_len;
+                        flash_destination += 12;
+                        source_code += data_len;
+                        variables_boundary += data_len;
 
                     }
-                    else if (instruction == (CODE_INDEX) data_address)
+                    else if (function == print_string || function == c_string || function == s_string)
                     {
-                        // TODO not always aligned!
-    //                    
-    //                   // variables are store aligned in RAM
-    //                    ram_src = dictionary_aligned(ram_src);  
-    //                    variables = dictionary_aligned(variables);
-    //                    len = entry.ends - ram_src + 1;
-    //                    log_debug(LOG, "     variable (%I bytes) at %Z", len, variables);
-    //
-    //                    add_flash_bufffer_cell((CELL) push_literal);
-    //                    add_flash_bufffer_cell((CELL) variables);
-    //                    add_flash_bufffer_cell((CELL) return_to);
-    //                    
-    //                    memory->last_entry = memory->next_entry;
-    //                    memory->next_entry = new_instruction + 12;
-    ////                    log_debug(LOG, "     link for previous_entry at %Z", memory->last_entry);
-    ////                    add_flash_bufffer_cell((CELL) memory->last_entry);
-    //                    
-    //                    ram_src += len;
-    //                    variables += len;
-
-
-
-
-                        CELL value2 = (CELL) read_address(&source);
-                        log_debug(LOG, "     append data %Z", value2);
-    //
-    //                   value = dictionary_aligned(ptr);
-    //                   debug_print(*addr, ptr);
-    //                   console_out("DATA");
-    //                   console_pad(PAD - 4);
-    //                   console_out("%Z", value);
-
-                    }
-                    else if (instruction == (CODE_INDEX) print_string || instruction == (CODE_INDEX) c_string || instruction == (CODE_INDEX) s_string)
-                    {
-                        // TODO copy the right text over
-
+                        flash_buffer_add_cell(encode_function((CORE_FUNC) instruction));
                         log_debug(LOG, "     append string");
-                        continue;
+                        uint8_t len = read_byte(&source_code);
+                        flash_buffer_add_byte(len);
+                        int i;
+                        for (i = 0; i < len; i++) {
+                            flash_buffer_add_byte(read_byte(&source_code));
+                        }
+                        flash_destination += 4 + len + 1;
 
                     } 
                     else
                     {
                         flash_buffer_add_cell((CELL) instruction);
-                        destination += 4;
+                        flash_destination += 4;
                     }
                 }
                 else 
                 {
-                    if (type == 0xA0000000)
+                    if (type == WORD_IN_RAM)
                     {
-//
-//                    uint32_t type = ((uint32_t) instruction) & 0xF0000000;
-//                    // TODO change to if
-//                    switch(type)
-//                    {
-//                        case 0xA0000000:
-//                            instruction = (CODE_INDEX) ((((uint32_t) instruction) & 0x00FFFFFF) | 0x80000000);
-//                                    (CODE_INDEX) (((uint32_t) instruction) & 0xEFFFFFFF);
-                            
-                            // map old ram instruction to flash instruction (saved earlier)
-                            log_debug(LOG, "       translate %Z to %Z", instruction, peek_address(instruction));
-                            instruction = peek_address(instruction);
-//                            break;
-//                    }
+                        // map old ram instruction to flash instruction (saved earlier)
+                        log_debug(LOG, "       translate %Z to %Z", instruction, peek_address(instruction));
+                        instruction = peek_address(instruction);
                     }
                     
                     log_debug(LOG, "     append instruction %Z", instruction);
                     flash_buffer_add_cell((CELL) instruction);
-                    destination += 4;
+                    flash_destination += 4;
                 }
             }
 
-            flash_memory.last_entry = flash_memory.next_entry;
-            log_debug(LOG, "   link for previous_entry at %Z", flash_memory.last_entry);
-            flash_buffer_add_cell((CELL) flash_memory.last_entry);
-            flash_memory.next_entry = destination;
-            destination += 4;
+            log_debug(LOG, "   link for previous_entry at %Z", previous_flash_entry);
+            flash_buffer_add_cell((CELL) previous_flash_entry);
+            next_flash_entry = flash_destination;
+            flash_destination += 4;
             
             flash_write_buffer();
  
             // writes the new address into the RAM entry for lookup during rest of transfer
-            write_literal(&source_instruction, new_instruction);
+            write_literal(&source_instruction, destination_instruction);
         }
         else
         {
             break;
         }
     }
-    flash_stuff_buffer();
+    flash_flush_buffer();
     flash_write_buffer();
     
-    flash_memory.insertion_point = destination;
+    flash_insertion_point = flash_destination;
 
-    ram_memory.first_entry = variables;
-    ram_memory.next_entry = variables;
-    ram_memory.last_entry = flash_memory.last_entry;
-    ram_memory.insertion_point = variables;
+    first_entry = variables_boundary;
+    next_entry = variables_boundary;
+//    ram_memory.last_entry = flash_memory.last_entry;
+    insertion_point = variables_boundary;
 
-    log_debug(LOG, "write last entry %Z to %Z", flash_memory.last_entry, ram_memory.insertion_point);
-    dictionary_append_cell((CELL) flash_memory.last_entry); // sets the previous link in ram to the last entry in flash
+    log_debug(LOG, "write last entry %Z to %Z", previous_flash_entry, insertion_point);
+    dictionary_append_cell((CELL) previous_flash_entry); // sets the previous link in ram to the last entry in flash
     
     write_memory_setup();
     
-    out_mem_map();
+    dictionary_display_memory();
 }
 
 void dictionary_debug2()
 {
-    out_mem_map();
-    dictionary_memory_dump(ram_memory.first_entry, 250);
+    dictionary_display_memory();
+    dictionary_memory_dump(first_entry, 250);
 //    dictionary_memory_dump(flash_proxy_memory.first_entry, 200);
     dictionary_memory_dump((CODE_INDEX) code_flash, 500);
     dictionary_memory_dump((CODE_INDEX) code_flash + CODE_FLASH_SIZE - 128, 128);
@@ -1514,13 +1479,17 @@ void flash_buffer_add_cell(CELL data)
     flash_buffer_add_byte(data >> 24 & 0xff);
 }
 
+/*
+ * Set up buffer with 0xff for each byte already written previously. This will ensure
+ * the code is not changed when a word is written to flash.
+ */
 void flash_prepare_buffer(uint32_t address)
 {
     flash_buffer_index = 0;
 
     uint8_t offset = address % 4;
     if (offset > 0) {
-        log_debug(LOG, "set up flash buffer with %I blanks", offset);
+        log_debug(LOG, "set up flash buffer with %I blank bytes", offset);
         // fill buffer with non-changing bytes (blank flash is 0xff) where code already exists
         uint8_t i;
         for (i = 0; i < offset; i++)
@@ -1533,7 +1502,7 @@ void flash_prepare_buffer(uint32_t address)
     log_debug(LOG, "will write to %Z", next_flash_write);
 }
 
-void flash_stuff_buffer()
+void flash_flush_buffer()
 {
           
     //    TODO stuff the last bytes,  but keep the insertion point; set up next entry to new  position
@@ -1548,7 +1517,7 @@ void flash_stuff_buffer()
 
     }
     flash_write_buffer();
-    flash_memory.insertion_point -= len + 1;
+    flash_insertion_point -= len + 1;
 
 }
 
@@ -1577,12 +1546,6 @@ void flash_write_buffer()
     flash_buffer_index = over;
 }
 
-
-//void flash_write_to(uint32_t addr)
-//{
-//    next_flash_write = addr;
-//}
-
 void flash_erase()
 {
     int i;
@@ -1599,12 +1562,6 @@ void flash_erase()
     
 void flash_write_word_to(uint32_t index, uint32_t data)
 {
-//    uint8_t *addr = (uint8_t *)index;
-//    *addr++ = data & 0xff;
-//    *addr++ = data >> 8 & 0xff;
-//    *addr++ = data >> 16 & 0xff;
-//    *addr++ = data >> 24 & 0xff;
-    
     NVMADDR = KVA_TO_PA(index);
     NVMDATA = data;
     flash_op(OP_WRITE_WORD);
@@ -1612,8 +1569,6 @@ void flash_write_word_to(uint32_t index, uint32_t data)
     
 static void flash_write_next_word(uint32_t data)
 {
-//    flash_write_word_to((uint32_t) flash_proxy_memory.insertion_point, (uint32_t) data);
-//    flash_proxy_memory.insertion_point += 4;
     flash_write_word_to((uint32_t) next_flash_write, (uint32_t) data);
     next_flash_write += 4;
 }

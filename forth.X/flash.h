@@ -33,7 +33,7 @@ void flash_prepare_buffer(uint32_t);
 void flash_buffer_add_byte(uint8_t);
 void flash_buffer_add_cell(uint32_t);
 void flash_write_buffer();
-void flash_stuff_buffer();
+void flash_flush_buffer();
 
 
 

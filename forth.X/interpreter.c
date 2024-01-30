@@ -10,6 +10,7 @@
 #include "interpreter.h"
 #include "compiler.h"
 #include "logger.h"
+#include "flash.h"
 
 #define LOG "Interpreter"
 
@@ -102,8 +103,8 @@ void interpreter_run()
                     test_compile("TEST 1 2 3 + + . CR ;");
                     test_compile("ON 0x0bf886220 dup @ 0x01 4 lshift or swap ! ;");
                     test_compile("OFF 0x0bf886220 dup @ 0x01 4 lshift 0x03ff xor and swap ! ;");
-                    test_compile("FLASH on 200 ms off 200 ms ;");
-                    test_compile("FLASH2 flash flash flash ;");
+                    test_compile("FLASH1 on 200 ms off 200 ms ;");
+                    test_compile("FLASH2 flash1 flash1 flash1 ;");
 
                 }
                 else if (strcmp(buf, "##") == 0)

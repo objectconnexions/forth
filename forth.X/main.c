@@ -108,7 +108,7 @@ int32_t main(void)
     uart_init();
     log_init();
 
-    uart_transmit_buffer("PIC 32MX board\n");
+    uart_transmit_buffer("PIC 32MX Forth\n");
 //
 //    // Timer2 Setup
 //    T2CONbits.ON = 0; // disable before set up

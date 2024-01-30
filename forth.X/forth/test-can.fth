@@ -1,8 +1,8 @@
 noecho
 
 \ set up the mask pattern
-\   - mask (0-7FF)
 \   - mask no (0-4)
+\   - mask (0-7FF)
 : can_sid_mask ( u u - ) 21 LSHIFT SWAP C1RXM0 OFFSET_REGISTER ! ;
 
 \ print the mask pattern
@@ -10,8 +10,8 @@ noecho
 : .can_sid_mask ( u - ) C1RXM0 OFFSET_REGISTER @ 21 RSHIFT hex. ;
 
 \ set up the filter pattern
-\   - filter pattern (0-7FF)
 \   - filter no (0-15)
+\   - filter pattern (0-7FF)
 : can_sid_filter ( u u - ) 21 LSHIFT SWAP C1RXF0 OFFSET_REGISTER ! ;
 
 \ print the filter pattern
@@ -44,14 +44,14 @@ noecho
 \   - mask number (0-4)
 : can_filter_mask ( u u - ) can_c1fltconn 5 + 2 ROT REG_BITS! ;
 
-: .can_filter_mask ( u - ) can_c1fltconn 5 + 2 ROT REG_BITS@ bin. ;
+: .can_filter_mask ( u - ) can_c1fltconn 5 + 2 ROT REG_BITS@ hex. ;
 
 \ set the filter used for the filter
 \   - filter number (0-15)
 \   - fifo number  (0-15)
 : can_filter_fifo ( u u - ) can_c1fltconn 5 ROT REG_BITS! ;
 
-: .can_filter_fifo ( u - ) can_c1fltconn 5 ROT REG_BITS@ bin. ;
+: .can_filter_fifo ( u - ) can_c1fltconn 5 ROT REG_BITS@ hex. ;
 
 
 : can_sum_fifo_size ( u u - u )
@@ -64,34 +64,37 @@ noecho
 
 0 CONSTANT TX1_FIFO
 1 CONSTANT RX1_FIFO
+2 CONSTANT RX2_FIFO
 \ CREATE TEST_FIFOS 6 4 4 * * ALLOT			\ create FIFO buffers
 CREATE TEST_FIFOS
     0 
-    2 can_sum_fifo_size
-    3 can_sum_fifo_size
+    4 can_sum_fifo_size
+    6 can_sum_fifo_size 
+    6 can_sum_fifo_size
     ALLOT			\ create FIFO buffers
 
 : can_test_setup ( )
 	TEST_FIFOS can_init
 
-	CAN_TX 2 TX1_FIFO can_add_fifo						\ Buffer #0: Tx, 2 messages
-	CAN_RX 3 RX1_FIFO can_add_fifo						\ Buffer #1: Rx, 3 messages
-
-
-\    $7ff 0 can_fifo_mask                    \ Mask #0: include all bits
-\    $146 0 1 0 can_fifo_filter              \ Filter #0, using mask 0 and SID of 146 to Rx FIFO (#1)
-
-    $7ff 0 can_sid_mask
-    $146 0 can_sid_filter
-    $64 1 can_sid_filter
+	CAN_TX 4 TX1_FIFO can_fifo_add			\ Buffer #0: Tx, 4 messages
+	CAN_RX 6 RX1_FIFO can_fifo_add			\ Buffer #1: Rx, 3 messages
+	CAN_RX 6 RX1_FIFO can_fifo_add			\ Buffer #3: Rx, 3 messages
+	
+    0 $7ff can_sid_mask
+    0 $146 can_sid_filter
+    1 $64 can_sid_filter
+    2 $12 can_sid_filter
 
     0 C1FLTCON0 !                           \ clear filters 0-3
     0 0 can_filter_mask                     \ filters 0 and 1 to use filter pattern 0
     0 1 can_filter_mask
-    RX1_FIFO 0 can_filter_fifo          \ filters 0 and 1 to use RX1 fifo
+    1 2 can_filter_mask
+    RX1_FIFO 0 can_filter_fifo              \ filters 0 and 1 to use RX1 fifo
     RX1_FIFO 1 can_filter_fifo
+    RX2_FIFO 2 can_filter_fifo
     0 can_filter_en                         \ enable both filters
     1 can_filter_en
+    2 can_filter_en
     
     2 can_mode!
 ;
@@ -102,9 +105,11 @@ CREATE TEST_FIFOS
 	$6543210 $DCBA987       				\ Data, bytes 0-3 and 4 - 7
 	8									    \ Length
 	$146						        	\ SID
-	can_write
+	can_fifo!
 
-	TX1_FIFO $789abcd $12345  8  $64  can_write
+	TX1_FIFO $789abcd $12345  8  $64  can_fifo!
+
+	TX1_FIFO $deadbeef $cafebabe  8  $12  can_fifo!
 
 	\ send messages
 	TX1_FIFO can_send
@@ -112,9 +117,11 @@ CREATE TEST_FIFOS
 
 : can_test_read  ( - )
     \ Read from Rx FIFO
-	RX1_FIFO can_read_ready IF ." Ready" ELSE ." Empty" THEN CR
-	RX1_FIFO can_read . ." -> " DROP . . CR
-	RX1_FIFO can_read . ." -> " DROP . . CR
+	RX1_FIFO can_fifo_ready IF ." Ready" ELSE ." Empty" THEN CR CR
+	RX1_FIFO can_fifo@ . ." -> " DROP . . CR
+	RX1_FIFO can_fifo@ . ." -> " DROP . . CR CR
+	RX2_FIFO can_fifo@ . ." -> " DROP . . CR
+	RX2_FIFO can_fifo@ . ." -> " DROP . . CR
 ;
 
 : can_test ( )

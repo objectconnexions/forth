@@ -54,7 +54,7 @@ DECIMAL
 	1 PORTF DIGITAL_OUT						\ RF1 -> C1TX
 	0x0c 0x0bf80FC44 !						\ set RPF1R as used by C1TX
 
-	C1EN DIGITAL_OUT			        			\ RE2 -> C1EN
+	C1EN DIGITAL_OUT			        	\ RE2 -> C1EN
 	C1EN REG_BIT_CLEAR						\ Enable transciever
 
 	13 CFGCON REG_BIT_SET					\ lock PPS
@@ -75,65 +75,11 @@ DECIMAL
 \   for TX (flag is 1) or RX (flag is 0)
 \   size (number of messages 1-16)
 \   FIFO index n (0-31)
-: can_add_fifo ( flag n n  - )
+: can_fifo_add ( flag n n  - )
 	C1FIFOCON0 can_fifo_register
     SWAP 1- OVER                        \ offset from size
 	16 5 ROT REG_BITS!	                \ set FSIZE (20:16) with FIFO size
 	7 SWAP REG_BIT!						\ set TXEN flag
-\ ???	7 C1FIFOCON0 REG_BIT!		\ Set TXEN for TX
-;
-
-	\ FIFO buffers
-\	3 16 5 C1FIFOCON0 REG_BITS!				\ set FSIZE (20:16) with FIFO size of
-\	7 C1FIFOCON0 REG_BIT_CLEAR				\ Clear TXEN for RX
-
-\	1 16 5 C1FIFOCON0 OFFSET + REG_BITS!	    \ set FSIZE (20:16) with FIFO size
-\	7 C1FIFOCON0 OFFSET + REG_BIT_SET		\ Set TXEN for TX
-
-
-\ Create a mask for filtering message, with:
-\   mask index (0-3)
-\   mask bitmap
-: can_fifo_mask ( n n - )
-	C1RXM0 OFFSET_REGISTER                   \ address for register n
- 	21 11 ROT REG_BITS!						\ Filter uses SID (31:21) as mask
-;
-
-\ Add filter for an Rx FIFO
-\ 	Mask index (0-3)
-\   FIFO index (0-31)
-\	Filter index (0-31)
-\   SID pattern (0-0x7FF)
-: can_fifo_filter ( u u u u - )
-                                    \ Derive 8 bits of control data
-	5 LSHIFT			            		\ TOS is mask, bits 6:5
-	OR		        		    			\ NOS is FIFO index, bits 4:0
-                                    \ S: SID filter# control-data
-
-    OVER                            \ Copy the filter index
-    8 SWAP                          \ Add literal for size of control bits in register, used later
-
-    4 /MOD                          \ Get register offset and byte offset
-    C1FLTCON0 OFFSET_REGISTER       \ Calc register address (8 regs for 32 entries)
-    SWAP
-                                    \ S: SID filter# control-data 8 addr byte-offset
-    2DUP
-    2ROT 2ROT
-                                    \ S: SID filter# addr byte-offset control-data 8  addr byte-offset
-
-    8 * LROT            		        \ Calc offset within register (4 per cell)
-    REG_BITS!
-\    CR .( Write to control reg ) 2SWAP SWAP . .  SWAP . . CR
-
-                                    \ S: SID filter# addr byte-offset
-    2SWAP SWAP $15 LSHIFT SWAP      \ adjust pattern positon (31:21)
-    C1RXF0 OFFSET_REGISTER          \ Filter register for index        
-    !                               \ writer pattern to filter register
-\    .( Write to filter reg ) SWAP . . CR
-    
-    8 * 7 +                         \ determine bit to enable
-    SWAP REG_BIT_SET                \ set enable in control register 
-\    .( enable ) SWAP . . CR
 ;
 
 \ Set up the CAN peripheral
@@ -147,11 +93,8 @@ DECIMAL
 
     4 can_mode!				        			\ configuration mode
 
-.S
-
-	\ Data base address
+    \ Data base-address
 	0xFFFF AND								\ Physical address
-\    TO_PHYSICAL
 	DUP ." ADDR " HEX. CR
 	C1FIFOBA !								\ set up address register
 
@@ -165,7 +108,7 @@ DECIMAL
 	3 0 5 C1CFG REG_BITS!					\ BRP (5:0) -- (2 x 4)/FSYS
 ;
 
-: can_status ( )
+: .can_status ( )
 	HEX
 	CR
 	." TRAN EN " C1EN REG_BIT? CR
@@ -191,11 +134,11 @@ DECIMAL
 \   Data size in bytes (0-8)
 \ 	Two words (8 bytes) of data
 \   FIFO number (0-31)
-: can_write ( n x1 x2 n n - )
+: can_fifo! ( n x1 x2 n n - )
     4 PICK                                       \ Copy of FIFO index
 	C1FIFOUA0 can_fifo_register @				\ get FIFO 1 (TX fifo) current msg address
 	TO_PHYSICAL							        	\ convert to physical address
-
+." use buffer" .S CR
 	TUCK !									    \ write bytes to successive words: SID;
 	CELL+ TUCK !						            	\ Length;
 	CELL+ TUCK !							        \ Bytes 0-3; and
@@ -210,7 +153,7 @@ DECIMAL
 	3 SWAP REG_BIT_SET						\ Set data sent TXREQ
 ;
 
-: can_read_ready ( n - flag )
+: can_fifo_ready ( n - flag )
 	C1FIFOINT0 can_fifo_register
 	0 SWAP REG_BIT@							\ confirm ready with data (RXNEMPTYIF)
 ;
@@ -220,8 +163,8 @@ DECIMAL
 \   - length (bytes) of message
 \   - data, bytes 4-7
 \   - data, bytes 0-3
-: can_read ( n - x1 x2 n n )
-    DUP can_read_ready IF
+: can_fifo@ ( n - x1 x2 n n )
+    DUP can_fifo_ready IF
         DUP
 		C1FIFOUA0 can_fifo_register @ TO_PHYSICAL	\ get RX FIFO address
 
@@ -254,8 +197,6 @@ DECIMAL
 
 	C1FIFOUA0 can_fifo_register @								\ get RX FIFO address
 	TO_PHYSICAL
-
-\	.S CR
 
 	DUP @ 									\ read register 1
 	DUP 0x7FF AND ." SID " . CR				\ SID

@@ -3,6 +3,15 @@ noecho
 
 start_tests
 
+T{ 4 5 6 + +  -> 15 }
+
+T{ 4 3 MASK  ->  $0f0 } 
+
+T{ 3 PORTB OFFSET_REGISTER  ->  PORTB $30 + }
+
+
+
+
 s" add" 
     4 5 6 + +
     15 assert_equals

@@ -58,7 +58,9 @@ void push_literal(void);
 
 void push_double_literal(void);
 
-void memory_address(void);
+void data_address(void);
+
+void process_address(void);
 
 void branch(void);
 
@@ -70,7 +72,11 @@ void interpreter_run(void);
 void print_string(void);
 void s_string(void);
 void c_string(void);
-void data_address(void);
+
+void do_loop_begin(void);
+void do_loop_add_step_and_check(void);
+void do_loop_increment_and_check(void);
+
 
 
 void example(void);

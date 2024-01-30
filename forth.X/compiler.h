@@ -36,8 +36,6 @@ void compiler_compile_definition(void);
 
 void compiler_end(void);
 
-void compiler_if(void);
-
 void compiler_constant(void);
 
 void compiler_2constant(void);
@@ -46,15 +44,29 @@ void compiler_variable(void);
 
 void compiler_2variable(void);
 
-void compiler_begin(void);
+void compiler_task(void);
+
+void compiler_if(void);
 
 void compiler_then(void);
 
 void compiler_else(void);
 
+void compiler_begin(void);
+
 void compiler_again(void);
 
 void compiler_until(void);
+
+void compiler_while(void);
+
+void compiler_repeat(void);
+
+void compiler_do(void);
+
+void compiler_loop(void);
+
+void compiler_loop_plus(void);
 
 void compiler_eol_comment(void);
 
@@ -64,7 +76,9 @@ void compiler_print_comment(void);
 
 void compiler_char(void);
 
-void compiler_compile_string(void);
+void compiler_add_string(void);
+
+int compiler_write_string(void);
 
 void compiler_print_string(void);
 

@@ -11,7 +11,7 @@ static enum LEVEL log_level;
 
 void log_init()
 {
-    log_level = DEBUG;
+    log_level = WARN;
 }
 
 void log_set_level(uint8_t level)
