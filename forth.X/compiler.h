@@ -64,6 +64,8 @@ void compiler_repeat(void);
 
 void compiler_do(void);
 
+void compiler_leave(void);
+
 void compiler_loop(void);
 
 void compiler_loop_plus(void);

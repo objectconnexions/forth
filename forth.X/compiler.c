@@ -22,6 +22,8 @@ static void complete_word(bool);
 
 static CODE_INDEX block_start[6];
 static uint8_t jp = 0;
+static CODE_INDEX block_leave[6];
+static uint8_t lp = 0;
 static bool has_error;
 
 // Compile state: 1 = in compilation; 0 = not in compilation
@@ -259,24 +261,35 @@ void compiler_if()
     block_start[jp++] = dictionary_offset();
     dictionary_append_literal(ZERO_BRANCH);
 }
+
+/*
+ * Add a jump instruction at the specified location that take you to the current
+ * dictionary location.
+ */
+static void update_branch_distance(bool forward, CODE_INDEX start)
+{
+    uint16_t jump = dictionary_offset() - start;
+    if (forward)
+    {
+        jump -= 4;
+    }
+    dictionary_write_byte(start + 1, (jump >> 8) & 0xFF );
+    dictionary_write_byte(start + 0, jump & 0xFF );
+}
     
 // TODO these need to check if bounds are exceeded (> 128 or < -127)
 void compiler_then()
 {
     // zbranch (for if) or branch (for else) offset over respective block
     CODE_INDEX start = block_start[--jp];
-    uint16_t jump = dictionary_offset() - start - 4;
-    dictionary_write_byte(start + 1, (jump >> 8) & 0xFF );
-    dictionary_write_byte(start + 0, jump & 0xFF );
+    update_branch_distance(true, start);
 }
 
 void compiler_else()
 {
     // zbranch offset distance, over main block
     CODE_INDEX start = block_start[--jp];
-    uint16_t jump = dictionary_offset() - start;
-    dictionary_write_byte(start + 1, (jump >> 8) & 0xFF );
-    dictionary_write_byte(start + 0, jump & 0xFF );
+    update_branch_distance(false, start);
  
     // branch over else block
     block_start[jp++] = dictionary_offset();
@@ -289,18 +302,35 @@ void compiler_do()
     block_start[jp++] = dictionary_offset();
 }
 
+void compiler_leave()
+{
+    dictionary_append_function(do_unloop);
+    block_leave[lp++] = dictionary_offset();
+    dictionary_append_literal(BRANCH);
+}
+
+static void loop()
+{
+    while (lp > 0)
+    {
+        CODE_INDEX start = block_leave[--lp];
+        update_branch_distance(false, start);
+    }
+    uint16_t distance = block_start[--jp] - dictionary_offset() - 4;
+    dictionary_append_literal(ZERO_BRANCH | distance);
+}
+
 void compiler_loop()
 {
     dictionary_append_function(do_loop_increment_and_check);
-    uint16_t distance = block_start[--jp] - dictionary_offset() - 4;
-    dictionary_append_literal(ZERO_BRANCH | distance);
+    loop();
+    
 }
 
 void compiler_loop_plus()
 {
     dictionary_append_function(do_loop_add_step_and_check);
-    uint16_t distance = block_start[--jp] - dictionary_offset() - 4;
-    dictionary_append_literal(ZERO_BRANCH | distance);
+    loop();
 }
 
 void compiler_begin()

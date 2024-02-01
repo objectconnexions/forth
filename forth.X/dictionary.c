@@ -754,14 +754,10 @@ void dictionary_words() {
     }
 
     int i;
-    for (i = 200; i >= 0; i--)
+    for (i = 220 - 1; i >= 0; i--)
     {
         struct CORE_ENTRY elem = core_funcs[i];
-        if (elem.function == NULL)
-        {
-            break;
-        }
-        if (elem.name != NULL)
+        if (elem.function != NULL && elem.name != NULL)
         {
             uint8_t len = strlen(elem.name);
             width += len + 1;
@@ -984,14 +980,14 @@ int8_t dictionary_print_instruction(CODE_INDEX *addr)
             else if (function == do_loop_add_step_and_check)
             {
                debug_print(*addr, ptr);
-               console_out("LOOP");
+               console_out("LOOP+");
                console_pad(PAD - 4);
                
             }
             else if (function == do_loop_increment_and_check)
             {
                debug_print(*addr, ptr);
-               console_out("LOOP+");
+               console_out("LOOP");
                console_pad(PAD - 5);
                
             }

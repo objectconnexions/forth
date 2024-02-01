@@ -20,9 +20,9 @@
     
     CR
     
-    clear
-    TRACE
-    CR
+ \   clear
+ \   TRACE
+ \   CR
     30 0 DO I . CR 2 LOOP+
 
 ;
@@ -35,4 +35,45 @@
     
     10 BEGIN DUP 0 > WHILE 1- DUP . REPEAT 
 ;
+
+
+: test_leave ( )
+    CR
+    1   
+    30 0 DO
+        1+
+        I .
+        .S trace CR
+        LEAVE
+        ." -"
+    LOOP
+    .S TRACE CR
+;
+
+: test_IF_leave ( )
+    1   
+    30 0 DO
+        1+
+        I .
+        
+        I 12 > IF
+            I LEAVE
+        THEN
+        
+        I DUP  . .
+        
+        LEAVE
+        
+    2 LOOP+ 
+;
+
+: test_if ( )
+    TRUE
+    IF
+        12 .
+    ELSE
+        24 .
+    THEN
+;
+
 

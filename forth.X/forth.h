@@ -66,6 +66,8 @@ void branch(void);
 
 void zero_branch(void);
 
+void do_unloop(void);
+
 void yield(void);
 void return_to(void);
 void interpreter_run(void);

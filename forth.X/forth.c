@@ -1983,7 +1983,7 @@ static void check_and_loop(int step)
     current_process->return_stack[current_process->rsp] = index;
     if (index >= limit)
     {
-        current_process->rsp -= 2;
+        do_unloop();
         true_value();
     }
     else
@@ -2018,7 +2018,7 @@ static void do_loop_count_j()
 /*
  * Remove index and limtt from return stack
  */
-static void do_unloop()
+void do_unloop()
 {
     current_process->rsp -= 2;
 }
@@ -2109,7 +2109,7 @@ static void test_erase_flash()
     console_out("Flash erased. Restart to continue");
 }
 
-const struct CORE_ENTRY core_funcs[200] = {
+const struct CORE_ENTRY core_funcs[220] = {
     {NULL, return_to, false},
     
     {NULL, nop, false},
@@ -2120,6 +2120,9 @@ const struct CORE_ENTRY core_funcs[200] = {
     {NULL, print_string, false},
     {NULL, s_string, false},
     {NULL, c_string, false},
+    {NULL, do_loop_begin, false},
+    {NULL, do_loop_increment_and_check, false},
+    {NULL, do_loop_add_step_and_check, false},
     
     {"?DUP", question_dup, false},
     {"DEPTH", depth, false},
@@ -2270,6 +2273,7 @@ const struct CORE_ENTRY core_funcs[200] = {
     {"LOOP", compiler_loop, true},
     {"LOOP+", compiler_loop_plus, true},
     {"UNLOOP", do_unloop, true},
+    {"LEAVE", compiler_leave, true},
     {"I", do_loop_count_i, false},
     {"J", do_loop_count_j, false},
     {":", compiler_compile_definition, false},
