@@ -43,7 +43,7 @@ void dump_return_stack(char *, struct Process*);
 void display_code(uint8_t*);
 CELL pop_stack(void);
 void next_task();
-static struct Process* new_task(uint8_t, char*);
+static struct Process* new_task(uint8_t, char*); // TODO remove
 void reset(void);
 static void print_top_of_stack(void);
 static void abort_task(struct Process*);
@@ -903,7 +903,7 @@ void xor()
 void not()
 {
     CELL tos_value = POP_DATA;
-    tos_value > 0 ? true_value() : false_value();
+    tos_value > 0 ? false_value() : true_value();
 }
 
 static void left_shift()
@@ -1023,11 +1023,11 @@ static void activate()
         run_process->ip = current_process->ip;
         run_process->suspended = false;
         run_process->next_time_to_run = timer + 1;
-        log_info(LOG, "active at %Y with %S at %I", run_process->ip, run_process->name, run_process->next_time_to_run);
+        log_info(LOG, "active at %Z with %S at %I", run_process->ip, run_process->name, run_process->next_time_to_run);
         return_to();
     }
 }
-
+/*
 static void initiate()
 {
     struct Process *run_process = get_process();
@@ -1039,6 +1039,7 @@ static void initiate()
         log_info(LOG, "initiate from %Y with %S at %I", run_process->ip, run_process->name, run_process->next_time_to_run);
     }
 }
+ */
 
 static void terminate()
 {
@@ -1645,6 +1646,7 @@ void dump_parameter_stack(char *buf, struct Process *p)
     dump_stack(buf, p->stack, p->sp, '<' , '>');
 }
 
+// TODO remove
 static struct Process* new_task(uint8_t priority, char *name)
 {
     struct Process* process = processes;
@@ -1696,6 +1698,8 @@ static struct Process* new_task(uint8_t priority, char *name)
     return new_process;
 }
 
+
+/*
 static void add_task()
 {
 //    TODO entry should have a variable space which will hold the Process address; if empty, create new Process first
@@ -1705,6 +1709,7 @@ static void add_task()
     log_info(LOG, "add task %S", name);
     new_task(5, name);
 }
+*/
 
 static void task_priority()
 {
@@ -1784,8 +1789,34 @@ static void return_stack() {
     console_out("  return stack %S \n", buf);
 }
 
+// TODO loop through return stack to print entries
+static void abort_task_entry( CELL *return_stack, int rsp) 
+{
+    struct Dictionary_Entry entry;
+    
+    while (rsp >= 0)
+    {
+        CODE_INDEX ip = (CODE_INDEX) return_stack[rsp--];
+        dictionary_find_entry_with(ip, &entry);
+        console_out("  in %S at %Z\n", entry.name, ip);
+    }
+}
+
 static void abort_task(struct Process* process)
 {
+    /* error output:-
+     * 
+MEMORY BOUNDS 00000023!
+
+SCAN aborted <3213385984 | 3213385984>
+  in REG_BIT@ at 9D0003CD
+  return stack {A0000170 A0000108 | 9D00071B} 
+  in DIGITAL@ at 9D00071B
+  in BUTTON at A0000108
+  in SCAN_BUTTON at A0000170
+[disposing input 110560]
+     
+     */
     forth_trace(false);
     char buf[80];
     log_debug(LOG, "abort task %S", process->name);
@@ -1794,11 +1825,14 @@ static void abort_task(struct Process* process)
     dictionary_find_entry_with(process->ip, &entry);
     
     dump_parameter_stack(buf, process);
-    console_out("\n%S aborted %S\n", process->name, buf);
-    console_out("  in %S at %Z\n", entry.name, process->ip);
-    dump_return_stack(buf, current_process);
-    console_out("  return stack %S \n", buf);
+    console_out("  task %S aborted, %S\n", process->name, buf);
+    console_out("    in %S at %Z\n", entry.name, process->ip);
+
+//    dump_return_stack(buf, current_process);
+//    console_out("  return stack %S \n", buf);
    
+    abort_task_entry(process->return_stack, process->rsp);
+    
     process->sp = -1;
     process->rsp = -1;
     process->ip = 0;
@@ -2109,7 +2143,7 @@ static void test_erase_flash()
     console_out("Flash erased. Restart to continue");
 }
 
-const struct CORE_ENTRY core_funcs[220] = {
+const struct CORE_ENTRY core_funcs[CORE_WORDS] = {
     {NULL, return_to, false},
     
     {NULL, nop, false},
@@ -2229,13 +2263,13 @@ const struct CORE_ENTRY core_funcs[220] = {
     {"CLEAR", clear_stack, false},
     {"TICKS", ticks, false},
     {"TIME", time, false},
-    {"TASK", add_task, false},
-    {"TASK+", compiler_task, false},
+//    {"TASK", add_task, false},
+    {"TASK", compiler_task, false},
     {"PRIORITY", task_priority, false},
 
     {"'", tick, false},
 
-    {"INITIATE", initiate, false}, // TODO remove
+//    {"INITIATE", initiate, false}, // TODO remove
     {"ACTIVATE", activate, false},
     {"TERMINATE", terminate, false},
     {"SUSPEND", suspend, false},
@@ -2339,10 +2373,18 @@ const struct CORE_ENTRY core_funcs[220] = {
    {"TRACE", return_stack, false},
  
     
-    {"f!", test_write_flash, false},
-    {"ferase", test_erase_flash, false},
+    {"F!", test_write_flash, false},
+    {"FERASE", test_erase_flash, false},
     
-    {"reboot", reboot, false}
+    {"REBOOT", reboot, false},
+    
+    {"[DEFINED]", compiler_defined, true},
+    {"[UNDEFINED]", compiler_undefined, true},
+    {"[IF]", compiler_compile_if, true},
+    {"[THEN]", compiler_compile_then, true},
+//    {"[ELSE]", compiler_compile_else, true}
+    
+    
             
 };
 

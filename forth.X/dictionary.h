@@ -22,6 +22,8 @@ typedef void (*CORE_FUNC)(void);
 
 #define CELL_SIZE 4
 
+#define CORE_WORDS 220
+
 #define SCRUB (uint8_t) 1
 #define IMMEDIATE (uint8_t) 2
 #define OTHER (uint8_t) 4

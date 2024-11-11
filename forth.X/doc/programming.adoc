@@ -9,3 +9,25 @@ Memory is displayed in 16 columns, one per byte. Each row displays the base addr
 `<addr> <length> DUMP` will dump the memory at the location of the _address_ and will include at least _length_ bytes.
 
 `_DUMP` simply dumps the first 256 bytes of memory.
+
+
+
+== Logging
+
+Logging details can be changed with the `LOG` word.
+
+`1 LOG` sets the logging level to the level (number) specified.
+
+.Levels
+0
+    TRACE
+1
+    DEBUG
+2
+    INFO
+3
+    WARN
+4
+    ERROR
+5
+    OFF

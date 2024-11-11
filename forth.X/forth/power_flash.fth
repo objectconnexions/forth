@@ -3,8 +3,8 @@ noecho
 \ double constants PWR_LED and ACT_LED must be declared before running this
 
 2variable flash_rate
-task+ power
-task+ flasher
+task power
+task flasher
 
 : pwr_flash ( - )
     pwr_led DIGITAL_OUT				\ enable LEDs

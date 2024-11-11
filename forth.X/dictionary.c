@@ -35,7 +35,6 @@
     #define CODE_FLASH_SIZE (PAGE_SIZE * FLASH_PAGES)
 //    #define CODE_FLASH_PROXY_SIZE (PAGE_SIZE * 4)
 #endif
-#define CORE_WORDS 220
 
 #define CODE_RAM_SIZE (PAGE_SIZE * RAM_PAGES)
 #define CODE_FLASH_SIZE (PAGE_SIZE * FLASH_PAGES)
@@ -95,7 +94,7 @@ static CODE_INDEX flash_limit()
 
     while (peek_address((CODE_INDEX) end_of_flash - 8) != (CODE_INDEX) 0xffffffff)
     {
-        log_debug(LOG, "  ends at %Z", end_of_flash);
+        log_info(LOG, "  ends at %Z", end_of_flash);
         // addresses in flash after main code
         end_of_flash -= 8;
     }
@@ -162,7 +161,7 @@ void dictionary_master_reset()
     {
         next_flash_entry = peek_address(dict_offsets + 4);
         flash_insertion_point = next_flash_entry + 4;
-        log_debug(LOG, "  flash code continues at %Z, insert at %Z", next_flash_entry, flash_insertion_point);
+        log_info(LOG, "  flash code continues at %Z, insert at %Z", next_flash_entry, flash_insertion_point);
 
         
         first_entry = peek_address(dict_offsets);
@@ -171,12 +170,12 @@ void dictionary_master_reset()
         // set up back pointer for first entry in ram so it points to last entry in flash
         CODE_INDEX previous_entry = peek_address(next_flash_entry);
         dictionary_append_cell((CELL) previous_entry);
-        log_debug(LOG, "  ram code starts at %Z, insert at %Z", first_entry, insertion_point);
+        log_info(LOG, "  ram code starts at %Z, insert at %Z", first_entry, insertion_point);
     }
  
 //    dictionary_display_memory();
     
-    log_error(LOG, "completed master reset");
+    log_info(LOG, "completed master reset");
 }
 
 static void truncate_after(struct Dictionary_Entry *entry)
@@ -230,8 +229,8 @@ void dictionary_purge(struct Dictionary_Entry *entry)
          */        
         flash_prepare_buffer((uint32_t) flash_insertion_point);
         flash_buffer_add_cell((CELL) next);
-        flash_write_buffer();
-        flash_flush_buffer();
+        flash_write_buffer(true);
+//        flash_flush_buffer();
         
         write_memory_setup();
     }
@@ -575,7 +574,7 @@ bool dictionary_find_entry_for(char * name, struct Dictionary_Entry *entry)
     
     int i;
     // TODO store size in constant
-    for (i = 0; i < 200; i++) {
+    for (i = 0; i < CORE_WORDS; i++) {
         struct CORE_ENTRY elem = core_funcs[i];
         if (elem.name != NULL &&  strcicmp(elem.name, name) == 0)
         {
@@ -707,7 +706,7 @@ bool dictionary_find_word_for(CODE_INDEX code_pointer, char *name) {
     
    int i;
     // TODO store size in constant
-    for (i = 0; i < 200; i++) 
+    for (i = 0; i < CORE_WORDS; i++) 
     {
         struct CORE_ENTRY elem = core_funcs[i];
         if (((CODE_INDEX) elem.function) == code_pointer)
@@ -1129,7 +1128,7 @@ static void debug(bool include_functions)
 
         CORE_FUNC last = core_funcs[0].function;
         CORE_FUNC first = last;
-        for (i = 0; i < 200; i++) {
+        for (i = 0; i < CORE_WORDS; i++) {
             struct CORE_ENTRY func = core_funcs[i];
             if (func.function != NULL)
             {
@@ -1141,7 +1140,7 @@ static void debug(bool include_functions)
         console_out("  first entry: %Z\n", first);
         console_out("  last entry: %Z\n\n", last);
            
-        for (i = 0; i < 200; i++) {
+        for (i = 0; i < CORE_WORDS; i++) {
             struct CORE_ENTRY func = core_funcs[i];
             if (func.function != NULL) 
             {
@@ -1366,6 +1365,9 @@ void dictionary_move_to_flash()
                     flash_buffer_add_cell((CELL) instruction);
                     flash_destination += 4;
                 }
+                
+                flash_write_buffer(false);
+
             }
 
             log_debug(LOG, "   link for previous_entry at %Z", previous_flash_entry);
@@ -1373,7 +1375,7 @@ void dictionary_move_to_flash()
             next_flash_entry = flash_destination;
             flash_destination += 4;
             
-            flash_write_buffer();
+            flash_write_buffer(false);
  
             // writes the new address into the RAM entry for lookup during rest of transfer
             write_literal(&source_instruction, destination_instruction);
@@ -1383,8 +1385,8 @@ void dictionary_move_to_flash()
             break;
         }
     }
-    flash_flush_buffer();
-    flash_write_buffer();
+//    flash_flush_buffer();
+    flash_write_buffer(true);
     
     flash_insertion_point = flash_destination;
 
@@ -1399,6 +1401,10 @@ void dictionary_move_to_flash()
     write_memory_setup();
     
     dictionary_display_memory();
+    
+    
+    // debug
+    dictionary_debug2();
 }
 
 void dictionary_debug2()
@@ -1498,26 +1504,7 @@ void flash_prepare_buffer(uint32_t address)
     log_debug(LOG, "will write to %Z", next_flash_write);
 }
 
-void flash_flush_buffer()
-{
-          
-    //    TODO stuff the last bytes,  but keep the insertion point; set up next entry to new  position
-    
-    uint8_t len = 4 - flash_buffer_index;
-    // fill in remaining bytes to the cell boundary
-    int i;
-    for (i = 0; i < len; i++)
-    {
-        flash_buffer[flash_buffer_index++] = 0xff;
-        log_debug(LOG, "   - stuff %I with 0xff", i);
-
-    }
-    flash_write_buffer();
-    flash_insertion_point -= len + 1;
-
-}
-
-void flash_write_buffer()
+static void write_buffer() 
 {
     uint8_t over = flash_buffer_index % 4;
     uint8_t end = flash_buffer_index / 4 * 4;
@@ -1540,6 +1527,44 @@ void flash_write_buffer()
         flash_buffer[i] = flash_buffer[end + i];
     }
     flash_buffer_index = over;
+
+}
+
+static void flush_buffer()
+{
+    log_debug(LOG, "   can write %I", flash_buffer_index);
+
+    // TODO deal with case where the buffer has been over filled
+    
+    //    TODO stuff the last bytes,  but keep the insertion point; set up next entry to new  position
+    
+    uint8_t len = 4 - flash_buffer_index;
+    // fill in remaining bytes to the cell boundary
+    int i;
+    for (i = 0; i < len; i++)
+    {
+        flash_buffer[flash_buffer_index++] = 0xff;
+        log_debug(LOG, "   - stuff %I with 0xff", i);
+
+    }
+    write_buffer();
+    flash_insertion_point -= len + 1;
+
+}
+
+void flash_write_buffer(bool flush)
+{
+    if (flush)
+    {
+        write_buffer();
+        flush_buffer();
+
+        write_buffer();
+    }
+    else if (flash_buffer_index > 100)
+    {
+        write_buffer();        
+    }
 }
 
 void flash_erase()

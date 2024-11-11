@@ -1,0 +1,28 @@
+\ test button with timer
+
+$BF80FA20 CONSTANT T4CKR
+5 CONSTANT RPB0
+
+$BF800C00 CONSTANT T4CON
+$BF800C10 CONSTANT TMR4
+0xBF800CA0 CONSTANT PR4
+
+: timer_init ( )
+      
+      PB1 digital_in
+      PB1 pull_up
+      
+    RPB0 T4CKR !            \ use the B0 input for the clock 
+
+    0 T4CON !                     \ stops timer, clear conmtrol, reset prescaler to 1:1, internal clock
+    0xffffffff PR4 !
+
+    0 TMR4 !                      \ clear counter
+    T4CON 1 reg_bit_set             \ use external input as clock
+    T4CON 15 reg_bit_set           \ enable timer
+    
+;
+
+: timer_read ( )
+    TMR4 ?
+;

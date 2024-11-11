@@ -5,16 +5,20 @@ noecho
 
 HEX
 
+: PORT_ON ( a-addr u -- )
+    SWAP PORT REGISTER SWAP REG_BIT_SET
+;
+
+: PORT_OFF ( a-addr u -- )
+    SWAP PORT REGISTER SWAP REG_BIT_CLEAR
+;
+
 \ set the port to the LSB of the pattern, then right shift the pattern
 : lcd_port! ( pattern address bit - pattern )
 	2 PICK					\ make copy of pattern at bottom of stack - pattern add bit pattern
 	1 AND					\ find set bit - add bit pattern flag
-	\ .S
-	IF
-		REG_BIT_SET
-	ELSE
-		REG_BIT_CLEAR
-	THEN	
+ .S CR
+	IF 		PORT_ON	ELSE 		PORT_OFF 	THEN	
 
 	1 RSHIFT				\ adjust pattern for next bit (on next call)
 ;
@@ -22,7 +26,7 @@ HEX
 
 \ write nibble to LCD
 : lcd_nibble! ( value - )
-	LCD_EN REG_BIT_SET			\ set clock line high
+	LCD_EN PORT_ON			\ set clock line high
 	
 	LCD_D0 lcd_port!
 	LCD_D1 lcd_port!
@@ -30,7 +34,7 @@ HEX
 	LCD_D3 lcd_port!
 	DROP
 	
-	LCD_EN REG_BIT_CLEAR		\ bring clock line low to transfer data
+	LCD_EN PORT_OFF		\ bring clock line low to transfer data
 ;
 
 \ write a byte to the LCD, as two nibbles
@@ -49,12 +53,12 @@ HEX
 
 \ turn LCD to control mode
 : lcd_control ( )  
-	LCD_RS REG_BIT_CLEAR
+	LCD_RS PORT_OFF
 ;
 
 \ turn LCD to data mode
 : lcd_data ( ) 
-	LCD_RS REG_BIT_SET
+	LCD_RS PORT_ON
 ;
 
 : lcd_init ( - )
@@ -123,7 +127,7 @@ HEX
 	BL lcd_byte!
 ;
 
-: lcd_append_decimal ( n - c-addr u )
+: lcd_append_decimal ( n - )
 	dup abs 0 	 			\ convert to double
 	<# # # [CHAR] . HOLD #S ROT SIGN #>
 	lcd_append_string

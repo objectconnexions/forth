@@ -46,6 +46,14 @@ void compiler_2variable(void);
 
 void compiler_task(void);
 
+void compiler_defined(void);
+
+void compiler_undefined(void);
+
+void compiler_compile_if(void);
+
+void compiler_compile_then(void);
+
 void compiler_if(void);
 
 void compiler_then(void);

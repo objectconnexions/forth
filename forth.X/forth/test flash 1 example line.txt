@@ -1,0 +1,30 @@
+
+: test_flash ( ) 
+    
+    1
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+    ." example line " DUP . 1+  2 3 + . CR
+
+;

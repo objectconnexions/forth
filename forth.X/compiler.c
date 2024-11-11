@@ -144,6 +144,22 @@ static bool add_named_entry() {
     }
 }
 
+void compiler_compile_if()
+{
+    if (pop_stack())
+    {
+        compiler_suspend();
+    }
+}
+
+void compiler_compile_then()
+{
+    if (state != IN_COMPILATION)
+    {
+        compiler_resume();
+    }
+}
+
 void compiler_suspend()
 {
     state = (uint8_t) 0;
@@ -254,6 +270,26 @@ void compiler_end()
 {
     complete_word(true);
 }
+ 
+static bool is_defined()
+{
+    char token[32];
+    struct Dictionary_Entry entry;
+
+    parser_next_text(token);
+    to_upper(token);
+    return dictionary_find_entry_for(token, &entry);
+}
+
+void compiler_defined()
+{   
+    push(is_defined());
+}
+
+void compiler_undefined()
+{   
+    push(!is_defined());
+}
 
 void compiler_if()
 {
@@ -276,7 +312,7 @@ static void update_branch_distance(bool forward, CODE_INDEX start)
     dictionary_write_byte(start + 1, (jump >> 8) & 0xFF );
     dictionary_write_byte(start + 0, jump & 0xFF );
 }
-    
+
 // TODO these need to check if bounds are exceeded (> 128 or < -127)
 void compiler_then()
 {

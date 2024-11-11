@@ -2,8 +2,6 @@
 variable timer_offset
 variable timer_elapsed
 
-words 
-
 : timer_stopped ( - f )
 	timer_offset @ 0=
 ;

@@ -76,4 +76,42 @@
     THEN
 ;
 
+: .bits ( u u -- u )
+    0 DO
+        DUP $80000000 AND IF ." 1" ELSE ." 0" THEN
+        1 LSHIFT       
+    LOOP
+ \   DROP
+;
 
+
+: .register ( a-addr -- )
+    DUP HEX.
+    @
+    
+    DUP  
+    8 .bits
+    ." _"
+
+    8 .bits
+    ."  __"
+    
+    8 .bits
+    ." _"
+    
+    8 .bits
+    ." __"
+    DROP 
+    
+    HEX.
+    
+;
+
+: .registers ( u a-addr -- )
+    SWAP
+    0 DO
+        DUP .register CR   
+        $10 +
+    LOOP
+    DROP
+;

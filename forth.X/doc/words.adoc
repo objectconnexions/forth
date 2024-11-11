@@ -109,18 +109,8 @@
     dictionary_add_core_word("CLEAR", clear_stack, false);
     dictionary_add_core_word("TICKS", ticks, false);
     dictionary_add_core_word("TIME", time, false);
-    dictionary_add_core_word("TASK", add_task, false);
-    dictionary_add_core_word("PRIORITY", task_priority, false);
 
     dictionary_add_core_word("'", tick, false);
-
-    dictionary_add_core_word("INITIATE", initiate, false);
-    dictionary_add_core_word("TERMINATE", terminate, false);
-    dictionary_add_core_word("SUSPEND", suspend, false);
-    dictionary_add_core_word("RESUME", resume, false);
-    dictionary_add_core_word("PAUSE", yield, false);
-    dictionary_add_core_word("MS", wait_for, false);
-
     
     dictionary_add_core_word("CHAR", push_char, false);
     dictionary_add_core_word("BL", push_blank, false);
@@ -315,6 +305,18 @@ Divide the NOS by TOS giving the remainder. Result is `n1 % n2`.
 
 
 == Process control
+
+    dictionary_add_core_word("TASK", add_task, false);
+    dictionary_add_core_word("PRIORITY", task_priority, false);
+
+
+    dictionary_add_core_word("INITIATE", initiate, false);
+    dictionary_add_core_word("TERMINATE", terminate, false);
+    dictionary_add_core_word("SUSPEND", suspend, false);
+    dictionary_add_core_word("RESUME", resume, false);
+    dictionary_add_core_word("PAUSE", yield, false);
+    dictionary_add_core_word("MS", wait_for, false);
+
 
 === PAUSE
 

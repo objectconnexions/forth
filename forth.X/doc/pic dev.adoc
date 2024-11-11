@@ -1,37 +1,101 @@
 == PIC Development
 
+=== Registers
+
+see reg-bits below
+
+
 === Digital IO
 
 .Output
 
 Set up a port as output using the `DIGITAL_OUT` word and change its state using the `REG_BIT_*` words.
 
-	<bit> <port> DIGITAL_OUT
-	<bit> <port> REG_BIT_SET
-	<bit> <port> REG_BIT_CLEAR
-	<bit> <port> REG_BIT_INVERT
-
-??? The state can also be written directly using the write word `REG_BIT!`
+	<port> <line> DIGITAL_OUT
 	
+	<port> <line> REG_BIT_SET
+	<port> <line> REG_BIT_CLEAR
+	<port> <line> REG_BIT_INVERT
+
+The state can also be written directly using the write word `REG_BIT!`
+
+    <flag> <port> <line> REG_BIT!
+
+A segment of the word can be written by providing a value and a segment to `REG_BITS!`. The mask position creates a mask of bits set to 1 of the length specified and the value is written to those bits. 
+
+    <value> <port> <mask pos> <mask length> REG_BITS! 
 
 .Input
 
 Set up a port as input using the `DIGITAL_IN` word and read its state using the `REG_BIT@` word, which places the state (0 or 1) on the stack.
 
-	<bit> <port> DIGITAL_IN
-	<bit> <port> REG_BIT@
+	<port> <line> DIGITAL_IN
+	<port> <line> REG_BIT@
 	
 The state of all the bit can be read using the normal read (`@`), where the state of all bits is contained in the stack (as binary encoded value 0-0xFFFFFFFF)
 
 	<port> @
 	
+
+=== Tasks
+
+Task are separate processes that handle different things, apparently at the same time. It's a way of multitasking.
+
+Each task is created as a dictionary entry.
+
+List the current tasks using the `tasks` words. Each task is listed showing its Id, name, priority (prefixed by 'P'), memory location of its entry and the details of its operation. The Id is suffixed by and asterisk (*) if it the currently running task.
+
+[TBC detail the details...]
+
+.Prioity
+
+Priorities are relative, such that a higher value priority will be executed in preference to a lower value.
+
+---
+# tasks
+
+Tasks:
+  Time 26261
+  Task #0 IRQ (P10) 00000000, 0 next 0 SUSP (A0008540){ } < >
+  Task #1* INTERP (P5) 9D000004, 105 next 26259  (A00085E0){ } < >
+  Task #2 IDLE (P1) 9D00000C, 105 next 26259  (A0008680){ } < >
+ ok
+---
+
+A new task can be created with the `task` word
+
+    TASK <name>
+
+~~The priority of task can be updated at any time using the `priority` word. It get created with the default priority level of 5~~
+
+[this sets up the priority of the currently active task!]
+
+    <priority> PRIORITY
+
+A task can be used to run code, specifically a word, using the `activate` word. This uses the a separate process, with its own stacks, to run the code, which will normally be a loop.
+
+    <task> ACTIVATE <code to run> 
+
+---
+    dictionary_add_core_word("TASK", add_task, false);
+    dictionary_add_core_word("PRIORITY", task_priority, false);
+
+
+    dictionary_add_core_word("INITIATE", initiate, false);
+    dictionary_add_core_word("TERMINATE", terminate, false);
+    dictionary_add_core_word("SUSPEND", suspend, false);
+    dictionary_add_core_word("RESUME", resume, false);
+    dictionary_add_core_word("PAUSE", yield, false);
+    dictionary_add_core_word("MS", wait_for, false);
+---
+
 === Interrupts
 
 File `interupts.fth`
 
 Requires Register constants.
 
-Interupts are determined by IRQ and Vector numbers, defined in the device manuals.
+Interrupts are determined by IRQ and Vector numbers, defined in the device manuals.
 
 .Interrupt priority
 
@@ -133,3 +197,29 @@ task check_button
 ' button_task check_button initiate
 ```
 	
+	
+	
+	
+== Managing a device
+
+=== Clear transient dictionary
+
+To clear the program memory (RAM) use the `_RESET` command. This removes all entries from the dictionary that are held in RAM. The Flash entries are not affected.
+
+
+=== Erase memory
+
+To reset the device to it original state, without any entries in Flash or RAM dictionaries use the `FERASE` command.
+
+
+== Move programs to flash
+
+To make the programs in RAM permanent use the `FLASH` command to copy the dictionary entries from RAM to Flash. When then device is rebooted all the programs will still be there.
+
+To reverse this see the /Erase memory/ section above.
+
+== Reboot device
+
+To reboot the device under software control use the `REBOOT` command. This is equivalent to bring the `MCLR` line low.
+
+

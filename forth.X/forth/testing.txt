@@ -1,0 +1,181 @@
+
+
+
+
+[176502.501658] usb 1-2.2.3: USB disconnect, device number 57
+[176521.167970] usb 1-6: new full-speed USB device number 58 using xhci_hcd
+[176521.296690] usb 1-6: New USB device found, idVendor=04d8, idProduct=900a, bcdDevice= 0.02
+[176521.296699] usb 1-6: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[176521.296703] usb 1-6: Product: PICkit 3
+[176521.296706] usb 1-6: Manufacturer: Microchip Technology Inc.
+[176521.296708] usb 1-6: SerialNumber: BUR144772233
+[176521.299907] hid-generic 0003:04D8:900A.001A: hiddev96,hidraw4: USB HID v1.11 Device [Microchip Technology Inc. PICkit 3] on usb-0000:00:14.0-6/input0
+
+
+
+
+14400	2024-11-01 10:01:06.513410	1.1.0	host	USBHUB	64	CLEAR_FEATURE Response [Port 6: C_PORT_RESET]
+14409	2024-11-01 10:01:06.566432	host	1.0.0	USB	64	GET DESCRIPTOR Request DEVICE
+14410	2024-11-01 10:01:06.566589	1.0.0	host	USB	72	GET DESCRIPTOR Response DEVICE[Malformed Packet]
+14411	2024-11-01 10:01:06.566598	host	1.1.0	USBHUB	64	SET_FEATURE Request    [Port 6: PORT_RESET]
+14412	2024-11-01 10:01:06.566618	1.1.0	host	USBHUB	64	SET_FEATURE Response   [Port 6: PORT_RESET]
+14421	2024-11-01 10:01:06.628397	host	1.1.0	USBHUB	64	GET_STATUS Request     [Port 6]
+14422	2024-11-01 10:01:06.628414	1.1.0	host	USBHUB	68	GET_STATUS Response    [Port 6]
+14423	2024-11-01 10:01:06.628431	host	1.1.0	USBHUB	64	CLEAR_FEATURE Request  [Port 6: C_PORT_RESET]
+14424	2024-11-01 10:01:06.628454	1.1.0	host	USBHUB	64	CLEAR_FEATURE Response [Port 6: C_PORT_RESET]
+14433	2024-11-01 10:01:06.692460	host	1.58.0	USB	64	GET DESCRIPTOR Request DEVICE
+14434	2024-11-01 10:01:06.692695	1.58.0	host	USB	82	GET DESCRIPTOR Response DEVICE
+14435	2024-11-01 10:01:06.692711	host	1.58.0	USB	64	GET DESCRIPTOR Request DEVICE QUALIFIER
+14436	2024-11-01 10:01:06.692941	1.58.0	host	USB	64	GET DESCRIPTOR Response
+14437	2024-11-01 10:01:06.692951	host	1.58.0	USB	64	GET DESCRIPTOR Request DEVICE QUALIFIER
+
+
+Frame 14409: 64 bytes on wire (512 bits), 64 bytes captured (512 bits) on interface usbmon0, id 0
+USB URB
+    [Source: host]
+    [Destination: 1.0.0]
+    URB id: 0xffff9167c4ff80c0
+    URB type: URB_SUBMIT ('S')
+    URB transfer type: URB_CONTROL (0x02)
+    Endpoint: 0x80, Direction: IN
+    Device: 0
+    URB bus id: 1
+    Device setup request: relevant ('\0')
+    Data: not present ('<')
+    URB sec: 1730455266
+    URB usec: 566432
+    URB status: Operation now in progress (-EINPROGRESS) (-115)
+    URB length [bytes]: 64
+    Data length [bytes]: 0
+    [Response in: 14410]
+    Interval: 0
+    Start frame: 0
+    Copy of Transfer Flags: 0x00000200, Dir IN
+    Number of ISO descriptors: 0
+Setup Data
+    bmRequestType: 0x80
+        1... .... = Direction: Device-to-host
+        .00. .... = Type: Standard (0x0)
+        ...0 0000 = Recipient: Device (0x00)
+    bRequest: GET DESCRIPTOR (6)
+    Descriptor Index: 0x00
+    bDescriptorType: DEVICE (0x01)
+    Language Id: no language specified (0x0000)
+    wLength: 64
+
+
+Frame 14410: 72 bytes on wire (576 bits), 72 bytes captured (576 bits) on interface usbmon0, id 0
+USB URB
+    [Source: 1.0.0]
+    [Destination: host]
+    URB id: 0xffff9167c4ff80c0
+    URB type: URB_COMPLETE ('C')
+    URB transfer type: URB_CONTROL (0x02)
+    Endpoint: 0x80, Direction: IN
+    Device: 0
+    URB bus id: 1
+    Device setup request: not relevant ('-')
+    Data: present ('\0')
+    URB sec: 1730455266
+    URB usec: 566589
+    URB status: Success (0)
+    URB length [bytes]: 8
+    Data length [bytes]: 8
+    [Request in: 14409]
+    [Time from request: 0.000157000 seconds]
+    Unused Setup Header
+    Interval: 0
+    Start frame: 0
+    Copy of Transfer Flags: 0x00000200, Dir IN
+    Number of ISO descriptors: 0
+DEVICE DESCRIPTOR
+    bLength: 18
+    bDescriptorType: 0x01 (DEVICE)
+    bcdUSB: 0x0200
+    bDeviceClass: Device (0x00)
+    bDeviceSubClass: 0
+    bDeviceProtocol: 0 (Use class code info from Interface Descriptors)
+    bMaxPacketSize0: 8
+[Malformed Packet: USB]
+    [Expert Info (Error/Malformed): Malformed Packet (Exception occurred)]
+        [Malformed Packet (Exception occurred)]
+        [Severity level: Error]
+        [Group: Malformed]
+
+
+
+Frame 14433: 64 bytes on wire (512 bits), 64 bytes captured (512 bits) on interface usbmon0, id 0
+USB URB
+    [Source: host]
+    [Destination: 1.58.0]
+    URB id: 0xffff9167c4ff80c0
+    URB type: URB_SUBMIT ('S')
+    URB transfer type: URB_CONTROL (0x02)
+    Endpoint: 0x80, Direction: IN
+    Device: 58
+    URB bus id: 1
+    Device setup request: relevant ('\0')
+    Data: not present ('<')
+    URB sec: 1730455266
+    URB usec: 692460
+    URB status: Operation now in progress (-EINPROGRESS) (-115)
+    URB length [bytes]: 18
+    Data length [bytes]: 0
+    [Response in: 14434]
+    Interval: 0
+    Start frame: 0
+    Copy of Transfer Flags: 0x00000200, Dir IN
+    Number of ISO descriptors: 0
+Setup Data
+    bmRequestType: 0x80
+        1... .... = Direction: Device-to-host
+        .00. .... = Type: Standard (0x0)
+        ...0 0000 = Recipient: Device (0x00)
+    bRequest: GET DESCRIPTOR (6)
+    Descriptor Index: 0x00
+    bDescriptorType: DEVICE (0x01)
+    Language Id: no language specified (0x0000)
+    wLength: 18
+
+
+Frame 14434: 82 bytes on wire (656 bits), 82 bytes captured (656 bits) on interface usbmon0, id 0
+USB URB
+    [Source: 1.58.0]
+    [Destination: host]
+    URB id: 0xffff9167c4ff80c0
+    URB type: URB_COMPLETE ('C')
+    URB transfer type: URB_CONTROL (0x02)
+    Endpoint: 0x80, Direction: IN
+    Device: 58
+    URB bus id: 1
+    Device setup request: not relevant ('-')
+    Data: present ('\0')
+    URB sec: 1730455266
+    URB usec: 692695
+    URB status: Success (0)
+    URB length [bytes]: 18
+    Data length [bytes]: 18
+    [Request in: 14433]
+    [Time from request: 0.000235000 seconds]
+    Unused Setup Header
+    Interval: 0
+    Start frame: 0
+    Copy of Transfer Flags: 0x00000200, Dir IN
+    Number of ISO descriptors: 0
+DEVICE DESCRIPTOR
+    bLength: 18
+    bDescriptorType: 0x01 (DEVICE)
+    bcdUSB: 0x0200
+    bDeviceClass: Device (0x00)
+    bDeviceSubClass: 0
+    bDeviceProtocol: 0 (Use class code info from Interface Descriptors)
+    bMaxPacketSize0: 8
+    idVendor: Microchip Technology, Inc. (0x04d8)
+    idProduct: PICkit3 (0x900a)
+    bcdDevice: 0x0002
+    iManufacturer: 1
+    iProduct: 2
+    iSerialNumber: 3
+    bNumConfigurations: 1
+
+

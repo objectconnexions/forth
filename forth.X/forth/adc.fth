@@ -13,38 +13,38 @@ $0bf809070 CONSTANT ADC1BUF0
 
 
 : ADC_INIT ( -- )
-	15 AD1CON1 REG_BIT_CLEAR			\ prepare to set up ADC, ON (15:15) to 0 - turn off 
-	4 8 3 AD1CON1 REG_BITS!				\ set data format, FORM (10:8) to 4 - 32 bit integer
-	7 5 3 AD1CON1 REG_BITS!				\ set conversion trigger, SSRC (7:5) to 7, internal counter - auto convert
-	2 AD1CON1 REG_BIT_CLEAR				\ reset ASAM (2:2), manual sampling
+	AD1CON1 15 REG_BIT_CLEAR			\ prepare to set up ADC, ON (15:15) to 0 - turn off 
+	4 AD1CON1 8 3 REG_BITS!				\ set data format, FORM (10:8) to 4 - 32 bit integer
+	7 AD1CON1 5 3 REG_BITS!				\ set conversion trigger, SSRC (7:5) to 7, internal counter - auto convert
+	AD1CON1 2 REG_BIT_CLEAR				\ reset ASAM (2:2), manual sampling
 
 	0 AD1CON2 !							\ set voltage references, VCFG (7:5) to 0, AVDD~AVSS
 										\ and buffer fill modes.
 										\ reset CSCNA (10:10), Inputs are not scanned,
 										\ SMPI (5:2) to 0, Interrupt every sample
 	
-	$01f 8 5 AD1CON3 REG_BITS!			\ Auto sample time, SAMC (12:8) to 31 TAD
-	$0ff 0 8 AD1CON3 REG_BITS!			\ Conversion clock, ADCS (7:0) to 255, the slowest conversion speed
+	$01f AD1CON3 8 5 REG_BITS!			\ Auto sample time, SAMC (12:8) to 31 TAD
+	$0ff AD1CON3 0 8 REG_BITS!			\ Conversion clock, ADCS (7:0) to 255, the slowest conversion speed
 
-	23 AD1CHS REG_BIT_CLEAR				\ Negative input select, CHONA (23:23) to 0, input is VREFL (AVss)	
+	AD1CHS 23 REG_BIT_CLEAR				\ Negative input select, CHONA (23:23) to 0, input is VREFL (AVss)	
 
-	15 AD1CON1 REG_BIT_SET				\ turn on ADC
+	AD1CON1 15 REG_BIT_SET				\ turn on ADC
 ;
 
 \ eg ADC_!
-: ADC_INPUT ( bit port -- )
+: ADC_INPUT ( port bit -- )
 
 \	2DUP 
 	.S CR
-	ANSELA REG_BY_OFFSET REG_BIT_SET   \ set ADC input
+	SWAP ANSELA REG_BY_OFFSET SWAP REG_BIT_SET   \ set ADC input
 	.S CR
 \	DROP ADC_SELECT					    \ input is AN6 (A1)
 ;
 
 : ADC_SAMPLE ( channel -- value )
-	16 4 AD1CHS REG_BITS!				\ Positive input select, CH0SA (19:16) 
+	AD1CHS 16 4 REG_BITS!				\ Positive input select, CH0SA (19:16) 
 	
-	1 AD1CON1 REG_BIT_SET				\ set sampling flag, SAMP (1:1)
+	AD1CON1 1 REG_BIT_SET				\ set sampling flag, SAMP (1:1)
                                         \ TODO wait for DONE flag
 	50 MS
 	ADC1BUF0 @ 						    \ read value
