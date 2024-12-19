@@ -354,5 +354,43 @@ $90 CONSTANT CNSTAT
  ;
 DECIMAL
 
+
+
+
+
+\ 1's complement
+: invert ( n - n ) NEGATE 1 - ;
+
+
+\ source
+\ value
+\ pos
+\ length
+: set_bits ( n n n n - n )
+    OVER MASK_PATTERN INVERT    \ mask
+    LROT LSHIFT                 \ new value
+    LROT AND                      \ mask the source VALUE
+    OR                           \ combine
+;
+
+\ source
+\ pos
+\ length
+: get_bits ( n n n - n )
+    OVER MASK_PATTERN            \ mask
+    ROT AND                      \ mask the source VALUE
+    SWAP RSHIFT                 \ value
+;
+
+: +! ( addr - )
+    DUP @ 1+ SWAP !
+;
+
+: .HEXS ( )
+    HEX .S DECIMAL
+;
+
+
+
 .( Added basic common words) CR
 echo

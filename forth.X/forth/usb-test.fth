@@ -290,6 +290,11 @@ VARIABLE USB_ADDRESS
 VARIABLE USB_EP0_TX_PACKET
 VARIABLE USB_EP0_RX_PACKET
 
+
+64 CONSTANT TX_BUFF_LEN
+VARIABLE 0_TX_DATA
+VARIABLE 0_TX_END
+
 VARIABLE DEBUGGING
 
 \ USB States:-
@@ -333,9 +338,9 @@ VARIABLE DEBUGGING
 \  ;
 \
 \
-\  : .HEXS ( )
-\      HEX .S DECIMAL
-\  ;
+: .HEXS ( )
+    HEX .S DECIMAL
+;
 
 
 
@@ -743,7 +748,7 @@ VARIABLE DEBUGGING
 
 \ buffer size
 \ buffer address
-: tx_control_data ( n -- addr )
+: tx_control_data ( n addr -- addr )
     0 1 USB_EP0_TX_PACKET @ 2 MOD BDT_entry    \ set up device descriptor for TX data stage
 \    ( debug ) ." prep " DUP debug_BDT_target cr
     DUP BDT_reset
@@ -761,6 +766,81 @@ VARIABLE DEBUGGING
 
     USB_EP0_TX_PACKET +!
 ;
+
+
+\ data address
+: tx_send ( addr -- )
+
+    DUP 0_TX_END @ TUCK
+    <= IF
+        -
+
+        1
+        DUP TX_BUFF_LEN > IF DROP TX_BUFF_LEN THEN
+
+        0 1 USB_EP0_TX_PACKET @ 2 MOD BDT_entry
+        USB_EP0_TX_PACKET +!
+
+        DUP BDT_reset
+        DUP BDT_count_expected
+        DUP SWAP BDT_data
+        DUP BDT_buffer
+        BDT_uown
+    THEN
+;
+
+
+\ 2 LOG
+
+\ data address
+\  : tx_send ( addr -- )
+\
+\      DUP 0_TX_END @ TUCK   \       ( start end start end )
+\      <=
+\      IF
+\          -             \          ( start len )
+\
+\          1                                                   \ data number  TODO calculate
+\          DUP TX_BUFF_LEN > IF DROP TX_BUFF_LEN THEN      \ limit lenth to max packet size
+\
+\      \    \ set up device descriptor for TX data stage
+\          0 1 USB_EP0_TX_PACKET @ 2 MOD BDT_entry     \ get address of next buffer descriptor
+\          USB_EP0_TX_PACKET +!                        \                 ( data no, packet len, data addres, buffer descriptor )
+\      \        ( debug ) ." prep a " DUP debug_BDT_target cr
+\
+\          DUP BDT_reset
+\          DUP BDT_count_expected
+\          DUP SWAP BDT_data
+\          DUP BDT_buffer
+\      \        ( debug ) ." prep b " DUP debug_BD CR
+\          BDT_uown
+\
+\      THEN
+\  ;
+
+
+\ endpoint number
+\ buffer length
+\ buffer address
+: tx_send_data ( n n' addr -- )
+    DUP DUP 0_TX_DATA !             \ new buffer is the start of data
+    ROT + 0_TX_END !                \ end of data is at length after start
+    tx_send
+
+    DROP                            \ endpoint not being used yet
+;
+
+
+\ endpoint number
+: tx_send_next ( n  -- )
+    TX_BUFF_LEN                   \ next data point is buffer length on
+    0_TX_DATA @ +
+    DUP 0_TX_DATA !
+    tx_send
+
+    DROP                            \ endpoint not being used yet
+;
+
 
 : processing_descriptor ( -- addr addr' n )
     token_processing_address
@@ -812,6 +892,7 @@ VARIABLE DEBUGGING
     \ device to host (IN) transaction
     DUP 9 = IF
         SPACE SPACE ." < IN" CR
+        tx_send_next
     THEN
 
     \ OUT packet
@@ -861,14 +942,18 @@ VARIABLE DEBUGGING
 
             OVER 6 BD_READ_BYTE    DUP .       \ read size
 
-            \ TODO convert to word that sends multiple segments of buffer
-            DUP 64 > IF
-                64 CONF_DESC tx_control_data DROP
-                64 -
-                CONF_DESC 64 + tx_control_data 0 BDT_data
-            ELSE
-                CONF_DESC tx_control_data DROP
-            THEN
+            0 SWAP  tx_send_data
+
+\              \ TODO convert to word that sends multiple segments of buffer
+\              DUP 64 > IF
+\                  64 CONF_DESC tx_control_data DROP
+\                  64 -
+\                  CONF_DESC 64 + tx_control_data 0 BDT_data
+\              ELSE
+\                  CONF_DESC tx_control_data DROP
+\              THEN
+
+
             rx_control_status
 
             enable_packet_processing
@@ -903,7 +988,7 @@ VARIABLE DEBUGGING
             DUP BDT_stall
             BDT_uown
 
-            rx_control_status
+           rx_control_status
 
             debug_state
 
@@ -919,7 +1004,8 @@ VARIABLE DEBUGGING
     \ IN packet
     DUP 9 = IF
         SPACE SPACE ." < IN" CR                         \ device to host (IN) transaction
-            rx_control_status
+        tx_send_next
+\              rx_control_status
     THEN
 
     \ OUT packet
@@ -937,6 +1023,14 @@ VARIABLE DEBUGGING
 : process_token ( - )
     ." ("  U1IR @ hex. ." ) "
     ." +> PROCESS "
+
+
+\      token_processing_address $10 AND IF
+\
+\      THEN
+
+
+
 
     USB_STATE @ CONFIGURED = IF
         ." CONFIGURED " CR SPACE SPACE debug_recvd CR

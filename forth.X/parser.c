@@ -40,6 +40,7 @@ void parser_input(char * line)
         type = START;
         ptr = source;
         log_info(LOG, "parse: '%S' (%I)", source, len);
+        processing = line;
     } else {
         log_info(LOG, "blank line");
         type = BLANK_LINE;

@@ -20,14 +20,28 @@ static void add_literal(uint32_t);
 static void add_double_literal(uint64_t);
 static void complete_word(bool);
 
-static CODE_INDEX block_start[6];
-static uint8_t jp = 0;
+#define IF 1
+#define ELSE 2
+#define DO 10
+#define BEGIN 11
+#define WHILE 12
+
+struct BLOCK {
+    CODE_INDEX start;
+    uint8_t type;
+};
+
+static struct BLOCK blocks[6];
+static uint8_t block = 0;
+
 static CODE_INDEX block_leave[6];
 static uint8_t lp = 0;
 static bool has_error;
 
 // Compile state: 1 = in compilation; 0 = not in compilation
 uint8_t state;
+
+char * processing;
 
 void compiler_init()
 {
@@ -41,6 +55,7 @@ void compiler_compile_definition()
     
     // TODO why does this not use add_named_entry()?
     
+    block = 0;
     has_error = false;
     state = IN_COMPILATION;
     log_trace(LOG, "new word");
@@ -52,7 +67,7 @@ void compiler_compile_definition()
         return;
     }
     parser_token_text(name);
-    log_info(LOG, "new word %S", name);
+    log_info(LOG, "new word %S\n#", name);
     dictionary_add_entry(name);
     
     while (true) 
@@ -74,7 +89,7 @@ void compiler_compile_definition()
                 parser_token_entry(&entry);
                 if ((entry.flags & IMMEDIATE) == IMMEDIATE)
                 {
-                    log_debug(LOG, "run immediate %S", entry.name);
+                    log_debug(LOG, "run immediate %S\n", entry.name);
                     forth_execute(entry.instruction);
                 }
                 else if ((entry.flags & SCRUB) == SCRUB)
@@ -88,7 +103,7 @@ void compiler_compile_definition()
                 }
                 else
                 {
-                    log_debug(LOG, "append entry %S", entry.name);
+                    log_debug(LOG, "append entry %S\n", entry.name);
                     dictionary_append_instruction(entry);
                 }
                 break;
@@ -264,10 +279,43 @@ void compiler_task()
         complete_word(false);
     }
 }
+static char * block_type(uint8_t b) {
+    char *type;
+    switch (blocks[b].type) {
+        case IF:
+            type = "IF\0";
+            break;
+        case ELSE:
+            type = "ELSE\0";
+            break;
+        case BEGIN:
+            type = "BEGIN\0";
+            break;
+        case DO:
+            type = "DO\0";
+            break;
+        case WHILE:
+            type = "WHILE\0";
+            break;
+        default:
+            type = "unknown";
+            break;
+    }
 
+    return type;
+}
 
 void compiler_end()
 {
+    block--;
+    log_info(LOG, "end word, block %I", block);
+    if (block != 0xff) {
+        char *type = block_type(block);
+        log_info(LOG, "end word %I _>  %I", block, blocks[block].type);
+        log_error(LOG, "Unfinished block %S", type);
+        has_error = true;
+    }
+
     complete_word(true);
 }
  
@@ -294,7 +342,9 @@ void compiler_undefined()
 void compiler_if()
 {
     // zbranch offset instruction, over main block
-    block_start[jp++] = dictionary_offset();
+    blocks[block].start = dictionary_offset();
+    blocks[block].type = IF;
+    block++;
     dictionary_append_literal(ZERO_BRANCH);
 }
 
@@ -313,29 +363,66 @@ static void update_branch_distance(bool forward, CODE_INDEX start)
     dictionary_write_byte(start + 0, jump & 0xFF );
 }
 
+void block_order_error(char * expected, char * after) 
+{
+    log_error(LOG, "in %S", processing);
+    log_error(LOG, "block out of order, %S without %S in %S", after, expected, processing);
+    if (block >= 0)
+    {
+        log_error(LOG, " last block ", block_type(blocks[block].type));        
+    }
+}
+
 // TODO these need to check if bounds are exceeded (> 128 or < -127)
 void compiler_then()
 {
-    // zbranch (for if) or branch (for else) offset over respective block
-    CODE_INDEX start = block_start[--jp];
-    update_branch_distance(true, start);
+    --block;
+    if (block == -1 || !(blocks[block].type == IF || blocks[block].type == ELSE))
+    {
+        block_order_error("THEN", "IF");
+        log_error(LOG, "THEN without IF %S", processing);
+        has_error = true;
+        return;
+    } 
+    else
+    {
+        // zbranch (for if) or branch (for else) offset over respective block
+        CODE_INDEX start = blocks[block].start;
+        update_branch_distance(true, start);
+    }
 }
 
 void compiler_else()
 {
-    // zbranch offset distance, over main block
-    CODE_INDEX start = block_start[--jp];
-    update_branch_distance(false, start);
- 
+    --block;
+    if (block == -1 || blocks[block].type != IF)
+    {
+        block_order_error("ELSE", "IF");
+        log_error(LOG, "ELSE without IF %S", processing);
+        has_error = true;
+        return;
+    } 
+    else
+    {
+        // zbranch offset distance, over main block
+        CODE_INDEX start = blocks[block].start;
+        update_branch_distance(false, start);
+    }
+    
     // branch over else block
-    block_start[jp++] = dictionary_offset();
+    blocks[block].start = dictionary_offset();
+    blocks[block].type = ELSE;
+    block++;
+    
     dictionary_append_literal(BRANCH);
 }
 
 void compiler_do()
 {
     dictionary_append_function(do_loop_begin);
-    block_start[jp++] = dictionary_offset();
+    blocks[block].start = dictionary_offset();
+    blocks[block].type = DO;
+    block++;
 }
 
 void compiler_leave()
@@ -347,13 +434,24 @@ void compiler_leave()
 
 static void loop()
 {
-    while (lp > 0)
+    --block;
+    if (block == -1 || blocks[block].type != DO)
     {
-        CODE_INDEX start = block_leave[--lp];
-        update_branch_distance(false, start);
+        block_order_error("LOOP", "DO");
+        log_error(LOG, "LOOP without DO %S", processing);
+        has_error = true;
+        return;
+    } 
+    else
+    {
+        while (lp > 0)
+        {
+            CODE_INDEX start = block_leave[--lp];
+            update_branch_distance(false, start);
+        }
+        uint16_t distance = blocks[block].start - dictionary_offset() - 4;
+        dictionary_append_literal(ZERO_BRANCH | distance);
     }
-    uint16_t distance = block_start[--jp] - dictionary_offset() - 4;
-    dictionary_append_literal(ZERO_BRANCH | distance);
 }
 
 void compiler_loop()
@@ -371,36 +469,75 @@ void compiler_loop_plus()
 
 void compiler_begin()
 {
-    block_start[jp++] = dictionary_offset();
+    blocks[block].start = dictionary_offset();
+    blocks[block].type = BEGIN;
+    block++;
+    
+//    log_error(LOG, "%I - %I %I", block - 1, blocks[block - 1].start, blocks[block - 1].type);
 }
 
 void compiler_again()
 {
-    uint16_t distance = block_start[--jp] - dictionary_offset() - 4;
-    dictionary_append_literal(BRANCH | distance);
+    --block;
+    if (block == -1 || blocks[block].type != BEGIN)
+    {
+        log_error(LOG, "AGAIN without BEGIN %S", processing);
+        block_order_error("AGAIN", "BEGIN");
+        has_error = true;
+        return;
+    } 
+    else
+    {
+        uint16_t distance = blocks[block].start - dictionary_offset() - 4;
+        dictionary_append_literal(BRANCH | distance);
+    }
 }    
 
 void compiler_until()
 {
-    uint16_t distance = block_start[--jp] - dictionary_offset() - 4;
-    dictionary_append_literal(ZERO_BRANCH | distance);
+    --block;
+    if (block == -1 || blocks[block].type != BEGIN)
+    {
+        block_order_error("UNTIL", "BEGIN");
+        log_error(LOG, "UNTIL without BEGIN %S", processing);
+        has_error = true;
+        return;
+    } 
+    else
+    {
+        uint16_t distance = blocks[block].start - dictionary_offset() - 4;
+        dictionary_append_literal(ZERO_BRANCH | distance);
+    }
 }
 
 void compiler_while()
 {
-    block_start[jp++] = dictionary_offset();
+    blocks[block].start = dictionary_offset();
+    blocks[block].type = WHILE;
+    block++;
     dictionary_append_literal(ZERO_BRANCH);
 }
 
 void compiler_repeat()
 {
-    CODE_INDEX start = block_start[--jp];
-    uint16_t distance_to_repeat = dictionary_offset() - start;
-    dictionary_write_byte(start + 1, (distance_to_repeat >> 8) & 0xFF );
-    dictionary_write_byte(start + 0, distance_to_repeat & 0xFF );
-    
-    uint16_t distance_to_begin = block_start[--jp] - dictionary_offset() - 4;
-    dictionary_append_literal(BRANCH | distance_to_begin);
+    --block;    
+    if (block == -1 || blocks[block].type != WHILE)
+    {
+        block_order_error("REPEAT", "WHILE");
+        log_error(LOG, "REPEAT without WHILE %S", processing);
+        has_error = true;
+        return;
+    } 
+    else
+    {
+        CODE_INDEX start = blocks[block].start;
+        uint16_t distance_to_repeat = dictionary_offset() - start;
+        dictionary_write_byte(start + 1, (distance_to_repeat >> 8) & 0xFF );
+        dictionary_write_byte(start + 0, distance_to_repeat & 0xFF );
+
+        uint16_t distance_to_begin = blocks[--block].start - dictionary_offset() - 4;
+        dictionary_append_literal(BRANCH | distance_to_begin);
+    }
 }
 
 void compiler_eol_comment()
@@ -410,6 +547,8 @@ void compiler_eol_comment()
               
 void compiler_inline_comment()
 {
+    // TODO set flag and then read lines until closing paran
+    
     char text[80];
     
     do

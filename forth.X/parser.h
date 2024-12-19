@@ -15,6 +15,8 @@ extern "C" {
 #include <stdint.h>
 #include "dictionary.h"
 
+extern char * processing;
+
 enum TYPE 
 {
     NONE,

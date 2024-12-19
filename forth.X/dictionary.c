@@ -503,7 +503,7 @@ static void entry_details(CODE_INDEX code, CODE_INDEX end, struct Dictionary_Ent
     entry->name[len] = 0;
 
     code += len;
-    log_trace(LOG, " code for '%S' at %Z~%Z", entry->name, entry->start, entry->end);
+    // log_trace(LOG, " code for '%S' at %Z~%Z", entry->name, entry->start, entry->end);
     entry->is_core = false;
     // TODO refactor - same calculation in move to flash code
     entry->instruction = code;
