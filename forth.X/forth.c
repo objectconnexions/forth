@@ -162,8 +162,14 @@ static void push_blank()
 
 void push(CELL value)
 {
-     // PUSH_DATA(value);
-    (current_process->stack[++(current_process->sp)] = (value));
+    if (current_process->sp == 16) {
+        console_out("stack full; ");
+        forth_abort();
+    } 
+    else 
+    {
+        (current_process->stack[++(current_process->sp)] = (value));
+    }
 }
 
 void push_double(SIGNED_DOUBLE value)
@@ -182,19 +188,6 @@ SIGNED_DOUBLE pop_double()
 {
     return (((SIGNED_DOUBLE) current_process->stack[current_process->sp--]) << 32)
             + current_process->stack[current_process->sp--];
-}
-
-bool stack_underflow()
-{
-    if (current_process->sp < -1)
-    {
-        console_out("stack underflow; aborting\n");
-        return true;
-    }
-    else
-    {
-        return false;
-    }
 }
 
 /**
@@ -372,7 +365,9 @@ void forth_execute(CODE_INDEX instruction_pointer)
 
     }
     
-    if (stack_underflow()) {
+    if (current_process->sp < -1)
+    {
+        console_out("stack empty; ");
         forth_abort();
     }
 }
@@ -503,29 +498,17 @@ static void over()
 
 void drop() 
 {
-//    if (current_process->sp < 0) {
-//        console_out("stack underflow; aborting\n");
-//        return;
-//    }
     current_process->sp--;
 }
 
 void nip() 
 {
-    if (current_process->sp < 0) {
-        console_out("stack underflow; aborting\n");
-        return;
-    }
     CELL tos_value = current_process->stack[current_process->sp--];
     current_process->stack[current_process->sp] = tos_value;
 }
 
 void swap()
 {
-    if (current_process->sp < 1) {
-        console_out("stack underflow; aborting\n");
-        return;
-    }
     CELL tos_value = PEEK_DATA;
     current_process->stack[current_process->sp] = current_process->stack[current_process->sp - 1];
     current_process->stack[current_process->sp - 1] = tos_value;
@@ -533,10 +516,6 @@ void swap()
 
 void tuck() 
 {
-    if (current_process->sp < 1) {
-        console_out("stack underflow; aborting\n");
-        return;
-    }
     CELL tos_value = current_process->stack[current_process->sp];
     current_process->stack[++(current_process->sp)] = tos_value;
     current_process->stack[current_process->sp - 1] = current_process->stack[current_process->sp - 2];
@@ -878,10 +857,6 @@ void and()
 
 void or()
 {
-    if (current_process->sp < 1) {
-        console_out("stack underflow; aborting\n");
-        return;
-    }
     CELL tos_value = POP_DATA;
     CELL nos_value = POP_DATA;
     tos_value = nos_value | tos_value;
@@ -890,10 +865,6 @@ void or()
 
 void xor()
 {
-    if (current_process->sp < 1) {
-        console_out("stack underflow; aborting\n");
-        return;
-    }
     CELL tos_value = POP_DATA;
     CELL nos_value = POP_DATA;
     tos_value = nos_value ^ tos_value;
@@ -960,8 +931,13 @@ void wait_for()
 
 void execute_word() 
 {
-    if (stack_underflow()) {
+    // TODO confirm this is not repeating something that has already been done
+    if (current_process->sp < -1) {
         return;
+    }
+    if (current_process->rsp >= 8) {
+        console_out("return stack overflow; ");
+        forth_abort();
     }
     CODE_INDEX instruction = (CODE_INDEX) current_process->stack[current_process->sp--];
     log_debug(LOG, "execute from %Z", instruction);
@@ -992,24 +968,6 @@ void process_address()
 
 static struct Process* get_process()
 {
-    if (current_process->sp < 0) {
-        console_out("stack underflow; aborting\n");
-        return NULL;
-    }
-//    CELL id = current_process->stack[current_process->sp--];
-//    struct Process *process = processes;
-//    do {
-//        if (process->id == id) {
-//            return process;
-//        }
-//        process = process->next;
-//    } while (process != NULL);
-//    if (process == NULL) {
-//        log_error(LOG, "no current_process with ID %I", id);                
-//    }
-//    return NULL;
-    
-    
     uint32_t addr = POP_DATA;
     struct Process* proc = (struct Process*) addr;
     return proc;
@@ -1027,19 +985,6 @@ static void activate()
         return_to();
     }
 }
-/*
-static void initiate()
-{
-    struct Process *run_process = get_process();
-    if (run_process != NULL) {
-        CODE_INDEX instruction = (CODE_INDEX) current_process->stack[current_process->sp--];
-        run_process->suspended = false;
-        run_process->ip = instruction;
-        run_process->next_time_to_run = timer + 1;
-        log_info(LOG, "initiate from %Y with %S at %I", run_process->ip, run_process->name, run_process->next_time_to_run);
-    }
-}
- */
 
 static void terminate()
 {
@@ -1259,18 +1204,11 @@ static void print_unsigned_top_of_stack()
 }
 
 static void print_double_top_of_stack() {
-    if (current_process->sp < 1)
-    {
-        forth_abort();
-    } 
-    else 
-    {
-        swap();
-        over();
-        double_absolute();
-        print_number();
-        print_space();
-    }
+    swap();
+    over();
+    double_absolute();
+    print_number();
+    print_space();
 }
 
 static void print_cell_of_address() {
@@ -1305,10 +1243,6 @@ static void base_address()
 
 static void emit()
 {
-    if (current_process->sp < 0) {
-        console_out("stack underflow; aborting\n");
-        return;
-    }
     uint32_t ch = current_process->stack[current_process->sp--];
     console_put(ch);
 }
@@ -1477,6 +1411,7 @@ static void unused()
 static void allot()
 {
     int32_t size = POP_DATA;
+    dictionary_remove_end_entry();
     dictionary_allot(size);
     dictionary_end_entry();
 }
@@ -1484,12 +1419,14 @@ static void allot()
 static void append_char()
 {
     uint8_t c = POP_DATA & 0xff;
+    dictionary_remove_end_entry();
     dictionary_append_byte(c);
     dictionary_end_entry();
 }
 
 static void append_cell()
 {
+    dictionary_remove_end_entry();
     dictionary_append_cell(POP_DATA);
     dictionary_end_entry();
 }
@@ -1519,6 +1456,13 @@ static void fill_with(char c)
     for (i = 0; i < size; i++) {
         dictionary_write_byte((CODE_INDEX) address++, c);
     }
+}
+
+static void align()
+{
+    dictionary_remove_end_entry();
+    dictionary_align();
+    dictionary_end_entry();
 }
 
 static void aligned() 
@@ -1588,11 +1532,6 @@ void wait(uint32_t wait_time) {
 
 uint32_t pop_stack()
 {
-//    if (current_process->sp < 0) {
-//        console_out("stack underflow; aborting\n");
-//        // TODO need to use exception or some other way of dropping out
-//        return;
-//    }
     return current_process->stack[current_process->sp--];
 }
 
@@ -1817,6 +1756,7 @@ SCAN aborted <3213385984 | 3213385984>
 [disposing input 110560]
      
      */
+    console_out("ABORT!\n");
     forth_trace(false);
     char buf[80];
     log_debug(LOG, "abort task %S", process->name);
@@ -1824,7 +1764,7 @@ SCAN aborted <3213385984 | 3213385984>
     struct Dictionary_Entry entry;
     dictionary_find_entry_with(process->ip, &entry);
     
-    dump_parameter_stack(buf, process);
+//    dump_parameter_stack(buf, process);
     console_out("  task %S aborted, %S\n", process->name, buf);
     console_out("    in %S at %Z\n", entry.name, process->ip);
 
@@ -2322,7 +2262,7 @@ const struct CORE_ENTRY core_funcs[CORE_WORDS] = {
     {"LOG", set_log_level, false},
     {"ALLOT", allot, false},
     {"CREATE", compiler_create_data, false},
-    {"ALIGN", dictionary_align, false},
+    {"ALIGN", align, false},
     {"ALIGNED", aligned, false},
     {"UNUSED", unused, false},
     {",", append_cell, false},
@@ -2369,8 +2309,8 @@ const struct CORE_ENTRY core_funcs[CORE_WORDS] = {
     {"_RESET", reset, false},
     {"PURGE", purge, false},
 
-   {"EXIT", return_to, false},
-   {"TRACE", return_stack, false},
+    {"EXIT", return_to, false},
+    {"TRACE", return_stack, false},
  
     
     {"F!", test_write_flash, false},

@@ -356,6 +356,7 @@ DECIMAL
 
 
 
+\ TODO sort into rest of code
 
 
 \ 1's complement
@@ -386,10 +387,10 @@ DECIMAL
     DUP @ 1+ SWAP !
 ;
 
+
 : .HEXS ( )
     HEX .S DECIMAL
 ;
-
 
 
 .( Added basic common words) CR

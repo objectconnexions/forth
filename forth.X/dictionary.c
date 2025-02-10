@@ -45,9 +45,9 @@
 
 static uint8_t code_ram[CODE_RAM_SIZE];static const uint8_t __attribute__ ((aligned (PAGE_SIZE))) code_flash[CODE_FLASH_SIZE] = {[0 ... CODE_FLASH_SIZE - 1] = 0xff};
 
-CODE_INDEX first_entry;
-CODE_INDEX next_entry;
-CODE_INDEX insertion_point;
+CODE_INDEX first_entry;         // start address of the dictionary; no entries before this. Backpointer will be 0.
+CODE_INDEX next_entry;          // start address of new entry, when it is created
+CODE_INDEX insertion_point;     // address of insertion, where the next byte will be placed
 
 CODE_INDEX next_flash_entry;
 // TODO remove - this is based on next entry above
@@ -268,10 +268,13 @@ static void append_flag(uint8_t len, uint8_t flags)
 // TODO move this code into next function
 static CODE_INDEX add_entry(char *name, uint8_t flags)
 {
+    // ensure we start after the backpointer in the next entry's memory
+    insertion_point = next_entry + 4;
+    
     to_upper(name);
     // note, the pointer to the previous entry already exists.
     int len = strlen(name);
-    log_debug(LOG, "   new entry for '%S' (%I chars) (%Z; next previous %Z)", name, len & 0x1f, 
+    log_debug(LOG, "   new entry for '%S' (%I chars) (%Z; next %Z)", name, len & 0x1f, 
             insertion_point, next_entry);
     append_flag(len, flags);
     dictionary_append_string(name);
@@ -284,13 +287,26 @@ CODE_INDEX dictionary_add_entry(char *name)
     return add_entry(name, 0);
 }
 
+void dictionary_remove_end_entry()
+{
+//    insertion_point -= 4;
+//    next_entry = read_address(&insertion_point);
+//    insertion_point -= 4;
+    CODE_INDEX read_addr = next_entry;
+    next_entry = read_address(&read_addr);
+}
+
+// TODO rename to show we are setting up the backpointer
 void dictionary_end_entry() 
 {
     log_debug(LOG, "    entry ends at %Z", insertion_point - 1);
-    CODE_INDEX previous_entry = next_entry;
-    next_entry = insertion_point;
-    log_debug(LOG, "   link for previous_entry at %Z", previous_entry);
-    dictionary_append_cell((CELL) previous_entry);
+    CODE_INDEX previous_entry = next_entry; // TODO remove
+    CODE_INDEX next = dictionary_aligned(insertion_point);
+    log_debug(LOG, "   link for previous_entry at %Z; next at %Z; insert %Z", previous_entry, next, insertion_point);
+    // back pointer always added to aligned memory
+//    dictionary_append_cell((CELL) previous_entry);
+    append_cell(&next, (CELL) next_entry);
+    next_entry = dictionary_aligned(insertion_point);
 }
 
 /*
@@ -298,7 +314,8 @@ void dictionary_end_entry()
  * the previous entry. Needed because the entry is create before it contents are 
  * added, and adding those content could fail (for example if the compile is invalid).
  */
-void dictionary_abort_entry() {
+void dictionary_abort_entry() 
+{
 //    if (new_entry_offset > 0) {
 //        new_entry_offset = ???
 //        insertion_point = read_address(&search_from);
@@ -1400,7 +1417,7 @@ void dictionary_move_to_flash()
     
     write_memory_setup();
     
-    dictionary_display_memory();
+//    dictionary_display_memory();
     
     
     // debug
@@ -1517,7 +1534,7 @@ static void write_buffer()
                 flash_buffer[i + 1] << 8 |
                 flash_buffer[i + 0];
         flash_write_next_word(cell);
-        log_debug(LOG, "   - write @%Z", cell);
+        log_debug(LOG, "   - write @%I: %Z", i, cell);
 
     }
 //    log_debug(LOG, "  written @%I end %I", flash_buffer_index, end);

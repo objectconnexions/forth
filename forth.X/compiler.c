@@ -242,6 +242,7 @@ void compiler_create_data()
     {
         dictionary_append_function(data_address);
         dictionary_align();
+        complete_word(false);
     }
 }
 
@@ -365,11 +366,10 @@ static void update_branch_distance(bool forward, CODE_INDEX start)
 
 void block_order_error(char * expected, char * after) 
 {
-    log_error(LOG, "in %S", processing);
-    log_error(LOG, "block out of order, %S without %S in %S", after, expected, processing);
+    log_error(LOG, "block out of order, %S without %S in %S", expected, after, processing);
     if (block >= 0)
     {
-        log_error(LOG, " last block ", block_type(blocks[block].type));        
+        log_error(LOG, " last block %S ", block_type(blocks[block].type));        
     }
 }
 
@@ -380,7 +380,7 @@ void compiler_then()
     if (block == -1 || !(blocks[block].type == IF || blocks[block].type == ELSE))
     {
         block_order_error("THEN", "IF");
-        log_error(LOG, "THEN without IF %S", processing);
+//        log_error(LOG, "THEN without IF %S", processing);
         has_error = true;
         return;
     } 
@@ -398,7 +398,7 @@ void compiler_else()
     if (block == -1 || blocks[block].type != IF)
     {
         block_order_error("ELSE", "IF");
-        log_error(LOG, "ELSE without IF %S", processing);
+//        log_error(LOG, "ELSE without IF %S", processing);
         has_error = true;
         return;
     } 
@@ -438,7 +438,7 @@ static void loop()
     if (block == -1 || blocks[block].type != DO)
     {
         block_order_error("LOOP", "DO");
-        log_error(LOG, "LOOP without DO %S", processing);
+//        log_error(LOG, "LOOP without DO %S", processing);
         has_error = true;
         return;
     } 
@@ -481,7 +481,7 @@ void compiler_again()
     --block;
     if (block == -1 || blocks[block].type != BEGIN)
     {
-        log_error(LOG, "AGAIN without BEGIN %S", processing);
+//        log_error(LOG, "AGAIN without BEGIN %S", processing);
         block_order_error("AGAIN", "BEGIN");
         has_error = true;
         return;
@@ -499,7 +499,7 @@ void compiler_until()
     if (block == -1 || blocks[block].type != BEGIN)
     {
         block_order_error("UNTIL", "BEGIN");
-        log_error(LOG, "UNTIL without BEGIN %S", processing);
+//        log_error(LOG, "UNTIL without BEGIN %S", processing);
         has_error = true;
         return;
     } 
@@ -524,7 +524,7 @@ void compiler_repeat()
     if (block == -1 || blocks[block].type != WHILE)
     {
         block_order_error("REPEAT", "WHILE");
-        log_error(LOG, "REPEAT without WHILE %S", processing);
+//        log_error(LOG, "REPEAT without WHILE %S", processing);
         has_error = true;
         return;
     } 

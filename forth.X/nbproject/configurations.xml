@@ -56,7 +56,7 @@
         <targetDevice>PIC32MX570F512H</targetDevice>
         <targetHeader></targetHeader>
         <targetPluginBoard></targetPluginBoard>
-        <platformTool></platformTool>
+        <platformTool>PICkit3PlatformTool</platformTool>
         <languageToolchain>XC32</languageToolchain>
         <languageToolchainVersion>2.50</languageToolchainVersion>
         <platform>2</platform>
@@ -409,9 +409,6 @@
       <PICkit3PlatformTool>
         <property key="firmware.download.all" value="false"/>
       </PICkit3PlatformTool>
-      <Tool>
-        <property key="firmware.download.all" value="false"/>
-      </Tool>
     </conf>
     <conf name="XC32_PIC32MX270_intosc" type="2">
       <toolsSet>

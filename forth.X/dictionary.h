@@ -76,6 +76,8 @@ void dictionary_abort_entry(void);
 
 CODE_INDEX dictionary_add_entry(char *);
 
+void dictionary_remove_end_entry(void);
+
 void dictionary_end_entry(void);
 
 //void dictionary_insert_internal_instruction(uint8_t, CORE_FUNC);

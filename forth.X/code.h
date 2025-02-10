@@ -40,7 +40,7 @@ typedef uint8_t* INSTRUCTION;       // instruction code, used in the program mem
 struct Process {
     uint8_t id;
     CELL stack[16];
-    CELL return_stack[64];
+    CELL return_stack[16];
     //volatile
     CODE_INDEX ip; // instruction pointer
     //TODO change both to unsigned --> then change -1 to 0xffff

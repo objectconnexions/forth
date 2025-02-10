@@ -134,7 +134,7 @@ static void process()
         core = entry.is_core;
         flags = entry.flags;
         type = WORD_AVAILABLE;
-        log_debug(LOG, "%Sword %S, %Z/%X", core ? "core " : "" , token, entry.instruction, entry.flags);
+        log_debug(LOG, "%S word %S, %Z/%X", core ? "core " : "" , token, entry.instruction, entry.flags);
         return;
 
     } else {
