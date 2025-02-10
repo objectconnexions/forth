@@ -41,41 +41,7 @@ CREATE 0_RX_EVEN ALIGN 64 ALLOT
 
 CREATE 0_RX_ODD ALIGN 64 ALLOT
 
-\  CREATE DEV_DESC2 ALIGN 18 ALLOT
-\
-\  \ TODO fix C,
-\  \ Device descriptor
-\  \  DEV_DESC
-\  \  0x12 C,
-\  \  0x01 C,
-\  \  0x10 C,
-\  \
-\  \  DROP
-\
-\  0x12 DEV_DESC C!           \ length 18 bytes
-\  0x01 DEV_DESC 1+ C!        \ type, device descriptor
-\  0x10 DEV_DESC 2+ C!        \ USB release number (1.1)
-\  0x01 DEV_DESC 3 + C!       \ USB release number
-\  \  0x00 DEV_DESC 2+ C!        \ USB release number (2.0)
-\  \  0x02 DEV_DESC 3 + C!       \ USB release number
-\  0x02 DEV_DESC 4 + C!       \ CDC device
-\  0x00 DEV_DESC 5 + C!       \ subclass
-\  0x00 DEV_DESC 6 + C!       \ protocol
-\  0x40 DEV_DESC 7 + C!       \ max packet size
-\  0xD8 DEV_DESC 8 + C!       \ vendor id
-\  0x04 DEV_DESC 9 + C!       \ vendor id
-\  0x0A DEV_DESC 10 + C!      \ product id
-\  0x00 DEV_DESC 11 + C!      \ product id
-\  0x51 DEV_DESC 12 + C!      \ release number (3.51)
-\  0x03 DEV_DESC 13 + C!      \ release number
-\  0x00 DEV_DESC 14 + C!       \ manufacturer index
-\  0x00 DEV_DESC 15 + C!       \ product index
-\  0x00 DEV_DESC 16 + C!       \ serial number index
-\  0x01 DEV_DESC 17 + C!       \ number of configurations
-
-
 CREATE DEV_DESC
-
 0x12 C,      \ length 18 bytes
 0x01 C,      \ type, device descriptor
 \  0x10 C,      \ USB release number (1.1)
@@ -98,82 +64,7 @@ CREATE DEV_DESC
 0x01 C,       \ number of configurations
 
 
-
-\  CREATE CONF_DESC ALIGN 64 ALLOT
-\
-\  0x09 CONF_DESC 0 + C!   \ length
-\  0x02 CONF_DESC 1 + C!   \ CONFIGURATION
-\  48 CONF_DESC 2 + C!   \ total length
-\  0 CONF_DESC 3 + C!     \
-\  2 CONF_DESC 4 + C!          \ number of intefaces
-\  1 CONF_DESC 5 + C!
-\  0 CONF_DESC 6 + C!        \ index to configuration name
-\  0xC0 CONF_DESC 7 + C!         \ attribute - self powered
-\  0x32 CONF_DESC 8 + C!      \ max power - 100mA
-\
-\
-\  \ CDC Communication interface
-\  0x09 CONF_DESC 9 + C!       \ length
-\  0x04 CONF_DESC 10 + C!      \ INTERFACE
-\  0x00 CONF_DESC 11 + C!      \ interface number
-\  0x00 CONF_DESC 12 + C!       \ alternate setting
-\  0x01 CONF_DESC 13 + C!     \ number of endpoints
-\  0x02 CONF_DESC 14 + C!       \ class - CDC communication
-\  0x02 CONF_DESC 15 + C!       \ subclass
-\  0x01 CONF_DESC 16 + C!      \ protocol
-\  0x00 CONF_DESC 17 + C!      \ name index
-\
-\  0x07 CONF_DESC 18 + C!       \ length
-\  0x05 CONF_DESC 19 + C!      \ ENDPOINT
-\  0x81 CONF_DESC 20 + C!      \ endpoint address, IN
-\  0x03 CONF_DESC 21 + C!       \ attribute - interrupt
-\  0x08 CONF_DESC 22 + C!     \ max size
-\  0x0 CONF_DESC 23 + C!       \
-\  0x0a CONF_DESC 24 + C!       \ interval 10ms
-\
-\
-\  \ data interface
-\  0x09 CONF_DESC 25 + C!       \ length
-\  0x04 CONF_DESC 26 + C!      \ INTERFACE
-\  0x01 CONF_DESC 27 + C!      \ interface number
-\  0x00 CONF_DESC 28 + C!       \ alternate setting
-\  0x02 CONF_DESC 29 + C!     \ number of endpoints
-\  0x0a CONF_DESC 30 + C!       \ class - CDC communication
-\  0x00 CONF_DESC 31 + C!       \ subclass
-\  0x00 CONF_DESC 32 + C!      \ protocol
-\  0x00 CONF_DESC 33 + C!      \ name index
-\
-\  0x07 CONF_DESC 34 + C!       \ length
-\  0x05 CONF_DESC 35 + C!      \ ENDPOINT
-\  0x02 CONF_DESC 36 + C!      \ endpoint address, OUT
-\  0x02 CONF_DESC 37 + C!       \ attribute - block
-\  32 CONF_DESC 38 + C!     \ max size
-\  0 CONF_DESC 39 + C!       \
-\  0 CONF_DESC 40 + C!       \ ignore interval
-\
-\  0x07 CONF_DESC 41 + C!       \ length
-\  0x05 CONF_DESC 42 + C!      \ ENDPOINT
-\  0x82 CONF_DESC 43 + C!      \ endpoint address, IN
-\  0x02 CONF_DESC 44 + C!       \ attribute - block
-\  32 CONF_DESC 45 + C!     \ max size
-\  0 CONF_DESC 46 + C!       \
-\  0x00 CONF_DESC 47 + C!       \ ignore interval
-\
-\
-\
-\  \  0x07 CONF_DESC 39 + C!       \ length
-\  \  0x05 CONF_DESC 40 + C!      \ ENDPOINT
-\  \  0x81 CONF_DESC 41 + C!      \ endpoint address, IN
-\  \  0x03 CONF_DESC 42 + C!       \ attribute - interrupt
-\  \  32 CONF_DESC 43 + C!     \ max size
-\  \  0 CONF_DESC 44 + C!       \
-\  \  0x0a CONF_DESC 45 + C!       \ interval 10ms
-
-
-
-
 CREATE CONF_DESC
-
 0x09 C,             \ length
 0x02 C,             \ CONFIGURATION
 67   C,             \ total length
@@ -183,7 +74,6 @@ CREATE CONF_DESC
 0x00 C,             \ index to configuration name
 0xC0 C,             \ attribute - self powered
 0x32 C,             \ max power - 100mA
-
 
 \ CDC Communication interface
 0x09 C,             \ length
@@ -195,8 +85,6 @@ CREATE CONF_DESC
 0x02 C,             \ subclass
 0x01 C,             \ protocol
 0x00 C,             \ name index
-
-
 
 0x05 C,             \ length
 0x24 C,             \ CS_INTERFACE
@@ -220,7 +108,6 @@ CREATE CONF_DESC
 0x00 C,
 0x01 C,             \  Data Interface
 
-
 0x07 C,             \ length
 0x05 C,             \ ENDPOINT
 0x81 C,             \ endpoint address, IN
@@ -228,7 +115,6 @@ CREATE CONF_DESC
 0x08 C,             \ max size
 0x00 C,             \
 0x0a C,             \ interval 10ms
-
 
 \ data interface
 0x09 C,             \ length
@@ -258,44 +144,14 @@ CREATE CONF_DESC
 0x00 C,             \ ignore interval
 
 
-
-\  0x07 CONF_DESC 39 + C!       \ length
-\  0x05 CONF_DESC 40 + C!      \ ENDPOINT
-\  0x81 CONF_DESC 41 + C!      \ endpoint address, IN
-\  0x03 CONF_DESC 42 + C!       \ attribute - interrupt
-\  32 CONF_DESC 43 + C!     \ max size
-\  0 CONF_DESC 44 + C!       \
-\  0x0a CONF_DESC 45 + C!       \ interval 10ms
-
-
-
-
-\ CREATE INT_DESC ALIGN 64 ALLOT
-\
-\
-\
-\
-\ \ Interface descriptor
-\ 0x09 INT_DESC C!           \ length 18 bytes
-\ 0x02 INT_DESC 1+ C!        \ type
-\ 0x00 INT_DESC 2+ C!        \ interface number
-\ 0x00 INT_DESC 3 + C!       \ alternate setting
-\ 0x00 INT_DESC 4 + C!       \ number of endpoints
-\ 0x03 INT_DESC 5 + C!       \ class
-\ 0x01 INT_DESC 6 + C!       \ subclass
-\ 0x02 INT_DESC 7 + C!       \ protocol
-\ 0x00 INT_DESC 8 + C!       \ name index
-
 VARIABLE USB_STATE
 VARIABLE USB_ADDRESS
 VARIABLE USB_EP0_TX_PACKET
 VARIABLE USB_EP0_RX_PACKET
 
 
-\  32 CONSTANT TX_BUFF_LEN
 32 CONSTANT TX_PCKT_LEN
 VARIABLE 0_TX_DATA
-\  VARIABLE 0_TX_END
 VARIABLE 0_TX_COUNT
 VARIABLE 0_TX_LEN
 
@@ -330,34 +186,6 @@ VARIABLE USB_EP2_RX_PACKET
 
 
 
-\  \ 1's complement
-\  : invert ( n - n ) NEGATE 1 - ;
-\
-\
-\  \ source
-\  \ value
-\  \ pos
-\  \ length
-\  : set_bits ( n n n n - n )
-\      OVER MASK_PATTERN INVERT    \ mask
-\      LROT LSHIFT                 \ new value
-\      LROT AND                      \ mask the source VALUE
-\      OR                           \ combine
-\  ;
-\
-\  \ source
-\  \ pos
-\  \ length
-\  : get_bits ( n n n - n )
-\      OVER MASK_PATTERN            \ mask
-\      ROT AND                      \ mask the source VALUE
-\      SWAP RSHIFT                 \ value
-\  ;
-\
-\  : +! ( addr - )
-\      DUP @ 1+ SWAP !
-\  ;
-\
 \
 : .HEXS ( )
     HEX .S DECIMAL
@@ -367,29 +195,15 @@ VARIABLE USB_EP2_RX_PACKET
 
 
 
-
-
-
-
-\  : change_order ( n - n )
-\      DUP ." original " hex. CR
-\      DUP 24 RSHIFT 0xff AND SWAP
-\      DUP 16 RSHIFT 0xff AND 8 LSHIFT SWAP
-\      DUP 8 RSHIFT 0xff AND 16 LSHIFT SWAP
-\      0xff AND 24 LSHIFT OR OR OR
-\
-\      DUP ." endian " hex. CR
-\  ;
-
-
+\ Re-enable packet processing after setup token received
 : enable_packet_processing ( )
     U1CON 5 REG_BIT_CLEAR
 ;
 
-
-\ endpoint
-\ rx (0/1)
-\ even (0/1)
+\ Get the BDT entry address for specified endpoint
+\ - endpoint
+\ - rx (0/1)
+\ - even (0/1)
 : BDT_entry ( n n n - addr)
     ROT 1 LSHIFT
     ROT + 1 LSHIFT
@@ -397,32 +211,19 @@ VARIABLE USB_EP2_RX_PACKET
     BDT_START +
 ;
 
-
+\ Get the virtual address for a BDT buffer
 : BDT_buffer_address ( addr - addr )
     CELL+ @  TO_VIRTUAL_ADDR
 ;
 
-
-\ descriptor address
+\ ???
+\ - descriptor address
 : BDT_pid ( addr - )
     @ 16 9 get_bits
 ;
 
-\  : BDT_status ( addr  - )
-\      ." @" DUP hex.
-\      DUP @ DUP DUP DUP DUP
-\      16 RSHIFT 0xfff AND .  ." bytes: "             \ byte count
-\      0x80 AND IF ." HW" ELSE ." SW" THEN SPACE
-\      0x40 AND IF ." DATA1" ELSE ." DATA0" THEN SPACE
-\      2 RSHIFT 0x0f AND  hex.            \ bit pattern of PID
-\
-\      2 RSHIFT 0xfff AND  bin.            \ bit pattern of flags
-\
-\  \      4 + ." -> " @ TO_VIRTUAL_ADDR hex.
-\      BDT_buffer_address ." -> " hex.
-\  ;
-
-\ descriptor address
+\ Reset the data count and flags for BDT
+\ - descriptor address
 : BDT_reset ( addr - )
 \      DUP @
 \      0 16 9 set_bits               \ 0 COUNT
@@ -431,15 +232,17 @@ VARIABLE USB_EP2_RX_PACKET
 ;
 
 
-\ descriptor address
-\ buffer addr
+\ Set up the the buffer for a BDT to read/write to
+\ - descriptor address
+\ - buffer addr
 : BDT_buffer ( addr addr - )
 \      OVER 0 SWAP !         ADDRESSED           \ clear first word
     TO_PHYSICAL_ADDR SWAP
     4 + !                             \ address to second word in buffer descriptor
 ;
 
-\ descriptor address
+\ Set the BDT to be owned by the module, rather than the software
+\ - descriptor address
 : BDT_uown ( addr - )
     DUP @
     1 7 1 set_bits
@@ -447,50 +250,57 @@ VARIABLE USB_EP2_RX_PACKET
 ;
 
 
-\ descriptor address
+\ Set the DTS flag for the BDT
+\ - descriptor address
 : BDT_DTS ( addr - )
     DUP @
     1 3 1 set_bits              \ DTS - data toggle sync - flag
     SWAP  !
 ;
 
-\ descriptor address
-\ data (0/1)
+\ Set the data number (1 or 0) for the BDT
+\ - descriptor address
+\ - data (0/1)
 : BDT_data ( addr n - )
     OVER @
     SWAP 6 1 set_bits
     SWAP  !
 ;
 
-\ descriptor address
-\ count
+\ Set the expected data count for the BDT
+\ - descriptor address
+\ - count
 : BDT_count_expected ( addr n - )
     OVER @
     SWAP 16 9 set_bits
     SWAP !
 ;
 
-\ descriptor address
-\ count
+\ Read the actual data count for the BDT
+\ - descriptor address
+\ - count
 : BDT_count_actual ( addr - n )
     @ 16 9 get_bits
 ;
 
-\ descriptor address
+\ Set the Stall flag for the BDT
+\ - descriptor address
 : BDT_stall ( addr - )
     DUP @
     1 2 1 set_bits
     SWAP !
 ;
 
-\ descriptor address
+\ Clear the Stall flag for the BDT
+\ - descriptor address
 : BDT_unstall ( addr - )
     DUP @
     0 2 1 set_bits
     SWAP !
 ;
 
-\ descriptor address
+\ Clear the DMA flag for the BDT
+\ - descriptor address
 : BDT_disable_DMA ( addr - )
     DUP @
 \      1 4 1 set_bits
@@ -498,29 +308,30 @@ VARIABLE USB_EP2_RX_PACKET
     SWAP !
 ;
 
-\ descriptor address
+\ Get the PID from the BDT
+\ - descriptor address
 : BDT_PID ( addr - n )
     @ 2 4 get_bits
 ;
 
-
-\ descriptor address
+\ Clear the biffer from the BDT - does not change the content of the buffer,
+\ just unlinks it from the table (see next word).
+\ - descriptor address
 : BDT_remove_buffer ( addr - )
     DUP 0 BDT_count_expected         \ reset count to zero
     CELL+ 0 SWAP !         \ clear address
 ;
 
-
-\ descriptor address
-\ buffer size
+\ Clears buffer pointed to by the BDT
+\ - descriptor address
+\ - buffer size
 : BDT_clear_buffer ( addr n - )
     SWAP BDT_buffer_address SWAP
-\      SWAP CELL+ SWAP
-\    ( debug ) ." clear @" 2DUP SWAP HEX. . CR
     ERASE
 ;
 
-
+\ Lookup the address of the next DBT entry from the U1STAT register. Only
+\ valid when the token available interrupt is set.
 : token_processing_address ( - addr )
     U1STAT @ 1 LSHIFT BDT_START +
 ;
@@ -532,13 +343,11 @@ VARIABLE USB_EP2_RX_PACKET
     BDT_reset
     BDT_disable_DMA
     0_RX_EVEN BDT_buffer
-\      64 BDT_clear_buffer
 
     0 0 1 BDT_entry DUP DUP    \ DUP
     BDT_reset
     BDT_disable_DMA
     0_RX_ODD BDT_buffer
-\      64 BDT_clear_buffer
 
     0 1 0 BDT_entry DUP
     BDT_reset
@@ -555,10 +364,7 @@ VARIABLE USB_EP2_RX_PACKET
     0 USB_EP0_TX_PACKET !
     0 USB_EP0_RX_PACKET !
     U1CON 1 REG_BIT_SET     \ reset ping pong buffer to even
-\      5 ms
     U1CON 1 REG_BIT_CLEAR
-
-\      enable_packet_processing
 ;
 
 
@@ -570,11 +376,9 @@ VARIABLE USB_EP2_RX_PACKET
     U1CON 0 REG_BIT_CLEAR  \ disable USB (USBEN)
 ;
 
-
 : debug_BDT_target ( addr - )
     DUP DUP
     BDT_START - 32 /
-\      5 RSHIFT 0xf AND
     ." #" DUP .   ." EP/" CELLS U1EP0 + @ HEX.                   \ endpoint
     0x10 AND IF ." TX" ELSE ." RX" THEN         \ direction
     SPACE
@@ -606,11 +410,8 @@ VARIABLE USB_EP2_RX_PACKET
     DUP 0x80 AND IF ." MOD" ELSE ." PRG" THEN SPACE
     DUP 0x40 AND IF ." DATA1" ELSE ." DATA0" THEN SPACE
     2 RSHIFT 0xfff AND  bin.                        \ bit pattern of flags
-\      DEBUGGING @ IF
-        ." -> " debug_BD_data
-\      ELSE
-\          DROP
-\      THEN
+
+    ." -> " debug_BD_data
 ;
 
 
@@ -628,12 +429,6 @@ VARIABLE USB_EP2_RX_PACKET
     DUP 0 1 BDT_entry   DUP hex. SPACE ." -> "     debug_BDT_target CR
     DUP 1 0 BDT_entry   DUP hex. SPACE ." -> "     debug_BDT_target CR
     1 1 BDT_entry   DUP hex. SPACE ." -> "     debug_BDT_target CR
-
-
-\      DUP debug_BDT_target hex.   SPACE ." -> @"   DUP 0 0 BDT_entry CR
-\      DUP debug_BDT_target hex.   SPACE ." -> @"   DUP 0 1 BDT_entry CR
-\      DUP debug_BDT_target hex.   SPACE ." -> @"   DUP 1 0 BDT_entry CR
-\      DUP debug_BDT_target hex.   SPACE ." -> @"   1 1 BDT_entry CR
 ;
 
 
@@ -663,35 +458,33 @@ VARIABLE USB_EP2_RX_PACKET
 ;
 
 : debug_state ( - )
-\      DEBUGGING @ IF
-        ." |   @" U1ADDR ?
+    ." |   @" U1ADDR ?
 
-        USB_STATE @
-        DUP DETACHED = IF
-            ." DETACHED"
-        THEN
-        DUP DEFAULT = IF
-            ." DEFAULT"
-        THEN
-        DUP ADDRESSED = IF
-            ." ADDRESSED"
-        THEN
-        DUP CONFIGURED = IF
-            ." CONFIGURED"
-        THEN
-        DROP SPACE
+    USB_STATE @
+    DUP DETACHED = IF
+        ." DETACHED"
+    THEN
+    DUP DEFAULT = IF
+        ." DEFAULT"
+    THEN
+    DUP ADDRESSED = IF
+        ." ADDRESSED"
+    THEN
+    DUP CONFIGURED = IF
+        ." CONFIGURED"
+    THEN
+    DROP SPACE
 
 
-        ."  : IR " U1IR @ HEX.
-        ."  ; EIR " U1EIR @ HEX.
-        ."  ; STAT " U1STAT @ HEX.
-        ."  ; CON " U1CON @ HEX.
-        CR
-        ." | "
-        token_processing_address BDT_START - 8 MOD
-        ." endpoint " DUP  . CR
-        debug_BDs
-\      THEN
+    ."  : IR " U1IR @ HEX.
+    ."  ; EIR " U1EIR @ HEX.
+    ."  ; STAT " U1STAT @ HEX.
+    ."  ; CON " U1CON @ HEX.
+    CR
+    ." | "
+    token_processing_address BDT_START - 8 MOD
+    ." endpoint " DUP  . CR
+    debug_BDs
 ;
 
 : debug_usb ( )
@@ -719,12 +512,8 @@ VARIABLE USB_EP2_RX_PACKET
     ROT
     +       \ DUP HEX.
     @
-\              ." -> " DUP HEX.
 
     SWAP 8 * RSHIFT 0xff AND
-\      DUP HEX.
-
-\      SWAP DROP
 ;
 
 \ endpoint
@@ -790,32 +579,6 @@ VARIABLE USB_EP2_RX_PACKET
 ;
 
 
-\  : tx_send ( addr -- )
-\ : tx_send ( -- )
-
-\      DUP 0_TX_END @         ( start start end )
-\      ." tx_send prep for " 2DUP HEX. ." ~" HEX.
-\      SWAP -                      ( start len )
-\      ." x " DUP . CR
-\      DUP 0< NOT IF
-\           ( start len )
-\
-\
-\          DUP DUP TX_BUFF_LEN > IF DROP TX_BUFF_LEN THEN      \ limit lenth to max packet size
-\  \        OVER TX_BUFF_LEN > IF DROP TX_BUFF_LEN THEN      \ limit lenth to max packet size
-\
-\  \        TODO derive data number !!!!!
-\  \           -> data1 for first. data0 for second etc
-\          SWAP  ( start len len' )
-\          TX_BUFF_LEN / 1+ 2 MOD     \ data no
-\          SPACE SPACE ." data" DUP . CR
-\
-\
-\  \        1                                               \ data number  TODO calculate
-\  \          SWAP
-\ ;
-
-
 \ data address
 : tx_send ( -- )
 
@@ -866,29 +629,18 @@ VARIABLE USB_EP2_RX_PACKET
 \ buffer address
 : tx_send_data ( n n' addr -- )
     ." Send new" CR
-
-\      DUP DUP 0_TX_DATA !             \ new buffer is the start of data
-\      ROT + 0_TX_END !                \ end of data is at length after start
-\      tx_send
-
     0_TX_DATA !             \ new buffer is the start of data
     0_TX_LEN !
     DROP                            \ endpoint not being used yet
     0 0_TX_COUNT !
-\    ." ready " .HEXS CR
     tx_send
     tx_send
-
 ;
 
 
 \ endpoint number
 : tx_send_next ( n  -- )
     ." Next " CR
-
-\      TX_BUFF_LEN                   \ next data point is buffer length on
-\      0_TX_DATA @ +
-\      DUP 0_TX_DATA !
     tx_send
 
     DROP                            \ endpoint not being used yet
@@ -898,25 +650,9 @@ VARIABLE USB_EP2_RX_PACKET
 \ buffer size
 \ buffer address
 : tx_control_data ( n addr -- addr )
-\      0 1 USB_EP0_TX_PACKET @ 2 MOD BDT_entry    \ set up device descriptor for TX data stage
-\  \    ( debug ) ." prep " DUP debug_BDT_target cr
-\      DUP BDT_reset
-\  \      .HEXS CR
-\      DUP ROT BDT_buffer
-\      DUP ROT BDT_count_expected
-\      DUP 1 BDT_data
-\  \    DUP BDT_DTS
-\
-\      DEBUGGING @ IF
-\          ( debug ) ." prep " DUP debug_BD CR
-\      THEN
-\
-\      DUP BDT_uown
-\
-\      USB_EP0_TX_PACKET +!
-
     0 LROT tx_send_data
 
+    \ TODO resolve this
     0   \ added as each tc_control call drops the duplicated address
 ;
 
@@ -930,12 +666,10 @@ VARIABLE USB_EP2_RX_PACKET
     \ endpoint 1 - CDC control
     1 1 0 BDT_entry DUP
     BDT_reset
-\      BDT_remove_buffer
     1_TX_EVEN BDT_buffer
 
     1 1 1 BDT_entry DUP
     BDT_reset
-\      BDT_remove_buffer
     1_TX_ODD BDT_buffer
 
     1 USB_EP1_TX_PACKET !
@@ -954,12 +688,10 @@ VARIABLE USB_EP2_RX_PACKET
 
     2 1 0 BDT_entry DUP
     BDT_reset
-\      BDT_remove_buffer
     1_TX_EVEN BDT_buffer
 
     2 1 1 BDT_entry DUP
     BDT_reset
-\      BDT_remove_buffer
     2_TX_ODD BDT_buffer
 
     0 USB_EP2_TX_PACKET !
@@ -971,8 +703,6 @@ VARIABLE USB_EP2_RX_PACKET
     0x1D U1EP0 2 CELLS + !           \ Enable Tx/Rx for endpoint 2
 
     \ assign buffers
-\      2 32 0 rx_control
-
 ;
 
 
@@ -1084,15 +814,6 @@ VARIABLE USB_EP2_RX_PACKET
 
             0 SWAP CONF_DESC tx_send_data
 
-\              \ TODO convert to word that sends multiple segments of buffer
-\              DUP 64 > IF
-\                  64 CONF_DESC tx_control_data DROP
-\                  64 -
-\                  CONF_DESC 64 + tx_control_data 0 BDT_data
-\              ELSE
-\                  CONF_DESC tx_control_data DROP
-\              THEN
-
             rx_control_setup
             rx_control_status
 
@@ -1104,19 +825,12 @@ VARIABLE USB_EP2_RX_PACKET
         OVER @ 0x010900 = IF
             OVER 2 BD_READ_BYTE
             ." SET_CONF " . CR
-\              OVER 6 BD_READ_BYTE DUP .
 
-\              CONF_DESC tx_control_data DROP
-             0 DEV_DESC tx_control_data DROP      \ prepare for ZLP response
+            0 DEV_DESC tx_control_data DROP      \ prepare for ZLP response
 
             rx_control_status
 
-\              setup_cdc
-
             rx_control_setup   \ for next command
-
-
-\              setup_cdc
 
             CONFIGURED USB_STATE !
 
@@ -1138,11 +852,7 @@ VARIABLE USB_EP2_RX_PACKET
             rx_control_setup \ ???
            rx_control_status
 
-\              debug_state
-
-\              rx_control_status
-
-            enable_packet_processing
+           enable_packet_processing
         THEN
 
 
@@ -1266,24 +976,8 @@ VARIABLE USB_EP2_RX_PACKET
     debug_IR
 
 
-
-
-\      token_processing_address $10 AND IF
-\
-\      THEN
-
-
-
-
     USB_STATE @ CONFIGURED = IF
         ." CONFIGURED " CR SPACE SPACE debug_recvd CR
-\  \          process_configured_token
-\          ." /NO action" CR
-\
-\          DROP    \ PID
-\          DROP    \ buffer
-\          DROP    \ descriptor
-\
         process_configured_token
     THEN
 
@@ -1299,7 +993,7 @@ VARIABLE USB_EP2_RX_PACKET
 
 
     ." | " U1CON @ HEX. CR
-        0 debug_BDs
+    0 debug_BDs
 
     0x08 U1IR !        \ clear interrupt
 
@@ -1316,26 +1010,15 @@ VARIABLE USB_EP2_RX_PACKET
     ." <++ USB reset " debug_IR CR
     debug_state
 
-\      BEGIN U1IR @ 0x08 AND
-\      WHILE
-\          SPACE SPACE ." drop " token_processing_address debug_BD CR
-\          0x08 U1IR !        \ clear interrupt
-\      REPEAT
+    0 U1ADDR !          \ reset address
+    0 USB_ADDRESS !
+    DEFAULT USB_STATE !
 
-\      usb_reset
-
-        0 U1ADDR !          \ reset address
-        0 USB_ADDRESS !
-        DEFAULT USB_STATE !
-
-        0 USB_EP0_TX_PACKET !
-        0 USB_EP0_RX_PACKET !
-        U1CON 1 REG_BIT_SET     \ reset ping pong buffer to even
-        U1CON 1 REG_BIT_CLEAR
-        enable_packet_processing
-
-
-
+    0 USB_EP0_TX_PACKET !
+    0 USB_EP0_RX_PACKET !
+    U1CON 1 REG_BIT_SET     \ reset ping pong buffer to even
+    U1CON 1 REG_BIT_CLEAR
+    enable_packet_processing
 
 
     rx_control_setup
@@ -1424,10 +1107,6 @@ VARIABLE USB_EP2_RX_PACKET
             clear
         THEN
 
-\          0x08 AND NOT IF
-\              1 ms
-\          THEN
-
         10 ms
 	again
 ;
@@ -1459,13 +1138,9 @@ VARIABLE USB_EP2_RX_PACKET
     usb_reset
 
     rx_control_setup
-\      rx_control_setup
 
     0x0D U1EP0 !            \ Enable Tx/Rx for endpoint 0
 ;
-
-\  1 log
-\ echo
 
 
 task usb_t
@@ -1480,268 +1155,6 @@ usb_init
 \  1 DEBUGGING !
 run
 \ usb_enable
-
-
-
-
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-\
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-\  : setup_token ( addr -  )
-\      DUP @ 0xffff AND 0x0680 = IF              \ check request is GET_DESCRIPTOR
-\          ." GET_DESCRIPTOR: "
-\
-\          DUP @ 24 RSHIFT
-\
-\          DUP 0x01 = IF                            \ device descriptor
-\              ." DEVICE" CR
-\
-\              USB_STATE 0= IF
-\                  1 USB_STATE !           \  attached
-\              THEN
-\
-\              18 DEV_DESC tx_control_data DROP
-\  \              64 DEV_DESC tx_control_data
-\              rx_control_status
-\  \              rx_control_setup
-\  \              CR status_usb
-\              DROP 0
-\          THEN
-\
-\          DUP 0x02 = IF                               \ configuration descriptor
-\              ." CONFIGURATION" CR
-\
-\  \              OVER 4 + @
-\  \              16 RSHIFT 0xffff AND
-\  \              DUP ." size " hex. CR
-\
-\              9 CONF_DESC tx_control_data DROP
-\
-\  \              0 1 USB_EP0_TX_PACKET @ 2 MOD BDT_entry DUP DUP DUP DUP   \ set up configuration descriptor TX for data stage
-\  \              BDT_reset
-\  \              CONF_DESC BDT_buffer
-\  \              1 BDT_data
-\  \  \            ROT .S BDT_count_expected
-\  \                9 BDT_count_expected
-\  \              BDT_uown
-\
-\              0 0 USB_EP0_RX_PACKET @ 2 MOD BDT_entry DUP DUP DUP DUP    \ set up device descriptor RX for data stage
-\              BDT_reset
-\              0 BDT_count_expected
-\              1 BDT_data
-\              BDT_DTS
-\              BDT_uown
-\
-\
-\              OVER 4 + @
-\              16 RSHIFT 0xffff AND
-\              DUP ." size " hex. CR
-\
-\              0 1 USB_EP0_TX_PACKET @ 2 MOD BDT_entry
-\              SWAP BDT_count_expected
-\
-\  \              USB_EP0_TX_PACKET +!
-\              USB_EP0_RX_PACKET +!
-\
-\              DROP 0
-\          THEN
-\
-\
-\          DUP 0x00 <> IF
-\              \ for all others, a zero length packet
-\              ." OTHER " DUP . OVER @ 24 RSHIFT . CR
-\              ." error request " OVER 2@ hex. hex. CR
-\  \              0
-\
-\              0 DEV_DESC tx_control_data DROP
-\
-\  \              0 1 USB_EP0_TX_PACKET @ 2 MOD BDT_entry DUP DUP DUP DUP    \ set up device descriptor
-\  \              BDT_reset
-\  \              DEV_DESC BDT_buffer
-\  \              0 BDT_count_expected
-\  \              1 BDT_data
-\  \              BDT_uown
-\  \
-\  \              USB_EP0_TX_PACKET +!
-\
-\          THEN
-\
-\          DROP                    \ descriptor no
-\      THEN
-\
-\
-\      DUP @ 0xffff AND 0x0500 = IF             \ check request is device standard SET_ADDRESS
-\          ." SET_ADDRESS "
-\
-\  \          reset_usb
-\          0 USB_EP0_TX_PACKET !
-\          0 USB_EP0_RX_PACKET !
-\          U1CON 1 REG_BIT_SET
-\
-\  \          ADDRESSED USB_STATE !
-\          DUP @  16 RSHIFT  USB_ADDRESS !
-\          USB_ADDRESS ? CR
-\  \          CR status_usb
-\
-\  \          rx_control_setup
-\          rx_control_setup
-\          0 DEV_DESC tx_control_data           \ prepare for ZLP response
-\          DROP
-\
-\          ticks
-\  \          0x08 U1IR !        \ clear interrupt
-\
-\          enable_packet_processing
-\
-\          USB_ADDRESS @ 0x7F AND
-\          U1ADDR !
-\          ADDRESSED USB_STATE !
-\
-\          ticks swap - CR ." set " U1ADDR ? ." in ms " . CR
-\
-\  \          CR status_usb
-\
-\
-\
-\
-\
-\
-\  \          ." >> " OVER HEx. CR
-\  \          U1IR @ hex. U1STAT 1 LSHIFT @ hex. CR
-\  \
-\  \  \          DUP 64 DUMP
-\  \
-\  \
-\  \
-\  \  \          1000 ms
-\  \
-\  \          rx_control_setup
-\  \
-\  \          0 DEV_DESC tx_control_data           \ prepare for ZLP response
-\  \  \             DUP BDT_stall
-\  \  \
-\  \  \            3 ms
-\  \  \
-\  \  \            BDT_unstall
-\  \  \          DROP
-\  \          ." => " hex. CR
-\  \
-\  \          ticks
-\  \
-\  \          0x08 U1IR !        \ clear interrupt
-\  \          U1IR @ hex. U1STAT 1 LSHIFT @ hex. CR
-\  \
-\  \  \          40 ms
-\  \  \          USB_ADDRESS @ 0x7F AND
-\  \  \          U1ADDR !
-\  \
-\  \  \          rx_control_setup
-\  \
-\  \
-\  \          \          BEGIN
-\  \  \              U1IR @ 0x08 AND
-\  \  \              0x08 =
-\  \  \          UNTIL
-\  \          enable_packet_processing
-\  \  \          3 ms
-\  \
-\  \          U1IR @ hex. U1STAT 1 LSHIFT @ hex. CR
-\  \
-\  \          USB_ADDRESS @ 0x7F AND
-\  \          U1ADDR !
-\  \
-\  \          ticks swap - CR ." set " U1ADDR ? ." in ms " . CR
-\  \
-\  \          2 USB_STATUS !
-\  \
-\  \  \          rx_control_setup
-\  \          CR
-\  \
-\  \          0x08 U1IR !        \ clear interrupt
-\  \          U1IR @ hex. U1STAT 1 LSHIFT @ hex. CR
-\  \
-\
-\      THEN
-\
-\
-\      DUP @ 0xffff AND 0x0900 = IF             \ check request is device standard GET_INTERFACE
-\          ." SET_CONFIGURATION "
-\          DUP @ . CR
-\
-\          0 DEV_DESC tx_control_data DROP
-\
-\  \          rx_control_setup
-\  \          0 DEV_DESC tx_control_data           \ prepare for ZLP response
-\  \
-\  \          0 0 USB_EP0_RX_PACKET @ 2 MOD BDT_entry DUP DUP DUP DUP    \ set up RX for next set up stage
-\  \          BDT_reset
-\  \          0 BDT_count_expected
-\  \          1 BDT_data
-\  \          BDT_DTS
-\  \          BDT_uown
-\  \
-\  \  \          USB_EP0_TX_PACKET +!
-\  \          USB_EP0_RX_PACKET +!
-\
-\      THEN
-\
-\
-\      DUP @ 0xffff AND 0x0A81 = IF             \ check request is device standard GET_INTERFACE
-\          ." GET_INTERFACE " DUP hex.
-\          \ not expected yet
-\          64 DEV_DESC tx_control_data DROP
-\      THEN
-\
-\      DROP                    \ address
-\
-\
-\  ;
-
 
 
 
