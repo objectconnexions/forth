@@ -1,6 +1,6 @@
 noecho
 
-\ lock
+.( CAN driver )
 
 HEX
 
@@ -36,7 +36,7 @@ PORTE 2 2CONSTANT CAN1EN
 
 DECIMAL
 
-
+\ TODO this is a lower level word, applicable to other regster users
 \ Calculate the address of the CAN register for the specified FIFO number
 \ Each register set is 0x40 bytes apart
 \   FIFO index (0-31)
@@ -60,7 +60,7 @@ DECIMAL
 	PPS_LOCK
 ;
 
-
+\ TODO -> can_mode
 : can_mode@ ( - n )
     C1CON 21 3 REG_BITS@                    \ read OPMOD (C1CON 23:21)
 ;
@@ -74,9 +74,10 @@ DECIMAL
 	." Mode set " can_mode@ . CR      		\ should be mode - to show it is set
 ;
 
-
+\ TODO -> messages+
 : can_sum_fifo_size ( u u - u )   4 4 * * + ;
 
+\ TODO -> add_buffer
 \ Create FIFO n:-
 \   FIFO index n (0-31)
 \   for TX (flag is 1) or RX (flag is 0)
@@ -106,8 +107,6 @@ DECIMAL
 
 	C1FIFOCON0 can_fifo_register
 	13 REG_BIT_SET						\ Set UINC bit - fifo increments pointer
-	
-\	.S CR
 ;
 
 : can_fifo_ready ( n - flag )
@@ -218,7 +217,7 @@ DECIMAL
 : .can_filter_fifo ( u - ) can_filter_fifo@ hex. ;
 
 : .can_filter ( u - ) 
-    dup .
+\      dup .
     dup can_fifo_ready if ." RDY " else ."     " then
     dup C1FIFOUA0 can_fifo_register @ TO_VIRTUAL_ADDR	hex.
     dup .can_filter_enabled

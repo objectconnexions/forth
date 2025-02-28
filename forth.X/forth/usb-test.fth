@@ -74,7 +74,7 @@ CREATE CONF_DESC
 0x02 C,             \ number of intefaces
 0x01 C,
 0x00 C,             \ index to configuration name
-0xC0 C,             \ attribute - self powered
+0xa0 C,             \ attribute - not self powered
 0x32 C,             \ max power - 100mA
 
 \ Interface association
@@ -104,6 +104,12 @@ CREATE CONF_DESC
 0x00 C,             \ Function header
 0x10 C, 0x01 C,     \ version 1.1
 
+0x05 C,             \ length
+0x24 C,             \ CS_INTERFACE
+0x01 C,             \ Function call management
+0x01 C,             \ handles call management
+0x01 C,             \ Data Interface
+
 0x04 C,             \ length
 0x24 C,             \ CS_INTERFACE
 0x02 C,             \ Function ACM
@@ -116,12 +122,6 @@ CREATE CONF_DESC
 0x06 C,             \ Function union
 0x00 C,             \ CDC interface
 0x01 C,             \ Data interface
-
-0x05 C,             \ length
-0x24 C,             \ CS_INTERFACE
-0x01 C,             \ Function call management
-0x01 C,             \ handles call management
-0x01 C,             \ Data Interface
 
 0x07 C,             \ length
 0x05 C,             \ ENDPOINT
@@ -394,7 +394,7 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
 : usb_reset ( - )
     \ endpoint 0
     CONTROL RX EVEN BDT_entry DUP DUP
-\      .HEXS
+
     BDT_reset
     BDT_disable_DMA
     0_RX_EVEN BDT_buffer
@@ -431,11 +431,18 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
     U1CON 0 REG_BIT_CLEAR  \ disable USB (USBEN)
 ;
 
+\ the enpoint number for the specified BDT address
+\ - BDT address
+: endpoint ( addr -- n )
+    BDT_START - 32 /
+;
+
 \ display the BDT entry and the buffer it points to
 : debug_BDT_target ( addr - )
     DUP DUP
-    DUP HEX.
-    BDT_START - 32 /
+\      DUP HEX.
+\      BDT_START - 32 /
+    endpoint
     ." EP#" DUP .   ." /" 0x10 * U1EP0 + @ HEX.                   \ endpoint
     0x10 AND IF ." TX" ELSE ." RX" THEN         \ direction
     SPACE
@@ -539,7 +546,7 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
     ."  ; CON " U1CON @ HEX.
     CR
     ." | "
-    token_processing_address BDT_START - 8 MOD
+    token_processing_address endpoint     \ BDT_START - 8 MOD
     ." endpoint " DUP  . CR
     debug_BDs
 ;
@@ -787,12 +794,15 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
     0x04 U1EP0 0x30 + !       \ Enable Tx for endpoint 3
 
     3_TX_EVEN DUP $1234567 SWAP ! $8900 SWAP CELL+ !  \ example data
+    3_TX_ODD $000A4B4F SWAP !
+
 \      CDC_DATA_TX 8 3_TX_EVEN tx_send_data
 
 \      CDC_DATA_RX 64 DATA0 rx_control
 \      CDC_DATA_RX 64 DATA0 rx_control
 
 \      CDC_CON 8 3_TX_EVEN tx_send_data
+    CDC_DATA_RX 64 DATA0 rx_control
 
     ." setup done " .HEXS CR
 ;
@@ -880,17 +890,10 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
         \ check request is GET_DESCRIPTOR for DEVICE
         OVER @ 0x01000680 = IF
             ." GET_DESCRIPTOR: DEV" CR
-\              ." pause... " 500 ms ." continue " CR
-
-\              0 debug_BDs
 
             rx_control_status
             18 DEV_DESC tx_control_data
             rx_control_setup
-\              rx_control_status
-
-\            ( debug )
-\              CR 0 debug_BDs
 
             enable_packet_processing
         THEN
@@ -917,11 +920,7 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
             ." SET_CONF " . CR
 
             0 DEV_DESC tx_control_data      \ prepare for ZLP response
-
-\              setup_cdc
-
             rx_control_status
-
             rx_control_setup                \ for next command
 
             CONFIGURED USB_STATE !
@@ -933,10 +932,6 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
         \ check request is DEVICE QUALIFIER
         OVER @ 0x06000680 = IF
             ." DEV_QUALIFIER " CR
-
-\              0 DEV_DESC tx_control_data      \ prepare for ZLP response
-
-
             tx_control_BD
             DUP BDT_stall
             BDT_uown
@@ -955,13 +950,11 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
     DUP 9 = IF
         SPACE SPACE ." < IN" CR                         \ device to host (IN) transaction
         0 tx_send_next
-\              rx_control_status
     THEN
 
     \ OUT packet
     DUP 1 = IF                              \ host to device (OUT)
         SPACE SPACE ." > OUT" CR
-\            rx_control_setup
     THEN
 
     DROP    \ PID
@@ -981,12 +974,9 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
         \ check request is SET_LINE_CODING for CDC
         OVER @ 0x00002021 = IF
             ." SET_LINE_CODING: DEV" CR
-
             CONTROL ZLP tx_send_data
             rx_control_status
             rx_control_setup
-
-
             enable_packet_processing
         THEN
 
@@ -994,16 +984,11 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
         \ check request is SET_LINE_CONTROL_STATE for CDC
         OVER @ 0x0ffff AND 0x2221 = IF
             ." SET_LINE_CONTROL_STATE: DEV" CR
-
-\              CONTROL 7 LINE_CODING tx_send_data
             CONTROL ZLP tx_send_data
             rx_control_status
             rx_control_setup
-
             enable_packet_processing
         THEN
-
-
     THEN
 
 
@@ -1011,20 +996,24 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
     DUP 9 = IF
         SPACE SPACE ." < IN" CR                         \ device to host (IN) transaction
         0 tx_send_next
-\              rx_control_status
     THEN
 
     \ OUT packet
     DUP 1 = IF                              \ host to device (OUT)
         SPACE SPACE ." > OUT" CR
-\          OVER ... EP != 0
-        OVER 6 BD_READ_BYTE    ." READ " DUP . CR      \ read size
-        ." => "
-                DO DUP i + C@ HEX. LOOP
-                CR
-                0
-        CDC_DATA_RX 64 DATA0 rx_control
-
+        2 PICK endpoint 2 = IF               \ for endpoint 2 - RX
+            OVER 6 BD_READ_BYTE    ." READ " DUP . CR      \ read size
+            ." => "
+                    DO DUP i + C@ HEX. LOOP
+                    CR
+                    0
+            \ TODO copy data to TX buffer for echo
+\              OVER 6 BD_READ_BYTE
+\              OVER SWAP
+\              3_TX_ODD SWAP MOVE
+            CDC_DATA_RX 64 DATA0 rx_control
+            CDC_DATA_TX 3 3_TX_ODD tx_send_data
+        THEN
 
     THEN
 
@@ -1051,7 +1040,6 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
         DROP    \ descriptor
 
         0x08 U1IR !        \ clear interrupt
-
         exit
     THEN
 
@@ -1066,16 +1054,8 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
 
         CR     SPACE SPACE token_processing_address debug_BD
 
-
         0 tx_send_next
-
-
-\          ." | " U1CON @ HEX. CR
-\          0 debug_BDs
-
         0x08 U1IR !        \ clear interrupt
-\          debug_IR
-
         exit
     THEN
 
@@ -1107,18 +1087,7 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
         process_default_token
     THEN
 
-
-    ." | " U1CON @ HEX. CR
-\      0 debug_BDs
-
     0x08 U1IR !        \ clear interrupt
-
-    DEBUGGING @ IF
-        debug_state
-        U1IR @
-        ." >> TOKEN processed 0x" hex.
-        ."  --> " debug_recvd CR
-    THEN
 ;
 
 
@@ -1140,8 +1109,8 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
     rx_control_setup
     0x01 U1IR !        \ clear interrupt
 
-    debug_IR
-    ." ------"
+\      debug_IR
+\      ." ------"
     CR
 ;
 
@@ -1166,7 +1135,6 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
 
 
 		U1IR @
-\    		DUP HEX.
 
         DUP
         0x04 AND IF            \ SOF received
@@ -1176,16 +1144,13 @@ CREATE 3_TX_ODD ALIGN 64 ALLOT
 
         DUP
         0x01 AND IF
-\              .HEXS
             handle_reset
             ." ++>" CR CR
-
             DROP U1IR @
         THEN
 
         DUP
         0x08 AND IF
-\              .HEXS
             handle_token
             ." ++>" CR CR
         THEN

@@ -20,7 +20,7 @@ CREATE TEST_FIFOS
 
 	TX1_FIFO CAN_TX 4 can_add_fifo			\ Buffer #0: Tx, 4 messages
 	RX1_FIFO CAN_RX 6 can_add_fifo			\ Buffer #1: Rx, 3 messages
-	RX1_FIFO CAN_RX 6 can_add_fifo			\ Buffer #3: Rx, 3 messages
+	RX2_FIFO CAN_RX 6 can_add_fifo			\ Buffer #2: Rx, 3 messages
 	
     0 $7ff can_sid_mask!
 
@@ -62,13 +62,17 @@ CREATE TEST_FIFOS
 
 : can_test_read  ( - )
     \ Read from Rx FIFOs
-	." FIFO1 " RX1_FIFO can_fifo_ready IF ." Ready" ELSE ." Empty" THEN CR CR
-	RX1_FIFO can_fifo@ . ." -> " DROP . . CR
-	RX1_FIFO can_fifo@ . ." -> " DROP . . CR CR
+	." FIFO1 " RX1_FIFO can_fifo_ready IF
+        ." Ready" CR
+        SPACE RX1_FIFO can_fifo@ HEX. ." -> " DROP HEX. HEX. CR
+        SPACE RX1_FIFO can_fifo@ HEX. ." -> " DROP HEX. HEX. CR CR
+    ELSE ." Empty" CR THEN
 
-    ." FIFO2 " RX2_FIFO can_fifo_ready IF ." Ready" ELSE ." Empty" THEN CR CR
-	RX2_FIFO can_fifo@ . ." -> " DROP . . CR
-	RX2_FIFO can_fifo@ . ." -> " DROP . . CR
+    ." FIFO2 " RX2_FIFO can_fifo_ready IF
+        ." Ready" CR
+        SPACE RX2_FIFO can_fifo@ HEX. ." -> " DROP HEX. HEX. CR
+        SPACE RX2_FIFO can_fifo@ HEX. ." -> " DROP HEX. HEX. CR
+    ELSE ." Empty" CR THEN
 ;
 
 : can_test ( )

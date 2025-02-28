@@ -4,7 +4,7 @@ noecho
 0 CONSTANT TX_FIFO1
 1 CONSTANT RX_FIFO1
 
-CREATE MSG_FIFOS
+CREATE CAN_FIFOS
     0 
     6 can_sum_fifo_size 
     6 can_sum_fifo_size
@@ -24,10 +24,10 @@ CREATE MSG_FIFOS
 ;
 
 : can_setup ( )
-	MSG_FIFOS can_init
+	CAN_FIFOS can_init
 
-	TX_FIFO1 CAN_TX 6 can_add_fifo			\ Buffer #0: Tx, 3 messages
-	RX_FIFO1 CAN_RX 6 can_add_fifo			\ Buffer #1: Rx, 3 messages
+	TX_FIFO1 CAN_TX 6 can_add_fifo			\ Buffer #0: Tx, 6 messages
+	RX_FIFO1 CAN_RX 6 can_add_fifo			\ Buffer #1: Rx, 6 messages
 	
     0 $7ff can_sid_mask!
 
@@ -39,9 +39,8 @@ CREATE MSG_FIFOS
     0 RX_FIFO1 can_filter_fifo!              \ filters 0 to use RX fifo 1
     0 can_filter_en                          \ enable filters
 
-\    2 can_mode!
     0 can_mode!
-    flash_comms
+    flash_comms 100 ms flash_comms
 ;
 
 
@@ -66,30 +65,49 @@ CREATE MSG_FIFOS
 
 : can_read_msg  ( - )
     \ Read from Rx FIFOs
-	." FIFO1 " RX_FIFO1 can_fifo_ready IF ." Ready" ELSE ." Empty" THEN CR CR
-	RX_FIFO1 can_fifo@ . ." -> " DROP . . CR
-	RX_FIFO1 can_fifo@ . ." -> " DROP . . CR CR
+	RX_FIFO1 can_fifo_ready IF ." Received"
+        RX_FIFO1 can_fifo@ HEX. ." -> " DROP HEX. HEX. CR
+        RX_FIFO1 can_fifo@ HEX. ." -> " DROP HEX. HEX. CR
+	THEN
 ;
 
 : can_test_send ( )
     HEX
-    TX_FIFO1 can_debug								\ display Tx buffer
+\      TX_FIFO1 can_debug								\ display Tx buffer
 	$FEDC can_write_msg
 	$1234 can_write_msg
-	TX_FIFO1 can_debug
+\  	TX_FIFO1 can_debug
 ;
 
 : can_test_recv ( )
     can_read_msg
     can_read_msg
-	RX_FIFO1 can_debug							    \ display Rx buffer
+\  	RX_FIFO1 can_debug							    \ display Rx buffer
 ;
 
 
 
 
 
-task+ can_receive
+task can_receive
+
+
+: next_message
+    RX_FIFO1 can_fifo_ready
+    IF
+        flash_comms
+        RX_FIFO1 can_fifo@
+
+        ." Received " HEX. ." -> " DROP
+        2DUP HEX. HEX. CR
+
+        DUP 1 AND MNT_LED DIGITAL!
+        DUP 8 AND ERROR_LED DIGITAL!
+        DROP
+\            ELSE ." . "
+    THEN
+
+;
 
 : run_receive ( - )
     COMMS_LED digital_out
@@ -97,19 +115,7 @@ task+ can_receive
     
     can_receive activate 
         begin
-            RX_FIFO1 can_fifo_ready 
-            IF 
-                flash_comms                
-                RX_FIFO1 can_fifo@
-                
-                ." Received " . ." -> " DROP
-                2DUP . . CR
-                
-                DUP 1 AND MNT_LED DIGITAL!
-                DUP 8 AND ERROR_LED DIGITAL!
-                DROP
-\            ELSE ." . " 
-            THEN
+            next_message
             200 ms
         again
  ;
@@ -133,6 +139,6 @@ task+ can_receive
 
 
 
-.( FIFO data @) MSG_FIFOS HEX. CR
+.( FIFO data @) CAN_FIFOS HEX. CR
 .( CAN test loaded) CR
 echo
